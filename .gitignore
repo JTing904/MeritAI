@@ -1,0 +1,32 @@
+# Dependencies and build output (every package)
+node_modules/
+dist/
+dist-web/
+coverage/
+*.tsbuildinfo
+
+# Secrets: never commit. Only .env.example files are tracked.
+.env*
+!.env.example
+*.pem
+*.jks
+*.keystore
+*.p8
+*.p12
+google-services.json
+service-account*.json
+
+# Generated code
+server/src/generated/
+app/android/
+app/ios/
+app/.expo/
+app/expo-env.d.ts
+
+# Tools
+.vercel
+.DS_Store
+npm-debug.log*
+
+# Local-only documents
+REQUIREMENTS-v1-original.md

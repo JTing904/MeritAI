@@ -1,0 +1,66 @@
+// MeritAI data model. The datasource URL lives in prisma.config.ts (Prisma 7).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AuthProvider {
+  GITHUB
+  GOOGLE
+}
+
+enum Locale {
+  zh
+  en
+}
+
+model User {
+  id             String   @id @default(cuid())
+  name           String
+  /// Verified email from GitHub or Google. Accounts with the same verified email merge.
+  email          String?  @unique
+  githubUsername String?  @unique
+  /// Language for push notifications (the app syncs it from the device choice).
+  locale         Locale   @default(zh)
+  pushEnabled    Boolean  @default(true)
+  weeklyEnabled  Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  sessions Session[]
+  accounts AuthAccount[]
+}
+
+/// A signed-in device. Only the SHA-256 hash of the bearer token is stored.
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  expiresAt  DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// A GitHub or Google login linked to a user (at most one of each per user).
+model AuthAccount {
+  id                String       @id @default(cuid())
+  userId            String
+  provider          AuthProvider
+  providerAccountId String
+  email             String?
+  createdAt         DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@unique([userId, provider])
+}
