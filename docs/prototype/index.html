@@ -1,0 +1,1676 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MeritAI 手机样稿</title>
+<meta name="description" content="MeritAI 手机版可点击原型：首页、新建项目与 AI 拆任务、选任务包与交证据、排行榜、徽章与通知。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=DM+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700;900&display=swap">
+<style>
+:root {
+  --font-display: "Bricolage Grotesque", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-body: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "DM Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --backdrop: #E7E5F1;
+  --bezel: #1E1B2E;
+  --paper: #F5F4FA;
+  --card: #FFFFFF;
+  --card-2: #EFEDF7;
+  --ink: #1E1B2E;
+  --ink-2: #4A4660;
+  --muted: #625D76;
+  --line: #E1DEEC;
+  --grape: #6246EA;
+  --grape-press: #4429C4;
+  --grape-soft: #ECE8FF;
+  --grape-text: #4E33D2;
+  --on-grape: #FFFFFF;
+
+  --lemon: #FFD84A;
+  --gum: #FF86BA;
+  --mint: #3FD89B;
+  --sky: #5AAEFF;
+  --tang: #FF9E47;
+  --lilac: #B794FF;
+  --on-hl: #1E1B2E;
+  --hl-strength: 100%;
+
+  --good: #0B7A4C;
+  --good-soft: #DDF6EA;
+  --warn: #8F5100;
+  --warn-soft: #FFEFD2;
+  --bad: #B8223C;
+  --bad-soft: #FFE4E9;
+  --on-bad: #FFFFFF;
+  --on-ink-good: #3FD89B;
+
+  --shadow: 0 1px 0 rgba(30, 27, 46, 0.04), 0 10px 28px -16px rgba(30, 27, 46, 0.28);
+  --phone-shadow: 0 40px 80px -40px rgba(44, 30, 120, 0.45);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --backdrop: #0D0B14;
+    --bezel: #2A2638;
+    --paper: #15131E;
+    --card: #1F1C2B;
+    --card-2: #2A2639;
+    --ink: #F3F1FA;
+    --ink-2: #CFCAE3;
+    --muted: #A7A2BE;
+    --line: #332F46;
+    --grape: #6A52F0;
+    --grape-press: #4A33C8;
+    --grape-soft: #2D2652;
+    --grape-text: #BCAFFF;
+    --on-grape: #FFFFFF;
+    --lemon: #F2C94C;
+    --gum: #F07AAE;
+    --mint: #36C98E;
+    --sky: #4F9EF0;
+    --tang: #F0913E;
+    --lilac: #A987F5;
+    --hl-strength: 48%;
+    --good: #52D69B;
+    --good-soft: #173A2C;
+    --warn: #F4B35A;
+    --warn-soft: #3A2C14;
+    --bad: #FF7A8F;
+    --bad-soft: #401B24;
+    --on-bad: #1E1B2E;
+    --on-ink-good: #0B7A4C;
+    --shadow: 0 1px 0 rgba(0, 0, 0, 0.2), 0 12px 28px -16px rgba(0, 0, 0, 0.7);
+    --phone-shadow: 0 40px 80px -40px rgba(0, 0, 0, 0.9);
+  }
+}
+:root[data-theme="dark"] {
+  --backdrop: #0D0B14;
+  --bezel: #2A2638;
+  --paper: #15131E;
+  --card: #1F1C2B;
+  --card-2: #2A2639;
+  --ink: #F3F1FA;
+  --ink-2: #CFCAE3;
+  --muted: #A7A2BE;
+  --line: #332F46;
+  --grape: #6A52F0;
+  --grape-press: #4A33C8;
+  --grape-soft: #2D2652;
+  --grape-text: #BCAFFF;
+  --on-grape: #FFFFFF;
+  --lemon: #F2C94C;
+  --gum: #F07AAE;
+  --mint: #36C98E;
+  --sky: #4F9EF0;
+  --tang: #F0913E;
+  --lilac: #A987F5;
+  --hl-strength: 48%;
+  --good: #52D69B;
+  --good-soft: #173A2C;
+  --warn: #F4B35A;
+  --warn-soft: #3A2C14;
+  --bad: #FF7A8F;
+  --bad-soft: #401B24;
+  --on-bad: #1E1B2E;
+  --on-ink-good: #0B7A4C;
+  --shadow: 0 1px 0 rgba(0, 0, 0, 0.2), 0 12px 28px -16px rgba(0, 0, 0, 0.7);
+  --phone-shadow: 0 40px 80px -40px rgba(0, 0, 0, 0.9);
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--backdrop);
+  color: var(--ink);
+  font: 15px/1.55 var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 3px solid var(--grape); outline-offset: 2px; border-radius: 8px; }
+
+/* ── Stage: map + phone ─────────────────────────────────────────── */
+.stage {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) auto;
+  justify-content: center;
+  align-items: start;
+  gap: 56px;
+  padding-block: 40px;
+  padding-inline: 24px;
+}
+.map { position: sticky; top: 40px; display: flex; flex-direction: column; gap: 20px; max-width: 300px; }
+.map-head h2 { margin: 0; font: 800 26px/1.15 var(--font-display); letter-spacing: -0.02em; text-wrap: balance; }
+.map-head p { margin: 8px 0 0; color: var(--muted); font-size: 13.5px; }
+.map-group { display: flex; flex-direction: column; gap: 2px; }
+.map-group h3 { margin: 0 0 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: var(--muted); }
+.map-link { display: flex; align-items: baseline; gap: 10px; width: 100%; text-align: left; border: 0; background: transparent; padding: 7px 10px; border-radius: 10px; cursor: pointer; }
+.map-link:hover { background: var(--card); }
+.map-link.on { background: var(--card); box-shadow: var(--shadow); }
+.map-link b { font-weight: 700; font-size: 14px; color: var(--ink); }
+.map-link .hint-t { color: var(--muted); font-size: 12px; }
+.map-link .n { font: 500 11px var(--font-mono); color: var(--muted); min-width: 14px; }
+.map-note { font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 14px; margin: 0; }
+.map-close { display: none; }
+.map-fab {
+  display: none;
+  position: fixed;
+  z-index: 60;
+  top: 42%;
+  right: 0;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 12px 0 0 12px;
+  padding: 12px 6px;
+  writing-mode: vertical-rl;
+  letter-spacing: 0.2em;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 12.5px;
+  font-weight: 700;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+}
+
+.device { display: flex; justify-content: center; }
+.phone {
+  position: relative;
+  width: 390px;
+  height: 844px;
+  border-radius: 52px;
+  border: 11px solid var(--bezel);
+  background: var(--paper);
+  box-shadow: var(--phone-shadow);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.statusbar { flex: none; height: 44px; display: flex; align-items: center; justify-content: space-between; padding: 0 26px 0 30px; font: 700 14px var(--font-display); font-variant-numeric: tabular-nums; }
+.statusbar .icons { display: flex; gap: 6px; align-items: center; }
+.statusbar svg { display: block; }
+.home-bar { position: absolute; bottom: 7px; left: 50%; width: 120px; height: 5px; margin-left: -60px; border-radius: 3px; background: var(--ink); opacity: 0.8; pointer-events: none; }
+
+@media (max-width: 899px) {
+  .stage { display: block; padding: 0; height: 100%; }
+  .map { display: none; }
+  .map.open { display: flex; position: fixed; inset: 0; z-index: 70; max-width: none; overflow-y: auto; background: var(--paper); padding: calc(16px + env(safe-area-inset-top, 0px)) 20px 32px; }
+  .map-close { display: inline-flex; align-self: flex-end; border: 0; border-radius: 999px; padding: 6px 14px; background: var(--card-2); font-weight: 700; font-size: 13px; cursor: pointer; }
+  .map-fab { display: flex; }
+  .device { height: 100%; }
+  .phone { width: 100%; height: 100%; border: 0; border-radius: 0; box-shadow: none; }
+  .statusbar, .home-bar { display: none; }
+}
+
+/* ── App chrome ─────────────────────────────────────────────────── */
+.screen { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 4px 18px 28px; display: flex; flex-direction: column; gap: 18px; }
+.screen::-webkit-scrollbar { width: 0; }
+.screen > * { flex-shrink: 0; } /* long screens scroll; never squash lists that clip overflow */
+.tabbar { flex: none; display: grid; grid-template-columns: repeat(4, 1fr); padding: 6px 8px calc(18px + env(safe-area-inset-bottom, 0px)); background: var(--card); border-top: 1px solid var(--line); }
+.tab { display: flex; flex-direction: column; align-items: center; gap: 2px; border: 0; background: none; padding: 4px 0; font-size: 11px; font-weight: 600; color: var(--muted); cursor: pointer; position: relative; }
+.tab .ic { display: grid; place-items: center; width: 48px; height: 30px; border-radius: 999px; transition: background 0.2s; }
+.tab.on { color: var(--grape-text); }
+.tab.on .ic { background: var(--grape-soft); }
+.tab .dot { position: absolute; top: 3px; left: calc(50% + 9px); min-width: 17px; height: 17px; padding: 0 5px; border-radius: 999px; background: var(--bad); color: var(--on-bad); font: 700 10px/17px var(--font-display); }
+
+.appbar { position: sticky; top: -4px; z-index: 5; margin: -4px -18px 0; padding: 8px 12px; display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; background: color-mix(in oklab, var(--paper) 88%, transparent); backdrop-filter: blur(10px); }
+.appbar h2 { margin: 0; text-align: center; font-size: 16px; font-weight: 700; }
+.appbar h2:focus { outline: none; }
+.appbar .sub { display: block; font-size: 11.5px; font-weight: 500; color: var(--muted); }
+.icon-btn { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 12px; background: transparent; cursor: pointer; color: var(--ink); }
+.icon-btn:hover { background: var(--card-2); }
+
+.top { display: flex; align-items: center; justify-content: space-between; padding-top: 6px; }
+.brand { display: flex; align-items: center; gap: 8px; font: 800 18px var(--font-display); letter-spacing: -0.02em; }
+.logo { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--lemon); color: var(--on-hl); font: 800 17px var(--font-display); transform: rotate(-6deg); box-shadow: 3px 3px 0 var(--gum); }
+
+h1.title { margin: 0; font: 900 27px/1.25 var(--font-display); letter-spacing: -0.01em; text-wrap: balance; }
+h1.title:focus { outline: none; }
+.sub-line { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+.section-h { display: flex; align-items: baseline; justify-content: space-between; margin: 2px 2px -6px; }
+.section-h h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.section-h button { border: 0; background: none; color: var(--grape-text); font-size: 13px; font-weight: 700; cursor: pointer; padding: 4px; }
+
+/* Highlighter stroke — the signature mark */
+.hl {
+  --c: var(--lemon);
+  --band: color-mix(in oklab, var(--c) var(--hl-strength), var(--paper));
+  background-image: linear-gradient(100deg, transparent 0.4em, var(--band) 0.4em, var(--band) calc(100% - 0.3em), transparent calc(100% - 0.3em));
+  background-repeat: no-repeat;
+  background-size: 100% 0.5em;
+  background-position: 0 88%;
+  padding: 0 0.12em;
+  margin: 0 -0.05em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.hl.sweep { animation: sweep 0.7s 0.15s cubic-bezier(.2,.7,.3,1) both; }
+@keyframes sweep { from { background-size: 0% 0.5em; } to { background-size: 100% 0.5em; } }
+
+/* Cards & lists */
+.card { background: var(--card); border-radius: 20px; box-shadow: var(--shadow); padding: 16px; }
+.stack-v { display: flex; flex-direction: column; gap: 10px; }
+.list { background: var(--card); border-radius: 20px; box-shadow: var(--shadow); overflow: hidden; }
+.list > * + * { border-top: 1px solid var(--line); }
+.row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 13px 14px; border: 0; background: none; text-align: left; }
+button.row { cursor: pointer; }
+button.row:hover { background: color-mix(in oklab, var(--card-2) 60%, transparent); }
+.row .grow { flex: 1; min-width: 0; }
+.row .t { display: block; font-weight: 700; font-size: 14.5px; line-height: 1.35; }
+.row .m { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 3px; font-size: 12.5px; color: var(--muted); }
+
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; background: var(--card-2); color: var(--ink-2); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.chip.c { background: color-mix(in oklab, var(--c) 34%, var(--card)); color: var(--ink); }
+.chip.good { background: var(--good-soft); color: var(--good); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.chip.bad { background: var(--bad-soft); color: var(--bad); }
+.chip.grape { background: var(--grape-soft); color: var(--grape-text); }
+.pdot { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
+
+.av { --c: var(--lemon); display: inline-grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 50%; background: var(--c); color: var(--on-hl); font-weight: 900; font-size: 14px; border: 2px solid var(--card); }
+.av.sm { width: 26px; height: 26px; font-size: 11.5px; }
+.av.lg { width: 64px; height: 64px; font-size: 26px; border-width: 3px; }
+.stack { display: flex; }
+.stack .av + .av { margin-left: -9px; }
+
+.kind { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 13px; background: color-mix(in oklab, var(--c) 30%, var(--card)); font-size: 19px; }
+.due { text-align: right; font-size: 12px; font-weight: 700; color: var(--muted); line-height: 1.3; font-variant-numeric: tabular-nums; flex: none; }
+.due.urgent { color: var(--bad); }
+
+.bar { display: block; height: 8px; border-radius: 999px; background: var(--card-2); overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: inherit; background: var(--c, var(--grape)); }
+
+/* Buttons */
+.btn { appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 15px; padding: 13px 18px; background: var(--grape); color: var(--on-grape); font-weight: 700; font-size: 15px; cursor: pointer; box-shadow: 0 4px 0 var(--grape-press); transition: transform 0.08s ease, box-shadow 0.08s ease; }
+.btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--grape-press); }
+.btn.block { width: 100%; }
+.btn.sm { padding: 8px 13px; font-size: 13px; border-radius: 12px; box-shadow: 0 3px 0 var(--grape-press); }
+.btn.soft { background: var(--card-2); color: var(--ink); box-shadow: 0 3px 0 var(--line); }
+.btn.soft:active { box-shadow: 0 1px 0 var(--line); }
+.btn.hlb { background: var(--c); color: var(--on-hl); box-shadow: 0 4px 0 color-mix(in oklab, var(--c) 62%, #000); }
+.btn.hlb:active { box-shadow: 0 1px 0 color-mix(in oklab, var(--c) 62%, #000); }
+.btn.danger { background: var(--bad-soft); color: var(--bad); box-shadow: 0 3px 0 color-mix(in oklab, var(--bad) 30%, var(--card)); }
+.btn[disabled] { opacity: 0.45; cursor: not-allowed; transform: none; }
+.link { border: 0; background: none; padding: 0; color: var(--grape-text); font-weight: 700; cursor: pointer; text-align: left; }
+
+.seg { display: flex; gap: 4px; padding: 4px; border-radius: 14px; background: var(--card-2); }
+.seg button { flex: 1; border: 0; background: none; padding: 8px 6px; border-radius: 10px; font-size: 13.5px; font-weight: 700; color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+
+/* Prototype-only controls read as annotations, not UI */
+.proto { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 8px 10px; border: 1.5px dashed color-mix(in oklab, var(--grape) 55%, transparent); border-radius: 14px; font-size: 12px; color: var(--grape-text); }
+.proto b { font-weight: 700; margin-right: 2px; }
+.proto button { border: 0; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 700; background: var(--card); color: var(--ink-2); cursor: pointer; }
+.proto button[aria-pressed="true"] { background: var(--grape); color: var(--on-grape); }
+
+/* Home */
+.hello { display: flex; flex-direction: column; gap: 2px; }
+.invite { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-items: center; background: color-mix(in oklab, var(--lilac) 22%, var(--card)); }
+.invite .emo { font-size: 30px; grid-row: span 2; }
+.invite p { margin: 0; font-size: 14px; line-height: 1.45; }
+.invite .actions { grid-column: 2; display: flex; gap: 8px; margin-top: 8px; }
+.proj { display: flex; flex-direction: column; gap: 12px; width: 100%; text-align: left; border: 0; }
+button.proj { cursor: pointer; }
+.proj .head { display: flex; align-items: flex-start; gap: 12px; }
+.proj .code { flex: none; padding: 5px 9px; border-radius: 10px; background: var(--c); color: var(--on-hl); font: 800 13px var(--font-display); transform: rotate(-3deg); }
+.proj .name { display: block; font-weight: 900; font-size: 16.5px; line-height: 1.3; }
+.proj .meta { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.proj .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
+.pct { font: 700 13px var(--font-display); color: var(--ink); font-variant-numeric: tabular-nums; }
+.fab { position: absolute; right: 18px; bottom: 96px; z-index: 8; width: 58px; height: 58px; border-radius: 20px; display: grid; place-items: center; padding: 0; }
+.fab-space { flex: none; height: 56px; }
+@media (max-width: 899px) { .fab { bottom: calc(92px + env(safe-area-inset-bottom, 0px)); } }
+
+/* Sheet */
+.sheet-wrap { position: absolute; inset: 0; z-index: 30; display: flex; align-items: flex-end; background: rgba(20, 16, 36, 0.45); }
+.sheet { width: 100%; max-height: 88%; overflow-y: auto; background: var(--card); border-radius: 26px 26px 0 0; padding: 10px 18px calc(28px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px; animation: rise 0.22s ease-out; }
+.sheet .grab { width: 40px; height: 5px; border-radius: 3px; background: var(--line); margin: 0 auto 6px; }
+.sheet h4 { margin: 0 0 4px; font-size: 16px; }
+.sheet p { margin: 0; font-size: 13.5px; color: var(--ink-2); }
+.sheet-opt { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; border: 0; border-radius: 16px; background: var(--card-2); text-align: left; cursor: pointer; }
+.sheet-opt b { display: block; font-size: 15px; }
+.sheet-opt span span { font-size: 12.5px; color: var(--muted); }
+@keyframes rise { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.toast { position: absolute; left: 16px; right: 16px; top: 52px; z-index: 40; padding: 12px 16px; border-radius: 16px; background: var(--ink); color: var(--paper); font-weight: 600; font-size: 14px; text-align: center; box-shadow: var(--shadow); pointer-events: none; opacity: 0; transform: translateY(-8px); transition: opacity 0.2s, transform 0.2s; }
+.toast.show { opacity: 1; transform: none; }
+@media (max-width: 899px) { .toast { top: calc(12px + env(safe-area-inset-top, 0px)); } }
+#confetti { position: absolute; inset: 0; z-index: 35; pointer-events: none; width: 100%; height: 100%; }
+
+/* Project page */
+.p-hero { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; }
+.p-hero .name { font: 900 21px/1.25 var(--font-display); }
+.p-hero .meta { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.ring { position: relative; width: 86px; height: 86px; }
+.ring svg { display: block; transform: rotate(-90deg); }
+.ring b { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; font: 800 22px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.ring b small { font: 600 10.5px var(--font-body); color: var(--muted); margin-top: 3px; }
+.p-stats { display: flex; gap: 8px; flex-wrap: wrap; grid-column: 1 / -1; }
+.pkg-row { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.pkg-top { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: none; padding: 14px 16px; text-align: left; cursor: pointer; }
+.pkg-num { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border-radius: 14px; background: var(--c); color: var(--on-hl); font: 800 19px var(--font-display); }
+.pkg-tasks { display: flex; flex-direction: column; gap: 6px; padding: 0 16px 14px 70px; }
+.mini-task { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: var(--card-2); border-radius: 12px; padding: 9px 10px; text-align: left; font-size: 13.5px; cursor: pointer; }
+.mini-task .st { font-size: 14px; }
+.mini-task .w { margin-left: auto; font: 600 12px var(--font-body); color: var(--muted); white-space: nowrap; }
+.chev { transition: transform 0.2s; color: var(--muted); display: grid; }
+.chev.open { transform: rotate(90deg); }
+
+.podium { display: grid; grid-template-columns: 1fr 1.15fr 1fr; align-items: end; gap: 8px; padding-top: 8px; }
+.pod { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.pod .medal { font-size: 22px; line-height: 1; }
+.pod .nm { font-size: 13px; font-weight: 700; }
+.pod .block { width: 100%; border-radius: 16px 16px 6px 6px; background: color-mix(in oklab, var(--c) 34%, var(--card)); display: grid; place-items: center; align-content: center; font: 800 22px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.pod .block small { font: 600 11px var(--font-body); color: var(--ink-2); }
+.formula { font-size: 12.5px; color: var(--ink-2); background: var(--card-2); border-radius: 14px; padding: 12px 14px; line-height: 1.6; }
+.formula b { color: var(--ink); }
+.rank-row { display: grid; grid-template-columns: 22px auto 1fr auto; align-items: center; gap: 10px; padding: 12px 14px; }
+.rank-row .no { font: 700 13px var(--font-display); color: var(--muted); text-align: center; }
+.rank-row .earned { font: 800 18px var(--font-display); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.rank-row .of { display: block; font: 500 11px var(--font-body); color: var(--muted); }
+.rank-row .badges-inline { font-size: 13px; letter-spacing: 1px; }
+
+.feed-item { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 12px 14px; font-size: 13.5px; }
+.feed-item .when { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+/* Pick carousel */
+.carousel { display: flex; gap: 14px; overflow-x: auto; scroll-snap-type: x mandatory; margin: 0 -18px; padding: 6px 18px 18px; scrollbar-width: none; }
+.carousel::-webkit-scrollbar { display: none; }
+.pcard { flex: none; width: 84%; scroll-snap-align: center; background: var(--card); border-radius: 26px; box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; }
+.pcard .band { background: var(--c); color: var(--on-hl); padding: 16px 18px 14px; display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 4px 10px; position: relative; }
+.pcard .band .lbl { font-weight: 900; font-size: 14px; }
+.pcard .band .big { font: 800 44px/0.95 var(--font-display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.pcard .band .big small { font-size: 17px; letter-spacing: 0; margin-left: 2px; }
+.pcard .band .hrs { font-size: 12.5px; font-weight: 700; text-align: right; opacity: 0.85; }
+.pcard .band::after { content: ""; position: absolute; left: 0; right: 0; bottom: -7px; height: 14px; background: radial-gradient(circle at 7px 0, var(--c) 6px, transparent 6.5px) 0 0 / 14px 14px repeat-x; }
+.pcard .body { padding: 20px 16px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.ptask { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; width: 100%; border: 0; background: none; padding: 2px 0; text-align: left; font-size: 13.5px; cursor: pointer; }
+.ptask .tg { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 7px; background: var(--card-2); color: var(--ink-2); }
+.ptask .d { font: 500 11.5px var(--font-body); color: var(--muted); text-align: right; line-height: 1.3; }
+.pcard .foot { padding: 0 16px 18px; display: flex; flex-direction: column; gap: 8px; }
+.owner-line { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.dots { display: flex; justify-content: center; gap: 6px; margin-top: -8px; }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: width 0.2s, background 0.2s; }
+.dots i.on { width: 20px; border-radius: 4px; background: var(--ink); }
+.leader-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.leader-tools .lt-h { flex-basis: 100%; font-weight: 700; font-size: 14px; }
+
+/* Task detail */
+.t-head { display: flex; flex-direction: column; gap: 8px; }
+.t-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.t-desc { margin: 0; font-size: 14px; color: var(--ink-2); }
+.owner-bar { display: flex; align-items: center; gap: 10px; font-size: 13.5px; }
+.ev-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ev-opt { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; border: 2px dashed var(--line); border-radius: 18px; background: var(--card); padding: 14px; text-align: left; cursor: pointer; }
+.ev-opt:hover { border-color: var(--grape); }
+.ev-opt b { font-size: 14px; }
+.ev-opt span { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+.file-chip { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 16px; background: var(--card-2); }
+.file-chip .ico { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: var(--card); flex: none; }
+.file-chip b { display: block; font-size: 13.5px; word-break: break-all; }
+.file-chip span { font-size: 12px; color: var(--muted); }
+.commit { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; width: 100%; padding: 11px 14px; border: 0; background: none; text-align: left; font-size: 13px; cursor: pointer; }
+.commit:hover { background: color-mix(in oklab, var(--card-2) 60%, transparent); }
+.commit code { font: 500 12px var(--font-mono); color: var(--grape-text); }
+.commit .lines { font: 500 11.5px var(--font-mono); color: var(--muted); }
+.scan { position: relative; overflow: hidden; padding: 18px 16px; display: flex; flex-direction: column; gap: 10px; }
+.scan .ln { height: 9px; border-radius: 5px; background: var(--card-2); }
+.scan .ln:nth-child(2) { width: 88%; }
+.scan .ln:nth-child(3) { width: 94%; }
+.scan .ln:nth-child(4) { width: 70%; }
+.scan .sweeper { position: absolute; top: 0; bottom: 0; left: -40%; width: 40%; background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--lemon) 55%, transparent), transparent); animation: scan 1.1s linear infinite; }
+@keyframes scan { to { left: 100%; } }
+.result { display: flex; flex-direction: column; gap: 10px; border-radius: 22px; padding: 18px; }
+.result.good { background: var(--good-soft); }
+.result.warn { background: var(--warn-soft); }
+.result.bad { background: var(--bad-soft); }
+.result .grade { font: 900 34px/1 var(--font-display); letter-spacing: 0.02em; }
+.result.good .grade { color: var(--good); }
+.result.warn .grade { color: var(--warn); }
+.result.bad .grade { color: var(--bad); }
+.result .gain { font-size: 13.5px; color: var(--ink); font-weight: 700; }
+.result .by { font-size: 12.5px; color: var(--ink-2); }
+.result ul { margin: 0; padding-left: 20px; font-size: 13.5px; color: var(--ink); display: flex; flex-direction: column; gap: 4px; }
+.override { border: 2px solid color-mix(in oklab, var(--grape) 40%, transparent); background: var(--card); border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.done-panel { text-align: center; padding: 22px 16px; border-radius: 22px; background: var(--good-soft); display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.done-panel .big-emoji { font-size: 42px; line-height: 1; }
+.done-panel b { font-size: 17px; color: var(--good); }
+
+/* Badges */
+.badges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.badge { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; background: var(--card); border-radius: 18px; box-shadow: var(--shadow); padding: 14px 8px 12px; }
+.badge .coin { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: color-mix(in oklab, var(--c) 40%, var(--card)); border: 3px solid var(--c); font-size: 26px; }
+.badge b { font-size: 12.5px; line-height: 1.3; }
+.badge span { font-size: 10.5px; color: var(--muted); line-height: 1.35; }
+.badge .src { font: 600 10px var(--font-body); color: var(--grape-text); }
+.badge.locked .coin { filter: grayscale(1); opacity: 0.4; border-style: dashed; }
+.badge.locked b { color: var(--muted); }
+
+/* Notifications */
+.notif { display: grid; grid-template-columns: auto 1fr; gap: 12px; padding: 14px; position: relative; }
+.notif.unread::before { content: ""; position: absolute; top: 20px; right: 14px; width: 8px; height: 8px; border-radius: 50%; background: var(--grape); }
+.notif .emo { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 13px; background: color-mix(in oklab, var(--c) 32%, var(--card)); font-size: 20px; flex: none; }
+.notif p { margin: 0; font-size: 14px; line-height: 1.5; padding-right: 14px; }
+.notif .when { display: block; font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+.notif .acts { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.weekly { background: var(--ink); color: var(--paper); border-radius: 22px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.weekly h4 { margin: 0; font: 800 17px var(--font-display); }
+.weekly .wk-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.weekly .wk { background: color-mix(in oklab, var(--paper) 10%, transparent); border-radius: 14px; padding: 10px 12px; }
+.weekly .wk small { display: block; font-size: 11.5px; opacity: 0.8; }
+.weekly .wk b { font: 800 22px var(--font-display); font-variant-numeric: tabular-nums; }
+.weekly .wk.up b { color: var(--on-ink-good); }
+.weekly .line { font-size: 13.5px; display: flex; align-items: center; gap: 8px; }
+
+/* Me */
+.me-head { display: flex; align-items: center; gap: 14px; }
+.me-head b { display: block; font: 900 20px var(--font-display); }
+.me-head span { font-size: 13px; color: var(--muted); }
+.set-row { display: flex; align-items: center; gap: 12px; padding: 13px 14px; font-size: 14px; }
+.set-row.col { flex-direction: column; align-items: stretch; gap: 8px; }
+.set-row .grow { flex: 1; min-width: 0; }
+.set-row small { display: block; font-size: 12px; color: var(--muted); }
+.toggle { width: 44px; height: 26px; border-radius: 999px; background: var(--good); position: relative; flex: none; border: 0; cursor: pointer; }
+.toggle::after { content: ""; position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: right 0.15s; }
+.toggle[aria-pressed="false"] { background: var(--line); }
+.toggle[aria-pressed="false"]::after { right: 21px; }
+
+/* New project flow */
+.flow-top { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; gap: 8px; padding-top: 4px; }
+.steps { display: flex; gap: 5px; }
+.steps i { flex: 1; height: 6px; border-radius: 3px; background: var(--card-2); }
+.steps i.on { background: var(--grape); }
+.step-label { text-align: center; font-size: 12px; color: var(--muted); font-weight: 700; margin-top: 6px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label, .field .lbl { font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.field small { font-weight: 500; color: var(--muted); }
+.input { width: 100%; border: 2px solid var(--line); border-radius: 14px; background: var(--card); padding: 12px 14px; font: inherit; color: var(--ink); }
+.input:focus { border-color: var(--grape); outline: none; }
+textarea.input { min-height: 132px; resize: vertical; line-height: 1.6; }
+.stepper { display: inline-flex; align-items: center; border: 2px solid var(--line); border-radius: 14px; background: var(--card); overflow: hidden; align-self: flex-start; }
+.stepper button { width: 46px; height: 44px; border: 0; background: none; font-size: 20px; font-weight: 700; cursor: pointer; color: var(--ink); }
+.stepper output { min-width: 34px; text-align: center; font: 800 19px var(--font-display); }
+.two { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end; }
+.hint { font-size: 12.5px; color: var(--muted); }
+.drop { border: 2px dashed var(--line); border-radius: 20px; padding: 18px; display: flex; flex-direction: column; gap: 12px; background: var(--card); }
+.ai-card { display: flex; flex-direction: column; gap: 10px; }
+.check { display: flex; align-items: center; gap: 10px; font-size: 13.5px; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; }
+.check .box { width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--line); display: grid; place-items: center; flex: none; color: var(--on-grape); }
+.check[aria-pressed="true"] .box { background: var(--grape); border-color: var(--grape); }
+.manual-row { display: grid; grid-template-columns: 1fr 76px 36px; gap: 8px; align-items: center; }
+.sticky-foot { margin-top: auto; padding-top: 6px; display: flex; flex-direction: column; gap: 8px; }
+.warn-box { font-size: 12.5px; color: var(--warn); background: var(--warn-soft); border-radius: 14px; padding: 10px 12px; }
+
+.doc-scan { background: var(--card); border-radius: 22px; box-shadow: var(--shadow); padding: 20px 18px; display: flex; flex-direction: column; gap: 11px; }
+.doc-scan .ln { height: 11px; border-radius: 6px; background: var(--card-2); position: relative; overflow: hidden; }
+.doc-scan .ln i { position: absolute; inset: 0; background: color-mix(in oklab, var(--c) var(--hl-strength), var(--card-2)); transform-origin: left; transform: scaleX(0); animation: mark 0.6s ease-out forwards; }
+@keyframes mark { to { transform: scaleX(1); } }
+.checks { display: flex; flex-direction: column; gap: 10px; font-size: 14px; }
+.checks div { display: flex; align-items: center; gap: 10px; }
+.checks .ok { color: var(--good); font-weight: 900; }
+.checks .spin { width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--grape); animation: spin 0.8s linear infinite; flex: none; }
+.checks .wait { color: var(--muted); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.choice { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; width: 100%; text-align: left; border: 2px solid var(--line); background: var(--card); border-radius: 18px; padding: 14px; cursor: pointer; }
+.choice[aria-pressed="true"] { border-color: var(--grape); background: color-mix(in oklab, var(--grape-soft) 60%, var(--card)); }
+.choice .box { grid-row: span 3; width: 24px; height: 24px; border-radius: 8px; border: 2px solid var(--line); display: grid; place-items: center; margin-top: 2px; color: var(--on-grape); }
+.choice.radio .box { border-radius: 50%; }
+.choice[aria-pressed="true"] .box { background: var(--grape); border-color: var(--grape); }
+.choice .nm { font-weight: 900; font-size: 15px; }
+.choice .why { font-size: 12.5px; color: var(--ink-2); }
+.choice .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+
+.plan-ms { display: flex; flex-direction: column; gap: 8px; }
+.ms { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; font-size: 13.5px; }
+.ms .tag { font: 700 12px var(--font-display); padding: 3px 8px; border-radius: 8px; background: var(--ink); color: var(--paper); }
+.ms .dt { font: 500 12px var(--font-mono); color: var(--muted); }
+.plan-ws { display: flex; flex-direction: column; gap: 10px; }
+.ws-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-weight: 900; font-size: 14.5px; }
+.ws-h .w { font: 800 15px var(--font-display); color: var(--grape-text); white-space: nowrap; }
+.pl-task { display: grid; grid-template-columns: 1fr auto auto 30px; gap: 8px; align-items: center; font-size: 13.5px; padding: 6px 0; }
+.pl-task + .pl-task { border-top: 1px dashed var(--line); }
+.pl-task .w { font: 600 12px var(--font-body); color: var(--ink-2); white-space: nowrap; }
+.pl-task .dt { font: 500 11.5px var(--font-mono); color: var(--muted); padding: 3px 7px; border-radius: 8px; background: var(--card-2); }
+.del { width: 30px; height: 30px; border: 0; border-radius: 9px; background: none; color: var(--muted); display: grid; place-items: center; cursor: pointer; }
+.del:hover { background: var(--card-2); color: var(--bad); }
+.split { display: flex; height: 18px; border-radius: 9px; overflow: hidden; gap: 3px; }
+.split i { background: var(--c); }
+.code-box { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; border-radius: 18px; background: var(--card-2); }
+.code-box b { font: 500 22px var(--font-mono); letter-spacing: 0.12em; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
+</style>
+</head>
+<body>
+<div class="stage">
+  <aside class="map" id="map" aria-label="原型页面导航"></aside>
+  <div class="device">
+    <div class="phone" id="phone">
+      <div class="statusbar" aria-hidden="true">
+        <span>9:41</span>
+        <span class="icons">
+          <svg width="18" height="12" viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="1" fill="currentColor"/><rect x="5" y="5.5" width="3" height="6.5" rx="1" fill="currentColor"/><rect x="10" y="3" width="3" height="9" rx="1" fill="currentColor"/><rect x="15" y="0" width="3" height="12" rx="1" fill="currentColor"/></svg>
+          <svg width="26" height="12" viewBox="0 0 26 12"><rect x="0.5" y="0.5" width="22" height="11" rx="3.5" fill="none" stroke="currentColor" opacity=".4"/><rect x="2" y="2" width="16" height="8" rx="2" fill="currentColor"/><rect x="24" y="4" width="1.6" height="4" rx=".8" fill="currentColor" opacity=".5"/></svg>
+        </span>
+      </div>
+      <main class="screen" id="screen"></main>
+      <nav class="tabbar" id="tabbar" aria-label="主导航"></nav>
+      <canvas id="confetti" aria-hidden="true"></canvas>
+      <div class="toast" id="toast" role="status" aria-live="polite"></div>
+      <div class="sheet-wrap" id="sheet" hidden></div>
+      <div class="home-bar"></div>
+    </div>
+  </div>
+  <button class="map-fab" id="mapFab" type="button" aria-controls="map" aria-expanded="false">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/></svg>
+    页面
+  </button>
+</div>
+
+<script>
+(() => {
+  // ── Icons ───────────────────────────────────────────────────────────
+  const svg = (d, s = 22, w = 2) =>
+    `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const I = {
+    home: (s) => svg('<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>', s),
+    tasks: (s) => svg('<rect x="3" y="3" width="18" height="18" rx="5"/><path d="m8 12 3 3 5-6"/>', s),
+    bell: (s) => svg('<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>', s),
+    user: (s) => svg('<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>', s),
+    plus: (s) => svg('<path d="M12 5v14M5 12h14"/>', s, 2.6),
+    back: (s) => svg('<path d="m15 18-6-6 6-6"/>', s, 2.4),
+    close: (s) => svg('<path d="M18 6 6 18M6 6l12 12"/>', s, 2.4),
+    gear: (s) => svg('<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>', s),
+    upload: (s) => svg('<path d="M12 15V4M7 9l5-5 5 5"/><path d="M4 15v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>', s),
+    file: (s) => svg('<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5"/>', s),
+    copy: (s) => svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/>', s),
+    chevron: (s) => svg('<path d="m9 18 6-6-6-6"/>', s),
+    sparkle: (s) => svg('<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>', s),
+    shuffle: (s) => svg('<path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/>', s),
+    github: (s = 18) =>
+      `<svg width="${s}" height="${s}" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.56v-2c-3.2.7-3.870-1.37-3.87-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.260 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5Z"/></svg>`,
+    google: (s = 18) =>
+      `<svg width="${s}" height="${s}" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.27c0-.85-.08-1.66-.22-2.45H12v4.63h6.45a5.52 5.52 0 0 1-2.4 3.62v3h3.88c2.27-2.09 3.570-5.17 3.570-8.8Z"/><path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.94-2.9l-3.88-3.01c-1.08.72-2.45 1.15-4.06 1.15-3.12 0-5.77-2.11-6.71-4.95H1.28v3.1A12 12 0 0 0 12 24Z"/><path fill="#FBBC05" d="M5.29 14.29a7.2 7.2 0 0 1 0-4.58v-3.1H1.28a12 12 0 0 0 0 10.78l4.01-3.1Z"/><path fill="#EA4335" d="M12 4.77c1.76 0 3.34.61 4.59 1.8l3.44-3.44A11.5 11.5 0 0 0 12 0 12 12 0 0 0 1.28 6.61l4.01 3.1C6.23 6.88 8.88 4.77 12 4.77Z"/></svg>`,
+    check: (s) => svg('<path d="m5 12 5 5L20 7"/>', s, 3),
+  };
+
+  // ── Example data ────────────────────────────────────────────────────
+  // Each member has a highlighter colour; a picked package takes its owner's colour.
+  const P = {
+    me: { n: '陈思远', s: '远', c: 'lemon' },
+    xw: { n: '林晓雯', s: '雯', c: 'gum' },
+    zj: { n: '黄子杰', s: '杰', c: 'mint' },
+    bw: { n: '李博文', s: '文', c: 'sky' },
+    jx: { n: '何嘉欣', s: '欣', c: 'lilac' },
+    ah: { n: 'Ahmad', s: 'A', c: 'tang' },
+  };
+  const av = (k, cls = '') => `<span class="av ${cls}" style="--c:var(--${P[k].c})" role="img" aria-label="${P[k].n}">${P[k].s}</span>`;
+  const short = (k) => (k === 'me' ? '你' : P[k].n.length === 3 ? P[k].n.slice(1) : P[k].n);
+
+  const PROJ = {
+    CS302: { code: 'CS302', name: '校园二手交易 App', leader: 'xw', c: 'lemon' },
+    MKT201: { code: 'MKT201', name: '市场营销报告', leader: 'me', c: 'gum' },
+  };
+  const KIND = {
+    code: { e: '💻', l: '代码' },
+    doc: { e: '📄', l: '文档' },
+    research: { e: '🔎', l: '调研' },
+    design: { e: '🎨', l: '设计' },
+    meet: { e: '🗣️', l: '开会' },
+  };
+
+  // Every task. Points are contribution value (贡献值); each project totals 100 分.
+  const T = {
+    // CS302 · package 1 (you)
+    cs_req: { proj: 'CS302', pkg: 1, owner: 'me', t: '需求分析文档', pts: 9, k: 'doc', due: '9月10日', status: 'done', grade: '优秀', ai: ['用户故事写得具体，有验收标准', '和评分标准的每一项都对得上'] },
+    cs_w1: { proj: 'CS302', pkg: 1, owner: 'me', t: '组织每周例会（第 1 周）', pts: 2, k: 'meet', due: '9月6日', status: 'done', grade: '自己标记' },
+    cs_w2: { proj: 'CS302', pkg: 1, owner: 'me', t: '组织每周例会（第 2 周）', pts: 2, k: 'meet', due: '9月13日', status: 'done', grade: '自己标记' },
+    cs_login: { proj: 'CS302', pkg: 1, owner: 'me', t: '登录与注册页面', pts: 8, k: 'code', due: '明天 09:30', urgent: true, bucket: '明天', order: 1, aiDue: '9月20日', status: 'doing', desc: '完成登录、注册、邮箱验证码三个页面，要有输入校验，接上后端 API。' },
+    cs_w3: { proj: 'CS302', pkg: 1, owner: 'me', t: '组织每周例会（第 3 周）', pts: 2, k: 'meet', due: '周日 20:00', bucket: '这周', order: 2, aiDue: '周日', status: 'todo', desc: '约大家开 30 分钟的会，对齐这周进度和下周分工。' },
+    cs_ppt: { proj: 'CS302', pkg: 1, owner: 'me', t: '期末演示 PPT（前半）', pts: 2, k: 'design', due: '10月18日', bucket: '之后', order: 9, aiDue: '10月17日', status: 'todo', desc: '负责 PPT 前半部分：背景、需求和系统设计，大约 8 页。' },
+    // CS302 · package 2 (晓雯, team lead)
+    cs_pub: { proj: 'CS302', pkg: 2, owner: 'xw', t: '商品发布功能', pts: 12, k: 'code', due: '9月12日', status: 'done', grade: '优秀', ai: ['发布、编辑、下架都完成，也有测试', '图片和价格校验做得很完整'] },
+    cs_img: { proj: 'CS302', pkg: 2, owner: 'xw', t: '图片上传与压缩', pts: 8, k: 'code', due: '9月17日', status: 'done', grade: '合格', ai: ['压缩和上传都能用', '没有处理上传失败后的重试'] },
+    cs_manual: { proj: 'CS302', pkg: 2, owner: 'xw', t: '用户手册', pts: 5, k: 'doc', due: '10月15日', status: 'todo' },
+    // CS302 · package 3 (子杰)
+    cs_chat: { proj: 'CS302', pkg: 3, owner: 'zj', t: '聊天模块', pts: 12, k: 'code', due: '9月30日', status: 'doing' },
+    cs_test: { proj: 'CS302', pkg: 3, owner: 'zj', t: '单元测试', pts: 8, k: 'code', due: '9月16日', status: 'done', grade: '合格', ai: ['覆盖了主要流程', '有 5 个测试只检查「没有报错」，没检查结果'] },
+    cs_deploy: { proj: 'CS302', pkg: 3, owner: 'zj', t: '部署到云端', pts: 5, k: 'code', due: '10月12日', status: 'todo' },
+    // CS302 · package 4 (博文)
+    cs_db: { proj: 'CS302', pkg: 4, owner: 'bw', t: '数据库设计', pts: 10, k: 'doc', due: '9月17日', status: 'overdue' },
+    cs_search: { proj: 'CS302', pkg: 4, owner: 'bw', t: '搜索与筛选', pts: 9, k: 'code', due: '10月5日', status: 'todo' },
+    cs_rep: { proj: 'CS302', pkg: 4, owner: 'bw', t: '期末报告（结论章节）', pts: 6, k: 'doc', due: '10月18日', status: 'todo' },
+
+    // MKT201 · five packages of exactly 20 分 (owners live in S.mkt)
+    m_res: { proj: 'MKT201', pkg: 1, t: '星巴克：市场调研', pts: 8, k: 'research', due: '9月24日', status: 'fail', ai: ['只有 3 个来源，要求至少 8 个', '没有马来西亚本地的数据'], desc: '整理星巴克在马来西亚和中国市场的基本资料，至少 8 个可靠来源。' },
+    m_swot: { proj: 'MKT201', pkg: 1, t: '星巴克：SWOT 分析', pts: 10, k: 'doc', due: '9月28日', status: 'todo' },
+    m_w1: { proj: 'MKT201', pkg: 1, t: '第 1 周组会', pts: 2, k: 'meet', due: '9月22日', status: 'done', grade: '自己标记' },
+    m_comp: { proj: 'MKT201', pkg: 2, t: '本地化竞品分析', pts: 11, k: 'doc', due: '9月26日', bucket: '之后', order: 3, aiDue: '9月27日', status: 'todo', desc: '比较星巴克在马来西亚和中国市场的本地化做法，至少 3 个维度，1500 字以上。' },
+    m_data: { proj: 'MKT201', pkg: 2, t: '问卷数据整理与图表', pts: 9, k: 'research', due: '10月2日', bucket: '之后', order: 5, aiDue: '10月2日', status: 'todo', desc: '整理 50 份问卷结果，做 3 张以上图表，写出主要发现。' },
+    m_price: { proj: 'MKT201', pkg: 3, t: 'Grab：定价策略分析', pts: 12, k: 'doc', due: '9月27日', status: 'doing' },
+    m_survey: { proj: 'MKT201', pkg: 3, t: '问卷设计与发放', pts: 8, k: 'research', due: '9月30日', status: 'todo' },
+    m_int: { proj: 'MKT201', pkg: 4, t: 'Grab：消费者访谈', pts: 8, k: 'research', due: '9月29日', bucket: '之后', order: 4, aiDue: '9月29日', status: 'todo', desc: '访谈 5 位 Grab 用户，整理访谈记录和重点。' },
+    m_concl: { proj: 'MKT201', pkg: 4, t: '报告：结论与建议', pts: 8, k: 'doc', due: '10月10日', bucket: '之后', order: 6, aiDue: '10月9日', status: 'todo', desc: '根据两个案例的分析，写 3 条可执行的营销建议。' },
+    m_speech: { proj: 'MKT201', pkg: 4, t: '演讲稿与排练', pts: 4, k: 'doc', due: '10月14日', bucket: '之后', order: 7, aiDue: '10月14日', status: 'todo', desc: '写 10 分钟的演讲稿，组织一次排练。' },
+    m_intro: { proj: 'MKT201', pkg: 5, t: '报告：引言与背景', pts: 8, k: 'doc', due: '10月8日', bucket: '之后', order: 5.5, aiDue: '10月8日', status: 'todo', desc: '写报告的引言和两个品牌的背景介绍，约 800 字。' },
+    m_ppt: { proj: 'MKT201', pkg: 5, t: '演示 PPT 设计', pts: 10, k: 'design', due: '10月12日', bucket: '之后', order: 6.5, aiDue: '10月12日', status: 'todo', desc: '设计 10 分钟演示用的 PPT，15 页左右。' },
+    m_w2: { proj: 'MKT201', pkg: 5, t: '第 2 周组会', pts: 2, k: 'meet', due: '9月29日', bucket: '之后', order: 4.5, aiDue: '9月29日', status: 'todo', desc: '约大家开 30 分钟的会，对齐进度。' },
+  };
+  const MKT_WAIT = ['gum', 'sky', 'lilac', 'mint', 'tang']; // colours of packages nobody has picked yet
+  const MKT_HOURS = [12, 11, 12, 10, 12];
+
+  // ── State ───────────────────────────────────────────────────────────
+  const S = {
+    stack: ['home'],
+    task: 'cs_login',
+    invite: 'pending',
+    eng: 'awaiting',
+    mkt: ['xw', null, 'jx', null, 'ah'], // owner of each MKT201 package
+    swapReq: null, // { fromPkg, toPkg, status }
+    projTab: 'pkgs',
+    openPkgs: { 1: true },
+    ev: {},
+    rv: {},
+    outcome: '优秀',
+    myTasksTab: 'todo',
+    notifFilter: 'all',
+    newTab: 'upload',
+    aiProvider: 'Gemini',
+    noKey: false,
+    team: 5,
+    choiceType: 'pick',
+    choices: { A: true, B: true, C: false, D: false, E: false },
+    method: 'agile',
+    plan: null,
+    manual: [
+      { t: '市场调研', p: 20 },
+      { t: '问卷设计与分析', p: 25 },
+      { t: '书面报告', p: 35 },
+    ],
+    push: true,
+    weekly: true,
+    theme: document.documentElement.getAttribute('data-theme') || 'system',
+  };
+  const PLAN_PICK = [
+    { key: 'c1', tasks: [['市场调研', 8, '9/24'], ['SWOT 分析', 10, '9/28'], ['本地化竞品分析', 11, '9/26']] },
+    { key: 'c2', tasks: [['定价策略分析', 12, '9/27'], ['消费者访谈', 8, '9/29'], ['问卷数据整理与图表', 9, '10/2']] },
+    { t: '书面报告', tasks: [['问卷设计与发放', 8, '9/30'], ['引言与背景', 8, '10/8'], ['结论与建议', 8, '10/10']] },
+    { t: '课堂演示', tasks: [['演示 PPT 设计', 10, '10/12'], ['演讲稿与排练', 4, '10/14']] },
+    { t: '组会', tasks: [['第 1 周组会', 2, '9/22'], ['第 2 周组会', 2, '9/29']] },
+  ];
+  const PLAN_AGILE = [
+    { t: 'Sprint 0：规划', tasks: [['产品待办清单与用户故事', 8, '9/25'], ['技术选型与架构草图', 7, '9/27']] },
+    { t: 'Sprint 1', tasks: [['登录与账号', 10, '10/6'], ['报修单提交', 12, '10/9'], ['Sprint 1 回顾会', 2, '10/9']] },
+    { t: 'Sprint 2', tasks: [['维修进度追踪', 12, '10/20'], ['管理员后台', 12, '10/23'], ['Sprint 2 回顾会', 2, '10/23']] },
+    { t: 'Sprint 3 与交付', tasks: [['测试与修复', 15, '11/3'], ['演示与文档', 18, '11/6'], ['每日站会记录', 2, '11/6']] },
+  ];
+  const clonePlan = (p) => p.map((w) => ({ ...w, tasks: w.tasks.map((x) => [...x]) }));
+  S.plan = clonePlan(PLAN_PICK);
+
+  const TOP = ['home', 'tasks', 'notifs', 'me'];
+  const $ = (sel) => document.querySelector(sel);
+  const screen = $('#screen');
+  const route = () => S.stack[S.stack.length - 1];
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ── Derived data ────────────────────────────────────────────────────
+  const ownerOf = (id) => (T[id].proj === 'MKT201' ? S.mkt[T[id].pkg - 1] : T[id].owner);
+  const myMktPkg = () => S.mkt.indexOf('me'); // -1 when not picked
+  const earnedOf = (id) => (T[id].status === 'done' ? T[id].pts : T[id].status === 'half' ? T[id].pts / 2 : 0);
+  const idsOf = (proj, pkg) => Object.keys(T).filter((id) => T[id].proj === proj && (pkg == null || T[id].pkg === pkg));
+  const pkgStarted = (proj, pkg) => idsOf(proj, pkg).some((id) => T[id].status !== 'todo');
+  const csEarned = (k) => idsOf('CS302').filter((id) => T[id].owner === k).reduce((s, id) => s + earnedOf(id), 0);
+  const csTotal = () => idsOf('CS302').reduce((s, id) => s + earnedOf(id), 0);
+  const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+  const OPEN = ['todo', 'doing', 'overdue', 'fail', 'half'];
+  const myOpenTasks = () =>
+    Object.keys(T)
+      .filter((id) => ownerOf(id) === 'me' && OPEN.includes(T[id].status) && T[id].order != null)
+      .sort((a, b) => T[a].order - T[b].order);
+  const statusIcon = (id) => ({ done: '✅', doing: '🔨', todo: '⭕', overdue: '🐢', fail: '❌', half: '🌓' }[T[id].status] || '⭕');
+  const statusChip = (id) => {
+    const t = T[id];
+    if (t.status === 'done') return `<span class="chip good">${t.grade === '自己标记' ? '完成' : t.grade === '组长判定通过' ? '通过' : t.grade}</span>`;
+    if (t.status === 'overdue') return '<span class="chip bad">🐢 已过期</span>';
+    if (t.status === 'fail') return '<span class="chip bad">不通过</span>';
+    if (t.status === 'half') return '<span class="chip warn">拿一半</span>';
+    if (t.status === 'doing') return '<span class="chip">进行中</span>';
+    return '<span class="chip">待开始</span>';
+  };
+
+  // ── Navigation ──────────────────────────────────────────────────────
+  function go(r) {
+    if (route() === 'new3' && r !== 'new3') S.stack.pop(); // the analyzing step is transient
+    if (TOP.includes(r)) S.stack = [r];
+    else if (r !== route()) S.stack.push(r);
+    render(true);
+  }
+  function back() {
+    if (S.stack.length > 1) S.stack.pop();
+    else S.stack = ['home'];
+    render(true);
+  }
+
+  // ── Screens ─────────────────────────────────────────────────────────
+  const appbar = (title, sub = '', right = '') => `
+    <header class="appbar">
+      <button class="icon-btn" data-back aria-label="返回">${I.back(22)}</button>
+      <h2 tabindex="-1">${title}${sub ? `<span class="sub">${sub}</span>` : ''}</h2>
+      <div>${right}</div>
+    </header>`;
+  const seg = (label, items, cur, prefix) =>
+    `<div class="seg" role="group" aria-label="${label}">${items.map(([v, l]) => `<button type="button" aria-pressed="${cur === v}" data-act="${prefix}:${v}">${l}</button>`).join('')}</div>`;
+
+  function todoRow(id) {
+    const x = T[id];
+    const pc = PROJ[x.proj].c;
+    return `<button class="row" data-act="open:${id}">
+      <span class="kind" style="--c:var(--${pc})" aria-hidden="true">${KIND[x.k].e}</span>
+      <span class="grow">
+        <span class="t">${x.t}</span>
+        <span class="m"><span class="pdot" style="--c:var(--${pc})"></span>${x.proj} · 贡献值 ${x.pts} 分 · ${KIND[x.k].l}${x.status === 'fail' ? ' · <b style="color:var(--bad)">要重交</b>' : x.status === 'half' ? ' · <b style="color:var(--warn)">可重交拿满</b>' : ''}</span>
+      </span>
+      <span class="due ${x.urgent ? 'urgent' : ''}">${x.due.replace(' ', '<br>')}</span>
+    </button>`;
+  }
+
+  function screenHome() {
+    const mine = myMktPkg();
+    const open = myOpenTasks();
+    const soon = open.filter((id) => T[id].bucket !== '之后').length;
+    const invite = S.invite === 'pending' ? `
+      <div class="card invite">
+        <span class="emo" aria-hidden="true">🎉</span>
+        <p><b>何嘉欣</b> 邀请你加入 <b>迎新晚会筹备</b><br><span class="hint">管理学院学生会 · 6 人 · 不是课程作业也能用</span></p>
+        <div class="actions">
+          <button class="btn sm soft" data-act="invite:no">拒绝</button>
+          <button class="btn sm" data-act="invite:yes">接受邀请</button>
+        </div>
+      </div>` : '';
+    const free = S.mkt.filter((o) => !o).length;
+    const mktChip = mine < 0
+      ? `<span class="chip warn">还有 ${free} 个任务包没人选</span>`
+      : `<span class="chip c" style="--c:var(--${P.me.c})">你的包：任务包 ${mine + 1}</span>`;
+    const eng = S.eng === 'awaiting'
+      ? `<span class="chip warn">已过截止日 · 等你确认</span><button class="btn sm" data-act="eng:confirm">确认已交</button>`
+      : `<span class="chip">14 天后删除</span><button class="btn sm soft" data-act="toast:正在下载 ENG101 团队贡献报告.pdf">下载贡献报告</button>`;
+    return `
+      <div class="top">
+        <div class="brand"><span class="logo" aria-hidden="true">M</span>MeritAI</div>
+        <button class="icon-btn" data-go="me" aria-label="我的">${av('me')}</button>
+      </div>
+      <section class="hello">
+        <h1 class="title" tabindex="-1">嗨，<span class="hl sweep">思远</span>！</h1>
+        <p class="sub-line">${soon ? `这周有 ${soon} 个任务要交，最近的明天截止。` : '这周没有要交的任务，喘口气 ☕'}</p>
+      </section>
+      ${invite}
+      <div class="section-h"><h3>我的待办</h3><button data-go="tasks">全部</button></div>
+      <div class="list">${open.slice(0, 4).map(todoRow).join('') || '<div class="row"><span class="grow hint">没有待办，全部搞定 🎉</span></div>'}</div>
+      <div class="section-h"><h3>我的项目</h3></div>
+      <button class="card proj" data-go="project" style="--c:var(--lemon)">
+        <span class="head"><span class="code">CS302</span><span><span class="name">校园二手交易 App</span><span class="meta">软件工程 · 第 7 组 · 4 人 · 组长晓雯</span></span></span>
+        <span class="bar"><i style="width:${csTotal()}%;--c:var(--lemon)"></i></span>
+        <span class="foot"><span class="stack">${av('me', 'sm')}${av('xw', 'sm')}${av('zj', 'sm')}${av('bw', 'sm')}</span><span><span class="pct">${fmt(csTotal())} / 100 分</span> · 还剩 32 天</span></span>
+      </button>
+      <button class="card proj" data-go="pick" style="--c:var(--gum)">
+        <span class="head"><span class="code">MKT201</span><span><span class="name">市场营销报告</span><span class="meta">市场营销原理 · 4 / 5 人 · 你是组长</span></span></span>
+        <span class="foot"><span class="stack">${av('me', 'sm')}${av('xw', 'sm')}${av('jx', 'sm')}${av('ah', 'sm')}</span>${mktChip}</span>
+      </button>
+      ${S.invite === 'yes' ? `
+      <button class="card proj" style="--c:var(--mint)" data-act="toast:选包页面和 MKT201 一样，样稿里没有重复做">
+        <span class="head"><span class="code">社团</span><span><span class="name">迎新晚会筹备</span><span class="meta">管理学院学生会 · 6 人 · 没有连 GitHub</span></span></span>
+        <span class="foot"><span class="stack">${av('jx', 'sm')}${av('me', 'sm')}</span><span class="chip warn">去选任务包</span></span>
+      </button>` : ''}
+      <div class="card proj" style="--c:var(--lilac)">
+        <span class="head"><span class="code">ENG101</span><span><span class="name">英文写作小组报告</span><span class="meta">学术英文 · 3 人 · 你是组长</span></span></span>
+        <span class="foot">${eng}</span>
+      </div>
+      <div class="fab-space" aria-hidden="true"></div>
+      <button class="btn fab" data-act="fab" aria-label="新建或加入项目">${I.plus(26)}</button>`;
+  }
+
+  function screenTasks() {
+    const on = S.myTasksTab;
+    const open = myOpenTasks();
+    const groups = ['明天', '这周', '之后'].map((b) => [b, open.filter((id) => T[id].bucket === b)]).filter(([, ids]) => ids.length);
+    const done = Object.keys(T).filter((id) => ownerOf(id) === 'me' && T[id].status === 'done');
+    const todo = groups.map(([b, ids]) => `<div class="section-h"><h3>${b}</h3></div><div class="list">${ids.map(todoRow).join('')}</div>`).join('')
+      + (myMktPkg() < 0 ? '<p class="hint" style="text-align:center">MKT201 还没选任务包，选好后任务会出现在这里。</p>' : '');
+    const doneHtml = `<div class="list">${done.map((id) => `
+      <button class="row" data-act="open:${id}"><span class="kind" style="--c:var(--${PROJ[T[id].proj].c})" aria-hidden="true">${KIND[T[id].k].e}</span>
+      <span class="grow"><span class="t">${T[id].t}</span><span class="m">${T[id].proj} · ${T[id].grade === '自己标记' ? '自己标记完成' : `AI：${T[id].grade}`} · +${T[id].pts} 分</span></span>${statusChip(id)}</button>`).join('')}</div>`;
+    return `
+      <div class="top"><h1 class="title" tabindex="-1">我的任务</h1></div>
+      ${seg('任务筛选', [['todo', `待完成 · ${open.length}`], ['done', `已完成 · ${done.length}`]], on, 'mytab')}
+      ${on === 'todo' ? todo : doneHtml}`;
+  }
+
+  function screenNotifs() {
+    const f = S.notifFilter;
+    const mine = myMktPkg();
+    const req = S.swapReq;
+    let mkt = null;
+    if (mine < 0 && (!req || req.status !== 'pending')) {
+      mkt = { mine: true, html: `<div class="notif unread" style="--c:var(--gum)"><span class="emo">📦</span><div><p><b>MKT201</b> 的任务包分好了，还有 ${S.mkt.filter((o) => !o).length} 个没人选，先到先得！</p><span class="when">MKT201 · 1 小时前</span><div class="acts"><button class="btn sm" data-go="pick">去选任务包</button></div></div></div>` };
+    } else if (req && req.status === 'pending') {
+      mkt = { mine: true, html: `<div class="notif unread" style="--c:var(--tang)"><span class="emo">🔁</span><div><p><b>Ahmad</b> 想用他的「任务包 ${req.fromPkg + 1}」换你的「任务包 ${req.toPkg + 1}」。两个包都还没开工，你同意就立刻互换。</p><span class="when">MKT201 · 刚刚</span><div class="acts"><button class="btn sm soft" data-act="swap:no">拒绝</button><button class="btn sm" data-act="swap:yes">同意互换</button></div></div></div>` };
+    } else if (req) {
+      const msg = { yes: `你同意了互换，现在「任务包 ${req.fromPkg + 1}」是你的。`, no: '你拒绝了 <b>Ahmad</b> 的互换请求。', void: '<b>Ahmad</b> 的互换请求已失效，因为你换了别的任务包。' }[req.status];
+      mkt = { mine: true, html: `<div class="notif" style="--c:var(--tang)"><span class="emo">🔁</span><div><p>${msg}</p><span class="when">MKT201 · 刚刚</span></div></div>` };
+    }
+    const items = [
+      { html: `<div class="notif unread" style="--c:var(--sky)"><span class="emo">🐢</span><div><p>「数据库设计」刚过截止时间，<b>博文</b>还在路上。大家帮他加加油？</p><span class="when">CS302 · 全组都收到 · 2 小时前</span></div></div>` },
+      mkt,
+      OPEN.includes(T.cs_login.status) && { mine: true, html: `<div class="notif unread" style="--c:var(--lemon)"><span class="emo">⏰</span><div><p>你的「登录与注册页面」还有 <b>24 小时</b>截止（明天 09:30），冲！</p><span class="when">CS302 · 只有你收到 · 12 分钟前</span><div class="acts"><button class="btn sm soft" data-act="open:cs_login">打开任务</button></div></div></div>` },
+      S.eng === 'awaiting'
+        ? { mine: true, html: `<div class="notif unread" style="--c:var(--lilac)"><span class="emo">🏁</span><div><p><b>ENG101</b> 已经过了截止日 2 天。作业交了吗？确认后大家有 14 天下载贡献报告；再过 5 天没确认，会自动结束。</p><span class="when">ENG101 · 只有组长收到 · 今天 08:00</span><div class="acts"><button class="btn sm" data-act="eng:confirm">确认已交</button></div></div></div>` }
+        : { mine: true, html: `<div class="notif" style="--c:var(--lilac)"><span class="emo">🗑️</span><div><p><b>ENG101</b> 会在 14 天后删除，记得下载团队贡献报告 PDF。你的徽章不会被删除。</p><span class="when">ENG101 · 全组都收到 · 刚刚</span><div class="acts"><button class="btn sm soft" data-act="toast:正在下载 ENG101 团队贡献报告.pdf">下载贡献报告</button></div></div></div>` },
+      { weekly: true, html: `<div class="weekly"><h4>📊 CS302 本周小结</h4><div class="wk-grid"><div class="wk up"><small>项目进度</small><b>+12 分</b><small>29 → 41 分</small></div><div class="wk"><small>完成任务</small><b>3 个</b><small>其中 1 个「优秀」</small></div></div><div class="line">🏆 本周最佳：${av('xw', 'sm')} <b>晓雯</b>，+8 分</div><div class="line">🐢 过期的任务：1 个（博文）</div><button class="btn sm soft" data-act="rank">看排行榜</button></div>` },
+      { mine: true, html: `<div class="notif" style="--c:var(--mint)"><span class="emo">✅</span><div><p>AI 看完了你的「需求分析文档」：<b>优秀</b>，拿满 9 分。</p><span class="when">CS302 · 9月10日</span></div></div>` },
+      { mine: true, html: `<div class="notif" style="--c:var(--lemon)"><span class="emo">🏅</span><div><p>解锁徽章「<b>全勤</b>」：连续 4 周都有进展。</p><span class="when">9月13日</span><div class="acts"><button class="btn sm soft" data-go="badges">看我的徽章</button></div></div></div>` },
+    ].filter(Boolean);
+    const shown = items.filter((x) => f === 'all' || x.mine);
+    return `
+      <div class="top"><h1 class="title" tabindex="-1">通知</h1></div>
+      ${seg('通知筛选', [['all', '全部'], ['mine', '跟我有关']], f, 'nf')}
+      ${shown.map((x) => (x.weekly ? x.html : `<div class="list">${x.html}</div>`)).join('')}
+      <p class="hint" style="text-align:center">提醒只跟截止日期走：到期前 24 小时提醒负责人，过期了通知全组，每种只发一次。</p>`;
+  }
+
+  function screenMe() {
+    return `
+      <div class="top"><h1 class="title" tabindex="-1">我</h1></div>
+      <div class="me-head">${av('me', 'lg')}<div><b>陈思远</b><span>siyuan.chen@gmail.com</span></div></div>
+      <div class="list">
+        <div class="set-row">${I.github(20)}<span class="grow">GitHub<small>@siyuan-chen · 项目连了仓库时，用来识别你的提交</small></span><span class="chip good">已连接</span></div>
+        <div class="set-row">${I.google(20)}<span class="grow">Google<small>siyuan.chen@gmail.com · 也能选 Google 文档当证据</small></span><span class="chip good">已连接</span></div>
+      </div>
+      <button class="card row" data-go="badges" style="padding:14px 16px">
+        <span class="grow"><span class="t">我的徽章</span><span class="m">已解锁 6 / 12 · 永久保存 · ⚡ ✅ ⏰ 🤝 🎨 🗓️</span></span>${I.chevron(18)}
+      </button>
+      <div class="list">
+        <div class="set-row col"><span>外观</span>${seg('外观', [['system', '跟随系统'], ['light', '浅色'], ['dark', '深色']], S.theme, 'theme')}</div>
+        <div class="set-row col"><span>语言</span><div class="seg" role="group" aria-label="语言"><button type="button" aria-pressed="true">中文</button><button type="button" aria-pressed="false" data-act="toast:样稿只做了中文，正式版有 English">English</button></div></div>
+        <div class="set-row"><span class="grow">推送通知<small>任务快到期、过期、换包请求</small></span><button class="toggle" data-act="tg:push" aria-pressed="${S.push}" aria-label="推送通知"></button></div>
+        <div class="set-row"><span class="grow">每周进度小结<small>每周日晚上 8 点</small></span><button class="toggle" data-act="tg:weekly" aria-pressed="${S.weekly}" aria-label="每周进度小结"></button></div>
+      </div>
+      <button class="btn danger block" data-act="toast:这是样稿，不会真的退出">退出登录</button>`;
+  }
+
+  function screenProject() {
+    const tab = S.projTab;
+    const pkgs = [1, 2, 3, 4].map((n) => {
+      const ids = idsOf('CS302', n);
+      const owner = T[ids[0]].owner;
+      const got = ids.reduce((s, id) => s + earnedOf(id), 0);
+      const total = ids.reduce((s, id) => s + T[id].pts, 0);
+      const open = !!S.openPkgs[n];
+      const late = ids.some((id) => T[id].status === 'overdue');
+      return `<div class="card pkg-row">
+        <button class="pkg-top" data-act="pkgtoggle:${n}" aria-expanded="${open}">
+          <span class="pkg-num" style="--c:var(--${P[owner].c})">${n}</span>
+          <span style="flex:1;min-width:0">
+            <span style="display:flex;align-items:center;gap:6px;font-weight:700;flex-wrap:wrap">${av(owner, 'sm')} ${owner === 'me' ? '我的任务包' : P[owner].n}${late ? ' <span class="chip bad">1 个过期</span>' : ''}</span>
+            <span class="bar" style="margin-top:8px"><i style="width:${(got / total) * 100}%;--c:var(--${P[owner].c})"></i></span>
+          </span>
+          <span class="due" style="color:var(--ink)"><span class="pct">${fmt(got)} 分</span><br><span style="color:var(--muted);font-weight:500">共 ${total} 分</span></span>
+          <span class="chev ${open ? 'open' : ''}">${I.chevron(18)}</span>
+        </button>
+        ${open ? `<div class="pkg-tasks">${ids.map((id) => `<button class="mini-task" data-act="open:${id}"><span class="st" aria-hidden="true">${statusIcon(id)}</span>${T[id].t}<span class="w">${T[id].status === 'done' ? `${T[id].grade === '自己标记' ? '完成' : T[id].grade} · ` : ''}${T[id].pts} 分</span></button>`).join('')}</div>` : ''}
+      </div>`;
+    }).join('');
+    const ranks = ['xw', 'me', 'zj', 'bw'].map((k) => ({ k, e: csEarned(k) })).sort((a, b) => b.e - a.e);
+    const BADGE_ROW = { xw: '🏆⚡✅', me: '⚡🗓️', zj: '✅', bw: '' };
+    const [r1, r2, r3] = ranks;
+    const pod = (r, medal, lg) => `<div class="pod" style="--c:var(--${P[r.k].c})"><span class="medal">${medal}</span>${av(r.k, lg ? 'lg' : '')}<span class="nm">${short(r.k)}</span><span class="block" style="height:${40 + r.e * 2.4}px">${fmt(r.e)}<small>分</small></span></div>`;
+    const rank = `
+      <div class="card"><div class="podium">${pod(r2, '🥈')}${pod(r1, '🥇', true)}${pod(r3, '🥉')}</div></div>
+      <div class="list">${ranks.map((r, i) => `
+        <div class="rank-row"><span class="no">${i + 1}</span>${av(r.k, 'sm')}
+          <span><b style="font-size:14px">${P[r.k].n}${r.k === 'me' ? '（你）' : ''}</b> <span class="badges-inline">${BADGE_ROW[r.k]}</span><span class="bar" style="margin-top:6px"><i style="width:${(r.e / 25) * 100}%;--c:var(--${P[r.k].c})"></i></span></span>
+          <span class="earned">${fmt(r.e)} 分<span class="of">包内共 25 分</span></span></div>`).join('')}
+      </div>
+      <div class="formula"><b>怎么算：</b>整个项目 100 分，每个任务值几分。AI 审核「优秀」「合格」拿满，「拿一半」拿一半，「不通过」是 0。写代码、写报告、开会都一样算。</div>
+      <button class="btn soft block" data-go="badges">🏅 看我的徽章</button>`;
+    const feed = `
+      <div class="list">
+        <div class="feed-item">${av('xw', 'sm')}<span><b>晓雯</b> 完成「图片上传与压缩」，AI：合格，+8 分<span class="when">昨天</span></span></div>
+        <div class="feed-item">${av('zj', 'sm')}<span><b>子杰</b> 推了 3 个提交，AI 把它们归到「聊天模块」<span class="when">1 小时前</span></span></div>
+        <div class="feed-item">${av('bw', 'sm')}<span>🐢 <b>博文</b> 的「数据库设计」过期了，已通知全组<span class="when">2 小时前</span></span></div>
+        <div class="feed-item">${av('me', 'sm')}<span><b>你</b> 完成「需求分析文档」，AI：优秀，+9 分<span class="when">9月10日</span></span></div>
+        <div class="feed-item">${av('xw', 'sm')}<span><b>晓雯</b> 同意了子杰的互换请求<span class="when">9月2日</span></span></div>
+      </div>`;
+    const total = csTotal();
+    const circ = 2 * Math.PI * 36;
+    return `
+      ${appbar('CS302', '你是组员 · 组长：晓雯')}
+      <div class="card p-hero">
+        <div><div class="name">校园二手交易 App</div><div class="meta">软件工程 · 第 7 组 · 截止 10月20日</div></div>
+        <div class="ring" role="img" aria-label="已完成 ${fmt(total)} 分，共 100 分"><svg width="86" height="86" viewBox="0 0 86 86" aria-hidden="true"><circle cx="43" cy="43" r="36" fill="none" stroke="var(--card-2)" stroke-width="10"/><circle cx="43" cy="43" r="36" fill="none" stroke="var(--lemon)" stroke-width="10" stroke-linecap="round" stroke-dasharray="${((circ * total) / 100).toFixed(1)} 400"/></svg><b>${fmt(total)}<small>/ 100 分</small></b></div>
+        <div class="p-stats"><span class="chip">⏳ 还剩 32 天</span><span class="chip">🚩 M2 核心功能 · 9月30日</span><span class="chip">${I.github(13)} campus-market</span></div>
+      </div>
+      ${seg('项目内容', [['pkgs', '任务包'], ['rank', '排行'], ['feed', '动态']], tab, 'ptab')}
+      ${tab === 'pkgs' ? `<div class="stack-v">${pkgs}</div><p class="hint" style="text-align:center">全组都能看到每个人的任务和 AI 审核结果。</p>` : tab === 'rank' ? rank : feed}`;
+  }
+
+  function screenSettings() {
+    const keys = { Gemini: 'AIzaSy••••••••••••3kQ', Claude: 'sk-ant-••••••••••••9fX', OpenAI: 'sk-proj-••••••••••••2bT' };
+    return `
+      ${appbar('项目设置', 'MKT201 · 你是组长')}
+      <div class="card ai-card">
+        <b>AI</b>
+        ${seg('AI 平台', [['Gemini', 'Gemini'], ['Claude', 'Claude'], ['OpenAI', 'OpenAI']], S.aiProvider, 'ai')}
+        <div class="field"><label for="aikey">组长的 ${S.aiProvider} API key <small>· 全组共用</small></label><input id="aikey" class="input" value="${keys[S.aiProvider]}" autocomplete="off"></div>
+        <span class="hint">不填也能用，会换成免费的规则解析：拆任务比较粗糙，认不出选择题，也不能审核上传的文件。</span>
+      </div>
+      <div class="list">
+        <div class="set-row">${I.github(20)}<span class="grow">GitHub 仓库<small>没有写代码的作业可以不连。连了之后，成员才需要连 GitHub</small></span><span class="chip">未连接</span></div>
+        <div class="set-row"><span style="font-size:20px" aria-hidden="true">💬</span><span class="grow">Discord 群<small>过期通知和每周小结也会发到群里</small></span><span class="chip good">#mkt201-group</span></div>
+        <div class="set-row"><span style="font-size:20px" aria-hidden="true">✈️</span><span class="grow">Telegram 群</span><button class="btn sm soft" data-act="toast:样稿里不会真的连接 Telegram">连接</button></div>
+      </div>
+      <div class="card stack-v">
+        <b>邀请码</b>
+        <div class="code-box"><b>MKT-7Q4P</b><button class="btn sm soft" data-act="toast:邀请链接已复制">${I.copy(16)} 复制链接</button></div>
+      </div>
+      <div class="card stack-v">
+        <b>结束项目</b>
+        <span class="hint">确认作业已经交了之后，大家有 14 天可以下载团队贡献报告，之后整个项目会被删除（徽章会保留）。截止日过了 7 天还没确认，会自动结束。</span>
+        <button class="btn danger block" data-act="toast:样稿里不会真的结束项目">确认已交，结束项目</button>
+      </div>`;
+  }
+
+  function screenPick() {
+    const mine = myMktPkg();
+    const mineStarted = mine >= 0 && pkgStarted('MKT201', mine + 1);
+    const cards = S.mkt.map((owner, i) => {
+      const n = i + 1;
+      const ids = idsOf('MKT201', n);
+      const pts = ids.reduce((s, id) => s + T[id].pts, 0);
+      const color = owner ? P[owner].c : MKT_WAIT[i];
+      const started = pkgStarted('MKT201', n);
+      let foot;
+      if (owner === 'me') {
+        foot = `<div class="owner-line">${av('me', 'sm')}<b style="color:var(--ink)">这是你的任务包 ✓</b></div><button class="btn block soft" data-act="open:${ids[0]}">去看我的任务</button>`;
+      } else if (owner) {
+        const can = mine >= 0 && !mineStarted && !started;
+        foot = `<div class="owner-line">${av(owner, 'sm')}已被 ${P[owner].n} 选走${started ? ' · 已开工' : ''}</div>
+          ${mine < 0 ? '' : can ? `<button class="btn block soft" data-act="toast:已向 ${P[owner].n} 发出互换请求，对方同意才会换">🔁 申请互换</button>` : `<button class="btn block soft" disabled>${started ? '对方已开工，不能互换' : '你已开工，不能互换'}</button>`}`;
+      } else {
+        foot = `<button class="btn block hlb" style="--c:var(--${color})" data-act="pick:${i}" ${mineStarted ? 'disabled' : ''}>${mine < 0 ? '选我！' : '换成这个'}</button>
+          ${mine >= 0 ? `<span class="hint" style="text-align:center">${mineStarted ? '你已开工，不能换包' : '你还没开工，可以直接换'}</span>` : ''}`;
+      }
+      return `<article class="pcard" style="--c:var(--${color})" aria-label="任务包 ${n}">
+        <div class="band"><span class="lbl">任务包 ${n}</span><span class="hrs">约 ${MKT_HOURS[i]} 小时</span><span class="big">${pts}<small>分</small></span><span class="hrs">贡献值</span></div>
+        <div class="body">${ids.map((id) => `<button class="ptask" data-act="open:${id}"><span class="tg">${KIND[T[id].k].l}</span><span>${statusIcon(id)} ${T[id].t}</span><span class="d">${T[id].pts} 分<br>${T[id].due}</span></button>`).join('')}</div>
+        <div class="foot">${foot}</div>
+      </article>`;
+    }).join('');
+    return `
+      ${appbar('选任务包', 'MKT201 · 5 人 · 先到先得', `<button class="icon-btn" data-go="settings" aria-label="项目设置">${I.gear(20)}</button>`)}
+      <div>
+        <h1 class="title" style="font-size:23px" tabindex="-1">每包都是 <span class="hl" style="--c:var(--gum)">20 分</span>，<br>挑你最想做的</h1>
+        <p class="sub-line">左右滑动看看。还没开工可以直接换到没人选的包；想换别人的包，要对方同意，而且两个包都还没开工。</p>
+      </div>
+      ${S.team !== 5 ? '<div class="proto"><b>原型</b>这里固定用 5 人的例子。</div>' : ''}
+      <div class="carousel" id="carousel">${cards}</div>
+      <div class="dots" id="dots" aria-hidden="true">${S.mkt.map((_, i) => `<i class="${i === 0 ? 'on' : ''}"></i>`).join('')}</div>
+      <div class="card leader-tools">
+        <span class="lt-h">组长工具 <span class="chip grape">只有你看得到</span></span>
+        <button class="btn sm soft" data-act="sheet:addtask">${I.plus(16)} 加任务</button>
+        <button class="btn sm soft" data-act="sheet:resplit">${I.shuffle(16)} 重新分包</button>
+      </div>
+      <p class="hint" style="text-align:center">截止日期是 AI 按里程碑建议的，组长可以再改。</p>`;
+  }
+
+  function resultPanel(id, own) {
+    const t = T[id];
+    if (t.status === 'done' && t.grade === '自己标记') {
+      return `<div class="done-panel"><span class="big-emoji">🎉</span><b>完成！+${t.pts} 分</b><span class="hint">开会这类任务，${own ? '自己' : '负责人'}标记就算完成。</span></div>`;
+    }
+    const reasons = t.ai ? `<ul>${t.ai.map((x) => `<li>${x}</li>`).join('')}</ul>` : '';
+    if (t.status === 'done') {
+      const ov = t.grade === '组长判定通过';
+      return `<div class="result good"><span class="grade">${ov ? '通过' : t.grade}</span><span class="gain">拿满 ${t.pts} 分${own ? ' 🎉 任务完成' : ''}</span>${ov ? `<span class="by">AI 原本判「不通过」，组长${PROJ[t.proj].leader === 'me' ? '（你）' : ''}推翻了这个判断。全组都看得到。</span>` : reasons}</div>`;
+    }
+    if (t.status === 'half') {
+      return `<div class="result warn"><span class="grade">拿一半</span><span class="gain">现在拿 ${fmt(t.pts / 2)} 分${own ? '，改好重交可以拿满' : ''}</span>${reasons}${own ? '<button class="btn soft block" data-act="resubmit">修改后重新提交</button>' : ''}</div>`;
+    }
+    if (t.status === 'fail') {
+      const leader = PROJ[t.proj].leader;
+      const canOverride = leader === 'me';
+      return `<div class="result bad"><span class="grade">不通过</span><span class="gain">暂时 0 分，任务还没完成</span>${reasons}${own ? '<button class="btn soft block" data-act="resubmit">重新提交</button>' : ''}</div>
+        ${canOverride
+          ? `<div class="override"><b>你是这个项目的组长</b><span class="hint">觉得 AI 判错了？你可以推翻它，这个任务就算通过${own ? '（自己的任务也可以）' : ''}。全组都会看到是你推翻的。</span><button class="btn sm" data-act="override">推翻 AI，算通过</button></div>`
+          : leader === 'me' ? '' : `<span class="hint">觉得 AI 判错了？组长${short(leader)}可以推翻 AI 的判断。</span>`}`;
+    }
+    return '';
+  }
+
+  const DEMO_REASONS = {
+    code: { 优秀: ['登录、注册、邮箱验证码都完成，也有输入校验', '「调整按钮间距」那个提交太小，没算进来'], 合格: ['主要流程都能用', '错误提示还不够清楚'], 拿一半: ['注册页没有处理邮箱重复的情况', '没有任何测试'], 不通过: ['大部分新增行是空行和重复注释', '登录逻辑还没接上后端'] },
+    file: { 优秀: ['内容完整，每个要求都有对应', '引用了可靠来源'], 合格: ['要求都有做到', '结论可以再具体一点'], 拿一半: ['只比较了 2 个维度，要求是 3 个', '大约 900 字，要求是 1500 字以上'], 不通过: ['大段内容和网上文章几乎一样', '缺少作业要求的主要部分'] },
+  };
+
+  function evidenceBlock(id) {
+    const t = T[id];
+    const own = ownerOf(id) === 'me';
+    if (S.rv[id] === 'reviewing') {
+      return `<div class="card scan" aria-live="polite"><b>AI 正在看你的${t.k === 'code' ? '提交' : '文件'}…</b><div class="ln"></div><div class="ln"></div><div class="ln"></div><span class="hint">通常 10–30 秒，看完会自动更新</span><div class="sweeper"></div></div>`;
+    }
+    if (!own) {
+      if (['done', 'half', 'fail'].includes(t.status)) return resultPanel(id, false);
+      const owner = ownerOf(id);
+      return `<div class="card stack-v"><b>${owner ? `${P[owner].n}还没交证据` : '这个任务包还没人选'}</b><span class="hint">${t.status === 'overdue' ? '🐢 已经过了截止时间，全组都收到了通知。' : `截止 ${t.due}。交了证据、AI 审核通过就会自动完成。`}</span></div>`;
+    }
+    if (['done', 'half', 'fail'].includes(t.status)) return resultPanel(id, true);
+    if (t.k === 'meet') {
+      return `<div class="card stack-v">
+        <b>这类任务不用交文件</b>
+        <span class="hint">开会、沟通协调这种没有文件的任务，开完会自己标记完成就算。</span>
+        <button class="btn block" data-act="markdone">${I.check(18)} 我开完了，标记完成</button>
+      </div>`;
+    }
+    const outcome = `<div class="proto" role="group" aria-label="演示 AI 结果"><b>原型 · 演示 AI 结果</b>${['优秀', '合格', '拿一半', '不通过'].map((o) => `<button type="button" aria-pressed="${S.outcome === o}" data-act="oc:${o}">${o}</button>`).join('')}</div>`;
+    if (t.k === 'code') {
+      return `<div class="section-h"><h3>GitHub 提交 · AI 自动归类</h3></div>
+        <div class="list">
+          <button class="commit" data-act="sheet:commit"><code>a41f9c2</code><span>feat: 登录表单与字段验证<br><span class="lines">+182 −12 · 周二</span></span><span class="chip good">有效</span></button>
+          <button class="commit" data-act="sheet:commit"><code>d09b3e1</code><span>feat: 注册页 + 邮箱验证码<br><span class="lines">+240 −30 · 昨天</span></span><span class="chip good">有效</span></button>
+          <button class="commit" data-act="sheet:commit"><code>7c2e5aa</code><span>style: 调整按钮间距<br><span class="lines">+6 −6 · 今天</span></span><span class="chip">太小，不算</span></button>
+        </div>
+        <span class="hint">平时推的提交会自动归到这个任务，归错了点一下就能改。做完了再点下面的按钮，AI 会看全部提交来评级。</span>
+        ${outcome}
+        <button class="btn block" data-act="submit">${I.sparkle(18)} 我做完了，交给 AI 审核</button>`;
+    }
+    const ev = S.ev[id];
+    const chosen = ev === 'file'
+      ? `<div class="file-chip"><span class="ico">${I.file(20)}</span><span style="flex:1;min-width:0"><b>${t.t}_v2.docx</b><span>1.8 MB · Word</span></span><button class="icon-btn" data-act="ev:none" aria-label="移除文件">${I.close(18)}</button></div>`
+      : ev === 'gdoc'
+        ? `<div class="file-chip"><span class="ico">${I.google(20)}</span><span style="flex:1;min-width:0"><b>${t.t}（Google 文档）</b><span>编辑记录：思远 82% · 晓雯 18%</span></span><button class="icon-btn" data-act="ev:none" aria-label="移除 Google 文档">${I.close(18)}</button></div>`
+        : `<div class="ev-opts">
+            <button class="ev-opt" data-act="ev:file">${I.upload(22)}<b>上传文件</b><span>Word、PDF、PPT、图片 · 最大 25MB</span></button>
+            <button class="ev-opt" data-act="ev:gdoc">${I.google(22)}<b>选 Google 文档</b><span>从你的 Google Drive 选一个，只读这一个文件</span></button>
+          </div>`;
+    return `<div class="section-h"><h3>交证据</h3></div>
+      <span class="hint" style="margin-top:-10px">交了证据，AI 审核通过，任务就自动完成。</span>
+      ${chosen}
+      ${outcome}
+      <button class="btn block" data-act="submit" ${ev ? '' : 'disabled'}>${I.sparkle(18)} 交给 AI 审核</button>`;
+  }
+
+  function screenTask() {
+    const id = S.task;
+    const t = T[id];
+    const owner = ownerOf(id);
+    const pc = PROJ[t.proj].c;
+    return `
+      ${appbar('任务详情', `${t.proj} · 任务包 ${t.pkg}`)}
+      <div class="t-head">
+        <div class="t-meta"><span class="chip c" style="--c:var(--${pc})">${KIND[t.k].e} ${KIND[t.k].l}</span><span class="chip grape">贡献值 ${t.pts} 分</span><span class="chip ${t.urgent || t.status === 'overdue' ? 'bad' : ''}">⏰ ${t.due}</span></div>
+        <h1 class="title" style="font-size:24px" tabindex="-1">${t.t}</h1>
+        ${t.desc ? `<p class="t-desc">${t.desc}</p>` : ''}
+        <div class="owner-bar">${owner ? `${av(owner, 'sm')} 负责人：${owner === 'me' ? '你' : P[owner].n}` : '<span class="chip warn">还没人选这个任务包</span>'}</div>
+        ${t.aiDue ? `<span class="hint">截止日期由组长设定 · AI 原本建议 ${t.aiDue}</span>` : ''}
+      </div>
+      ${evidenceBlock(id)}`;
+  }
+
+  function screenBadges() {
+    const B = [
+      ['⚡', '先下手为强', '第一个选任务包', 'lemon', '9月14日 · CS302'],
+      ['🗓️', '全勤', '连续 4 周都有进展', 'tang', '9月13日 · CS302'],
+      ['✅', '一次过', '连续 3 次 AI 第一次审核就通过', 'mint', '8月30日 · ENG101'],
+      ['⏰', '准时王', '5 个任务都在截止前完成', 'sky', '8月30日 · ENG101'],
+      ['🤝', '好队友', '同意过一次换包', 'gum', '8月12日 · ENG101'],
+      ['🎨', '全能选手', '完成 3 种不同类型的任务', 'lilac', '8月28日 · ENG101'],
+      ['🧯', '救火队员', '接手别人放下的任务', 'tang', null, '还没有'],
+      ['🏆', '本周最佳', '一周内拿到全组最多贡献值', 'lemon', null, '还没有'],
+      ['🌟', '三次优秀', 'AI 给了 3 次「优秀」', 'mint', null, '2 / 3'],
+      ['📚', '报告达人', '完成 5 个文档任务', 'sky', null, '3 / 5'],
+      ['🔥', '三连冠', '连续 3 周本周最佳', 'gum', null, '0 / 3'],
+      ['🐢', '压哨王', '在截止前 10 分钟才交（不太光彩）', 'lilac', null, '还好没有'],
+    ];
+    return `
+      ${appbar('我的徽章', '已解锁 6 / 12')}
+      <p class="hint" style="margin:0">徽章永久保存在你的个人资料里，项目删除后也还在。</p>
+      <div class="badges">${B.map(([e, n, d, c, src, prog]) => `
+        <div class="badge ${src ? '' : 'locked'}" style="--c:var(--${c})"><span class="coin" aria-hidden="true">${e}</span><b>${n}</b><span>${d}</span><span class="src">${src || prog}</span></div>`).join('')}
+      </div>`;
+  }
+
+  // ── New-project flow ────────────────────────────────────────────────
+  function flowTop(step) {
+    return `<div>
+      <div class="flow-top">
+        ${step > 1 && step !== 3 ? `<button class="icon-btn" data-back aria-label="上一步">${I.back(22)}</button>` : '<span></span>'}
+        <div class="steps">${[1, 2, 3, 4, 5, 6].map((n) => `<i class="${n <= step ? 'on' : ''}"></i>`).join('')}</div>
+        <button class="icon-btn" data-act="exitflow" aria-label="关闭">${I.close(22)}</button>
+      </div>
+      <div class="step-label">新建项目 · 第 ${step} / 6 步</div>
+    </div>`;
+  }
+
+  function screenNew1() {
+    return `${flowTop(1)}
+      <h1 class="title" tabindex="-1">先说说<span class="hl" style="--c:var(--mint)">这个项目</span></h1>
+      <div class="field"><label for="pname">项目名称</label><input id="pname" class="input" value="市场营销报告"></div>
+      <div class="field"><label for="pcourse">课程或团队 <small>· 选填，不是课程作业也可以</small></label><input id="pcourse" class="input" value="MKT201 市场营销原理"></div>
+      <div class="two">
+        <div class="field"><label for="pdead">截止日期</label><input id="pdead" class="input" value="10月15日 23:59"></div>
+        <div class="field"><span class="lbl" id="lbl-team">小组人数</span><div class="stepper" role="group" aria-labelledby="lbl-team"><button type="button" data-act="team:-1" aria-label="减少小组人数">−</button><output aria-live="polite">${S.team}</output><button type="button" data-act="team:1" aria-label="增加小组人数">+</button></div></div>
+      </div>
+      <span class="hint">任务会按人数分成 ${S.team} 个等量的任务包。</span>
+      <div class="field"><label for="prepo">GitHub 仓库 <small>· 选填，只有写代码的作业需要</small></label><input id="prepo" class="input" placeholder="例如 siyuan-chen/campus-market"></div>
+      <div class="sticky-foot"><button class="btn block" data-go="new2">下一步</button></div>`;
+  }
+
+  function screenNew2() {
+    const t = S.newTab;
+    const body = t === 'upload'
+      ? `<div class="drop">
+          <div class="file-chip"><span class="ico">${I.file(20)}</span><span style="flex:1;min-width:0"><b>MKT201_Assignment2_Brief.pdf</b><span>3 页 · 已上传</span></span><button class="icon-btn" data-act="toast:样稿里保留这个例子文件" aria-label="移除文件">${I.close(18)}</button></div>
+          <button class="btn soft block" data-act="toast:可以一次上传多个文件，例如评分标准 + 作业说明">${I.upload(18)} 再加一个文件</button>
+          <span class="hint">评分标准、作业说明、项目需求、比赛规则都可以。PDF、Word、图片（拍照）都行。</span>
+        </div>`
+      : t === 'text'
+        ? `<div class="field"><label for="pdesc">用几句话描述要做什么</label><textarea id="pdesc" class="input">我们要写一份市场营销报告：从 5 个品牌案例里任选 2 个做本地化和定价分析，加一份 50 人的问卷调查，最后 10 分钟课堂演示。</textarea></div>
+           <span class="hint">不用写得很完整，AI 会自己补上合理的步骤。</span>`
+        : `<div class="card stack-v">
+            ${S.manual.map((m, i) => `<div class="manual-row"><input class="input" id="m${i}" aria-label="任务 ${i + 1} 名称" value="${m.t}"><input class="input" id="m${i}p" aria-label="任务 ${i + 1} 贡献值" value="${m.p} 分"><button class="del" data-act="mdel:${i}" aria-label="删除任务 ${i + 1}">${I.close(16)}</button></div>`).join('')}
+            <button class="link" data-act="madd">+ 加一个任务</button>
+          </div>
+          <span class="hint">不想用 AI 也可以，自己列任务和贡献值。</span>`;
+    const ai = `<div class="card ai-card">
+        <b>AI 设置 <small class="hint">· 组长填，全组共用</small></b>
+        ${S.noKey ? '' : seg('AI 平台', [['Gemini', 'Gemini'], ['Claude', 'Claude'], ['OpenAI', 'OpenAI']], S.aiProvider, 'ai')}
+        ${S.noKey ? '' : `<div class="field"><label for="nkey">${S.aiProvider} API key</label><input id="nkey" class="input" placeholder="粘贴你的 key" value="${S.aiProvider === 'Gemini' ? 'AIzaSy••••••••••••3kQ' : ''}" autocomplete="off"><span class="hint">Gemini 有免费额度。之后也可以在项目设置里改。</span></div>`}
+        <button class="check" type="button" aria-pressed="${S.noKey}" data-act="nokey"><span class="box">${S.noKey ? I.check(14) : ''}</span>先不填，用免费的规则解析</button>
+        ${S.noKey ? '<div class="warn-box">没有 AI 的话：拆任务比较粗糙，认不出「任选题」，交上来的文件也不能审核。</div>' : ''}
+      </div>`;
+    return `${flowTop(2)}
+      <h1 class="title" tabindex="-1">告诉 AI <span class="hl" style="--c:var(--sky)">要做什么</span></h1>
+      ${seg('输入方式', [['upload', '上传文件'], ['text', '打字描述'], ['manual', '手动建任务']], t, 'ntab')}
+      ${body}
+      ${t === 'manual' ? '' : ai}
+      <div class="sticky-foot"><button class="btn block" data-go="${t === 'manual' ? 'new5' : 'new3'}">${t === 'manual' ? '下一步' : S.noKey ? '用规则解析' : '让 AI 拆解'}</button></div>`;
+  }
+
+  function screenNew3() {
+    const colors = ['lemon', 'gum', 'mint', 'sky', 'tang', 'lilac', 'gum', 'lemon'];
+    const steps = S.noKey
+      ? `<div><span class="ok">✓</span>读完作业说明（3 页）</div>
+         <div><span class="ok">✓</span>按「数字 + %」找到 4 个评分项</div>
+         <div><span class="spin"></span>按条列拆成任务（没有 AI，认不出任选题）</div>
+         <div class="wait"><span style="width:16px"></span>按 ${S.team} 人分成等量任务包</div>`
+      : `<div><span class="ok">✓</span>读完作业说明（3 页）</div>
+         <div><span class="ok">✓</span>找到 4 个评分项，加起来 100%</div>
+         <div><span class="ok">✓</span>发现一道选择题：5 个案例任选 2 个</div>
+         <div><span class="spin"></span>估算每个任务的工作量和截止日期</div>
+         <div class="wait"><span style="width:16px"></span>按 ${S.team} 人分成等量任务包</div>`;
+    return `${flowTop(3)}
+      <h1 class="title" tabindex="-1">${S.noKey ? '正在' : 'AI 正在'}<span class="hl" style="--c:var(--lemon)">划重点</span>…</h1>
+      <div class="doc-scan" aria-hidden="true">
+        ${colors.map((c, i) => `<div class="ln" style="width:${[92, 78, 86, 64, 95, 70, 88, 55][i]}%"><i style="--c:var(--${c});animation-delay:${0.25 * i}s"></i></div>`).join('')}
+      </div>
+      <div class="checks" aria-live="polite">${steps}</div>
+      <div class="sticky-foot"><button class="btn soft block" data-go="${S.noKey ? 'new5' : 'new4'}">跳过动画</button></div>`;
+  }
+
+  function screenNew4() {
+    const type = S.choiceType;
+    const switcher = `<div class="proto" role="group" aria-label="选择题例子"><b>原型 · 换个例子</b>
+      <button type="button" aria-pressed="${type === 'pick'}" data-act="ctype:pick">任选几题</button>
+      <button type="button" aria-pressed="${type === 'method'}" data-act="ctype:method">整组选一个做法</button></div>`;
+    if (type === 'method') {
+      const M = [
+        ['waterfall', 'Waterfall 瀑布式', '先写完需求和设计，再一次开发完。文档多，要到最后才有能用的版本。', '中 · 约 150 小时', false],
+        ['agile', 'Agile（Scrum）', '每两周交一个能用的版本，老师中途检查也有东西给他看。每周要开一次短会。', '中 · 约 140 小时', true],
+        ['rad', 'RAD 快速原型', '先做原型，让用户试用再改。要反复找人试用，比较花时间。', '高 · 约 165 小时', false],
+      ];
+      return `${flowTop(4)}
+        ${switcher}
+        <div>
+          <h1 class="title" tabindex="-1">作业说「<span class="hl" style="--c:var(--gum)">选一种开发流程</span>」</h1>
+          <p class="sub-line">例子：CS 小组项目「宿舍报修系统」。AI 按工作量和时间（5 周）推荐 Agile。你是组长，确认后 AI 就按这个流程拆任务。</p>
+        </div>
+        ${M.map(([k, nm, why, load, rec]) => `
+          <button class="choice radio" data-act="method:${k}" aria-pressed="${S.method === k}">
+            <span class="box">${S.method === k ? I.check(14) : ''}</span>
+            <span class="nm">${nm}</span>
+            <span class="why">${why}</span>
+            <span class="tags"><span class="chip">工作量 ${load}</span>${rec ? '<span class="chip grape">✨ AI 推荐</span>' : ''}</span>
+          </button>`).join('')}
+        <div class="sticky-foot"><button class="btn block" data-act="confirm-choice">确认用 ${M.find((m) => m[0] === S.method)[1]}</button></div>`;
+    }
+    const opts = [
+      ['A', '星巴克的本地化', '公开资料多，分析方向清楚。', '中 · 约 14 小时', true],
+      ['B', 'Grab 的定价策略', '本地品牌，问卷容易找到人填。', '中 · 约 15 小时', true],
+      ['C', '特斯拉的品牌营销', '数据分散，要读较多英文资料。', '高 · 约 22 小时', false],
+      ['D', '喜茶出海', '马来西亚市场的数据比较少。', '中 · 约 17 小时', false],
+      ['E', 'Shopee 直播带货', '数据变化快，容易过时。', '高 · 约 20 小时', false],
+    ];
+    const n = Object.values(S.choices).filter(Boolean).length;
+    return `${flowTop(4)}
+      ${switcher}
+      <div>
+        <h1 class="title" tabindex="-1">作业说「<span class="hl" style="--c:var(--gum)">5 个案例任选 2 个</span>」</h1>
+        <p class="sub-line">AI 按工作量和资料多少推荐 A + B（加起来约 29 小时，最省力）。你是组长，确认后才会拆成任务。</p>
+      </div>
+      ${opts.map(([k, nm, why, load, rec]) => `
+        <button class="choice" data-act="choice:${k}" aria-pressed="${S.choices[k]}">
+          <span class="box">${S.choices[k] ? I.check(16) : ''}</span>
+          <span class="nm">${k}. ${nm}</span>
+          <span class="why">${why}</span>
+          <span class="tags"><span class="chip">工作量 ${load}</span>${rec ? '<span class="chip grape">✨ AI 推荐</span>' : ''}</span>
+        </button>`).join('')}
+      <div class="sticky-foot"><button class="btn block" data-act="confirm-choice" ${n === 2 ? '' : 'disabled'}>${n === 2 ? '确认选这 2 个' : `要选 2 个（现在 ${n} 个）`}</button></div>`;
+  }
+
+  function screenNew5() {
+    const manual = S.newTab === 'manual';
+    const agile = !manual && !S.noKey && S.choiceType === 'method';
+    const nameOf = { A: '星巴克', B: 'Grab', C: '特斯拉', D: '喜茶', E: 'Shopee' };
+    const picked = Object.entries(S.choices).filter(([, v]) => v).map(([k]) => nameOf[k]);
+    const titleOf = (w) => w.t || `案例分析：${(w.key === 'c1' ? picked[0] : picked[1]) || '案例'}`;
+    let body;
+    let total;
+    if (manual) {
+      total = S.manual.reduce((s, m) => s + m.p, 0);
+      body = `<div class="card">${S.manual.map((m, i) => `<div class="pl-task"><span>${m.t}</span><span class="w">${m.p} 分</span><span></span><button class="del" data-act="mdel:${i}" aria-label="删除 ${m.t}">${I.close(14)}</button></div>`).join('')}
+        <button class="link" data-act="madd" style="margin-top:8px">+ 加任务</button></div>`;
+    } else {
+      total = S.plan.reduce((s, w) => s + w.tasks.reduce((a, x) => a + x[1], 0), 0);
+      const ms = agile
+        ? [['S1', 'Sprint 1 交付', '10/9'], ['S2', 'Sprint 2 交付', '10/23'], ['S3', '最终交付与演示', '11/6']]
+        : [['M1', '选题与调研', '9/28'], ['M2', '分析与初稿', '10/8'], ['M3', '定稿与演示', '10/15']];
+      body = `<div class="card plan-ms">${ms.map(([k, n, d]) => `<div class="ms"><span class="tag">${k}</span><span>${n}</span><span class="dt">${d}</span></div>`).join('')}</div>
+        <div class="plan-ws">${S.plan.map((w, wi) => `
+          <div class="card">
+            <div class="ws-h"><span>${titleOf(w)}</span><span class="w">${w.tasks.reduce((a, x) => a + x[1], 0)} 分</span></div>
+            ${w.tasks.map(([n, p, d], ti) => `<div class="pl-task"><span>${n}</span><span class="w">${p} 分</span><span class="dt">${d}</span><button class="del" data-act="pdel:${wi}.${ti}" aria-label="删除 ${n}">${I.close(14)}</button></div>`).join('')}
+            <button class="link" data-act="padd:${wi}" style="margin-top:6px">+ 加任务</button>
+          </div>`).join('')}
+        </div>`;
+    }
+    const ok = total === 100;
+    return `${flowTop(5)}
+      <div>
+        <h1 class="title" tabindex="-1">看看这样<span class="hl" style="--c:var(--lilac)">分对不对</span></h1>
+        <p class="sub-line">${manual ? '这是你自己列的任务。' : agile ? '按 Agile（Scrum）拆的任务：每个 Sprint 有开发任务和回顾会。' : '名称、贡献值、截止日期都能直接改，也可以加任务、删任务。'}</p>
+      </div>
+      ${S.noKey && !manual ? '<div class="warn-box">这是规则解析的结果，比较粗糙，请仔细检查。</div>' : ''}
+      ${agile ? '<div class="proto"><b>原型</b>这个例子只演示到这一步，后面接回 MKT201 的例子。</div>' : ''}
+      ${body}
+      <div class="sticky-foot">
+        <span class="chip ${ok ? 'good' : 'warn'}" style="align-self:center">${ok ? '合计 100 分 ✓' : `合计 ${total} 分，确认时会按比例换算成 100 分`}</span>
+        <button class="btn block" data-go="new6">分成 ${S.team} 个任务包</button>
+      </div>`;
+  }
+
+  function screenNew6() {
+    const n = S.team;
+    const each = 100 / n;
+    const colors = ['gum', 'sky', 'lilac', 'mint', 'tang', 'lemon', 'gum', 'sky'];
+    return `${flowTop(6)}
+      <div>
+        <h1 class="title" tabindex="-1">分好了！<span class="hl" style="--c:var(--mint)">${n} 个任务包</span></h1>
+        <p class="sub-line">${Number.isInteger(each) ? `每包都是 ${each} 分。` : `每包大约 ${each.toFixed(1)} 分。任务不能切得更细，所以会有一点点差距。`}没人选的包先用待选色，被选走后会变成主人的颜色。</p>
+      </div>
+      <div class="split" aria-hidden="true">${Array.from({ length: n }, (_, i) => `<i style="flex:1;--c:var(--${colors[i]})"></i>`).join('')}</div>
+      <div class="card stack-v">
+        <b>把组员拉进来</b>
+        <div class="code-box"><b>MKT-7Q4P</b><button class="btn sm soft" data-act="toast:邀请链接已复制">${I.copy(16)} 复制链接</button></div>
+        <div class="field"><label for="inv">或者输入邮箱、GitHub 用户名</label><input id="inv" class="input" placeholder="xiaowen@uni.edu, @ahmad-dev"></div>
+        <span class="hint">对方登录后，会在首页看到邀请。</span>
+      </div>
+      <div class="sticky-foot"><button class="btn block" data-act="topick">去选我的任务包</button></div>`;
+  }
+
+  // ── Sheets ──────────────────────────────────────────────────────────
+  const SHEETS = {
+    fab: () => `<h4>要做什么？</h4>
+      <button class="sheet-opt" data-go="new1"><span style="font-size:24px" aria-hidden="true">✨</span><span><b>新建项目</b><span>你当组长，上传作业要求让 AI 拆任务</span></span></button>
+      <button class="sheet-opt" data-act="toast:输入组员给你的邀请码，例如 MKT-7Q4P"><span style="font-size:24px" aria-hidden="true">🔑</span><span><b>用邀请码加入</b><span>组员分享给你的邀请码或链接</span></span></button>`,
+    commit: () => `<h4>这个提交属于哪个任务？</h4>
+      <p>AI 自动归类的，归错了就改一下。</p>
+      ${myOpenTasks().filter((id) => T[id].proj === 'CS302').map((id) => `<button class="sheet-opt" data-act="toast:已把这个提交改归到「${T[id].t}」"><span style="font-size:22px" aria-hidden="true">${KIND[T[id].k].e}</span><span><b>${T[id].t}</b><span>${T[id].pts} 分 · ${T[id].due}</span></span></button>`).join('')}
+      <button class="sheet-opt" data-act="toast:这个提交不会算进任何任务"><span style="font-size:22px" aria-hidden="true">🚫</span><span><b>不属于任何任务</b><span>例如改错字、改格式</span></span></button>`,
+    addtask: () => `<h4>加一个任务</h4>
+      <div class="field"><label for="nt">任务名称</label><input id="nt" class="input" value="补充访谈：学生消费者"></div>
+      <div class="field"><label for="ntp">贡献值</label><input id="ntp" class="input" value="4 分"></div>
+      <p>加进去后，会<b>自动放进目前最轻的任务包</b>。所有任务的贡献值会按比例换算，总分还是 100 分。</p>
+      <button class="btn block" data-act="toast:已加入目前最轻的任务包">加进去</button>`,
+    resplit: () => `<h4>重新分包</h4>
+      <p>还没开始的任务会重新平均分配；已经开始或完成的任务，留在原来的人那里。有人加入或退出时可以用。</p>
+      <div class="field"><span class="lbl" id="lbl-rs">分成几个包</span><div class="stepper" role="group" aria-labelledby="lbl-rs"><button type="button" aria-label="减少任务包" data-act="toast:至少要和现在的成员人数一样多">−</button><output>5</output><button type="button" aria-label="增加任务包" data-act="toast:样稿里固定 5 个包">+</button></div></div>
+      <button class="btn block" data-act="toast:已重新分包，大家会收到通知">重新分包</button>`,
+  };
+  let sheetReturn = null;
+  function openSheet(name) {
+    const el = $('#sheet');
+    el.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-label="选项"><div class="grab" aria-hidden="true"></div>${SHEETS[name]()}</div>`;
+    el.hidden = false;
+    el.querySelector('button, input')?.focus();
+  }
+  function closeSheet(restoreFocus = true) {
+    const el = $('#sheet');
+    if (el.hidden) return;
+    el.hidden = true;
+    if (restoreFocus) sheetReturn?.focus?.();
+    sheetReturn = null;
+  }
+
+  // ── Map (prototype navigation) ──────────────────────────────────────
+  const MAP = [
+    ['首页', [['home', '首页', '我的待办 + 项目'], ['tasks', '我的任务', '按截止日期排']]],
+    ['新建项目 → AI 拆任务', [['new1', '基本信息'], ['new2', '告诉 AI 要做什么', '上传 / 打字 / 手动 + AI key'], ['new3', 'AI 拆解中'], ['new4', '选择题', '任选几题 / 选一个做法'], ['new5', '确认计划'], ['new6', '分包完成']]],
+    ['任务包与交证据', [['pick', '选任务包', '左右滑动，点「选我！」'], ['project', '项目页', '任务包 / 排行 / 动态'], ['task', '任务详情', '交证据、AI 审核'], ['settings', '项目设置', '组长：AI key、群、结束项目']]],
+    ['排行、徽章、通知', [['rank', '排行榜', '贡献值 × 质量档位'], ['badges', '徽章', '永久保存'], ['notifs', '通知', '调侃式提醒、换包、结束项目'], ['me', '我', '账号、外观、提醒']]],
+  ];
+  function renderMap() {
+    const r = route();
+    const cur = r === 'project' && S.projTab === 'rank' ? 'rank' : r;
+    $('#map').innerHTML = `
+      <button class="map-close" id="mapClose" type="button">关闭</button>
+      <div class="map-head"><h2>MeritAI<br>手机样稿</h2><p>数据都是例子。点这里跳到任意页面，也可以直接在手机里点。</p></div>
+      ${MAP.map(([g, items]) => `<div class="map-group"><h3>${g}</h3>${items.map(([key, name, hint], i) => `
+        <button class="map-link ${key === cur ? 'on' : ''}" data-go="${key}" ${key === cur ? 'aria-current="page"' : ''}>${g.startsWith('新建') ? `<span class="n">${i + 1}</span>` : ''}<span><b>${name}</b>${hint ? `<br><span class="hint-t">${hint}</span>` : ''}</span></button>`).join('')}</div>`).join('')}
+      <p class="map-note">虚线框是样稿专用的演示开关，正式 App 里不会出现。</p>`;
+  }
+
+  // ── Render ──────────────────────────────────────────────────────────
+  const SCREENS = {
+    home: screenHome, tasks: screenTasks, notifs: screenNotifs, me: screenMe,
+    project: screenProject, settings: screenSettings, pick: screenPick, task: screenTask, badges: screenBadges,
+    new1: screenNew1, new2: screenNew2, new3: screenNew3, new4: screenNew4, new5: screenNew5, new6: screenNew6,
+  };
+  let flowTimer = null;
+
+  function focusKey(el) {
+    if (!el || el === document.body) return null;
+    for (const a of ['data-act', 'data-go']) if (el.hasAttribute(a)) return `[${a}="${CSS.escape(el.getAttribute(a))}"]`;
+    if (el.id) return `#${CSS.escape(el.id)}`;
+    return null;
+  }
+
+  function render(routeChanged) {
+    const active = document.activeElement;
+    const key = routeChanged ? null : focusKey(active);
+    const inMap = !!active?.closest?.('#map');
+    const r = route();
+    screen.innerHTML = SCREENS[r]();
+    if (routeChanged) screen.scrollTop = 0;
+    const tabbar = $('#tabbar');
+    tabbar.hidden = r.startsWith('new');
+    const activeTab = TOP.includes(S.stack[0]) ? S.stack[0] : 'home';
+    const unread = (myMktPkg() < 0 || S.swapReq?.status === 'pending' ? 1 : 0) + 1 + (OPEN.includes(T.cs_login.status) ? 1 : 0) + (S.eng === 'awaiting' ? 1 : 0);
+    tabbar.innerHTML = [['home', '首页', I.home], ['tasks', '任务', I.tasks], ['notifs', '通知', I.bell], ['me', '我', I.user]]
+      .map(([k, l, ic]) => `<button class="tab ${activeTab === k ? 'on' : ''}" data-go="${k}" ${activeTab === k ? 'aria-current="page"' : ''}><span class="ic">${ic(22)}</span>${l}${k === 'notifs' && unread ? `<span class="dot" aria-label="${unread} 条未读">${unread}</span>` : ''}</button>`)
+      .join('');
+    renderMap();
+
+    if (key) {
+      (document.querySelector(`${inMap ? '#map' : '#phone'} ${key}`) || document.querySelector(key))?.focus({ preventScroll: true });
+    } else if (routeChanged && !inMap) {
+      screen.querySelector('h1[tabindex], .appbar h2')?.focus({ preventScroll: true });
+    }
+
+    clearTimeout(flowTimer);
+    if (r === 'new3') flowTimer = setTimeout(() => route() === 'new3' && go(S.noKey ? 'new5' : 'new4'), reduceMotion ? 800 : 3600);
+
+    const car = $('#carousel');
+    if (car) {
+      const dots = [...document.querySelectorAll('#dots i')];
+      const step = () => car.firstElementChild.offsetWidth + 14;
+      const sync = () => {
+        carouselPos = car.scrollLeft;
+        const i = Math.round(car.scrollLeft / step());
+        dots.forEach((d, j) => d.classList.toggle('on', j === i));
+      };
+      // Scroll after layout settles, otherwise scroll-snap puts the first card back.
+      const mine = myMktPkg();
+      const target = Math.max(0, mine >= 0 ? mine : S.mkt.findIndex((o) => !o));
+      const left = routeChanged ? target * step() : carouselPos ?? 0;
+      requestAnimationFrame(() => {
+        car.scrollTo({ left, behavior: 'instant' });
+        sync();
+      });
+      car.addEventListener('scroll', sync, { passive: true });
+    }
+  }
+  let carouselPos = null;
+
+  // ── Feedback: toast, confetti ───────────────────────────────────────
+  let toastTimer = null;
+  function toast(msg) {
+    const el = $('#toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+  }
+
+  const canvas = $('#confetti');
+  function confetti() {
+    if (reduceMotion) return;
+    const phone = $('#phone');
+    const w = (canvas.width = phone.clientWidth);
+    const h = (canvas.height = phone.clientHeight);
+    const ctx = canvas.getContext('2d');
+    const css = getComputedStyle(document.documentElement);
+    const cols = ['--lemon', '--gum', '--mint', '--sky', '--tang', '--lilac'].map((v) => css.getPropertyValue(v).trim());
+    const parts = Array.from({ length: 110 }, (_, i) => ({
+      x: w / 2 + (Math.random() - 0.5) * 60,
+      y: h * 0.42,
+      vx: (Math.random() - 0.5) * 11,
+      vy: -Math.random() * 12 - 5,
+      r: Math.random() * Math.PI,
+      vr: (Math.random() - 0.5) * 0.3,
+      s: 6 + Math.random() * 6,
+      c: cols[i % cols.length],
+    }));
+    const start = performance.now();
+    (function frame(t) {
+      ctx.clearRect(0, 0, w, h);
+      parts.forEach((p) => {
+        p.vy += 0.35;
+        p.vx *= 0.99;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.r += p.vr;
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.r);
+        ctx.fillStyle = p.c;
+        ctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2);
+        ctx.restore();
+      });
+      if (t - start < 2200) requestAnimationFrame(frame);
+      else ctx.clearRect(0, 0, w, h);
+    })(start);
+  }
+
+  // ── Actions ─────────────────────────────────────────────────────────
+  let reviewSeq = 0;
+  function act(a) {
+    const i = a.indexOf(':');
+    const name = i < 0 ? a : a.slice(0, i);
+    const arg = i < 0 ? '' : a.slice(i + 1);
+    switch (name) {
+      case 'invite':
+        S.invite = arg;
+        toast(arg === 'yes' ? '已加入「迎新晚会筹备」，记得去选任务包' : '已拒绝邀请');
+        break;
+      case 'eng':
+        S.eng = 'grace';
+        toast('ENG101 已结束。大家有 14 天下载贡献报告');
+        break;
+      case 'fab':
+      case 'sheet':
+        sheetReturn = document.activeElement;
+        openSheet(name === 'fab' ? 'fab' : arg);
+        return;
+      case 'open':
+        S.task = arg;
+        go('task');
+        return;
+      case 'mytab': S.myTasksTab = arg; break;
+      case 'nf': S.notifFilter = arg; break;
+      case 'swap': {
+        const req = S.swapReq;
+        if (arg === 'yes') {
+          S.mkt[req.toPkg] = 'ah';
+          S.mkt[req.fromPkg] = 'me';
+          req.status = 'yes';
+          toast(`互换好了！任务包 ${req.fromPkg + 1} 是你的了`);
+        } else {
+          req.status = 'no';
+          toast('已拒绝互换');
+        }
+        break;
+      }
+      case 'rank':
+        S.projTab = 'rank';
+        S.stack.push('project');
+        render(true);
+        return;
+      case 'ptab': S.projTab = arg; break;
+      case 'pkgtoggle': S.openPkgs[arg] = !S.openPkgs[arg]; break;
+      case 'pick': {
+        const idx = Number(arg);
+        const prev = myMktPkg();
+        if (prev >= 0) S.mkt[prev] = null;
+        S.mkt[idx] = 'me';
+        // Ahmad asks to swap right after your first pick; switching away later voids that request.
+        if (!S.swapReq && S.mkt[4] === 'ah') S.swapReq = { fromPkg: 4, toPkg: idx, status: 'pending' };
+        else if (S.swapReq?.status === 'pending') S.swapReq.status = 'void';
+        render(false);
+        confetti();
+        toast(prev >= 0 ? `换好了，现在任务包 ${idx + 1} 是你的` : `🎉 任务包 ${idx + 1} 是你的了！`);
+        return;
+      }
+      case 'ev': S.ev[S.task] = arg === 'none' ? null : arg; break;
+      case 'oc': S.outcome = arg; break;
+      case 'submit': {
+        const id = S.task;
+        const seq = ++reviewSeq;
+        S.rv[id] = 'reviewing';
+        render(false);
+        setTimeout(() => {
+          if (seq !== reviewSeq) return;
+          const t = T[id];
+          const o = S.outcome;
+          t.ai = DEMO_REASONS[t.k === 'code' ? 'code' : 'file'][o];
+          t.status = o === '拿一半' ? 'half' : o === '不通过' ? 'fail' : 'done';
+          if (t.status === 'done') t.grade = o;
+          delete S.rv[id];
+          if (route() === 'task' && S.task === id) render(false);
+          if (t.status === 'done') { confetti(); toast(`任务完成！+${t.pts} 分`); }
+          else toast(t.status === 'half' ? `AI：拿一半，先拿 ${fmt(t.pts / 2)} 分` : 'AI：不通过，改好可以重交');
+        }, reduceMotion ? 300 : 1800);
+        return;
+      }
+      case 'resubmit':
+        T[S.task].status = 'doing';
+        S.ev[S.task] = null;
+        break;
+      case 'override': {
+        const t = T[S.task];
+        t.status = 'done';
+        t.grade = '组长判定通过';
+        toast(ownerOf(S.task) === 'me' ? `已推翻 AI 判断，你拿满 ${t.pts} 分，全组看得到` : `已推翻 AI 判断，${P[ownerOf(S.task)].n}拿满 ${t.pts} 分`);
+        break;
+      }
+      case 'markdone': {
+        const t = T[S.task];
+        t.status = 'done';
+        t.grade = '自己标记';
+        render(false);
+        confetti();
+        toast(`完成！+${t.pts} 分`);
+        return;
+      }
+      case 'theme':
+        S.theme = arg;
+        if (arg === 'system') document.documentElement.removeAttribute('data-theme');
+        else document.documentElement.setAttribute('data-theme', arg);
+        break;
+      case 'tg': S[arg] = !S[arg]; break;
+      case 'toast':
+        closeSheet(false);
+        toast(arg);
+        return;
+      case 'ntab': S.newTab = arg; break;
+      case 'ai': S.aiProvider = arg; break;
+      case 'nokey': S.noKey = !S.noKey; break;
+      case 'team': S.team = Math.min(8, Math.max(2, S.team + Number(arg))); break;
+      case 'ctype': S.choiceType = arg; break;
+      case 'choice': S.choices[arg] = !S.choices[arg]; break;
+      case 'method': S.method = arg; break;
+      case 'confirm-choice':
+        S.plan = clonePlan(S.choiceType === 'method' ? PLAN_AGILE : PLAN_PICK);
+        go('new5');
+        return;
+      case 'pdel': {
+        const [wi, ti] = arg.split('.').map(Number);
+        S.plan[wi].tasks.splice(ti, 1);
+        break;
+      }
+      case 'padd': S.plan[Number(arg)].tasks.push(['新任务', 3, '10/1']); break;
+      case 'mdel': S.manual.splice(Number(arg), 1); break;
+      case 'madd': S.manual.push({ t: '新任务', p: 10 }); break;
+      case 'exitflow': S.stack = ['home']; render(true); return;
+      case 'topick': S.stack = ['home', 'pick']; render(true); return;
+      default: return;
+    }
+    render(false);
+  }
+
+  const closeMap = () => {
+    $('#map').classList.remove('open');
+    $('#mapFab').setAttribute('aria-expanded', 'false');
+  };
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#mapClose')) return closeMap();
+    const el = e.target.closest('[data-go],[data-back],[data-act]');
+    if (!el) {
+      if (e.target.id === 'sheet') closeSheet();
+      return;
+    }
+    if (el.closest('#map')) closeMap();
+    const actName = el.getAttribute('data-act') || '';
+    if (el.closest('#sheet') && !actName.startsWith('toast:')) closeSheet(false);
+    if (el.hasAttribute('data-back')) return back();
+    const g = el.getAttribute('data-go');
+    if (g === 'rank') {
+      S.projTab = 'rank';
+      S.stack = ['home', 'project'];
+      return render(true);
+    }
+    if (g === 'project') S.projTab = 'pkgs';
+    if (g) return go(g);
+    act(actName);
+  });
+  $('#mapFab').addEventListener('click', () => {
+    const open = $('#map').classList.toggle('open');
+    $('#mapFab').setAttribute('aria-expanded', String(open));
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeSheet();
+      closeMap();
+    }
+  });
+
+  render(true);
+})();
+</script>
+</body>
+</html>
