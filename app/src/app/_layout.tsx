@@ -10,6 +10,7 @@ import { Button } from '@/components/Button';
 import { headingLevel } from '@/components/Screen';
 import { ToastProvider } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
+import { UnreadProvider } from '@/features/notifs/useUnread';
 import { I18nProvider, useI18n } from '@/i18n';
 import { API_URL } from '@/lib/api';
 import { SessionProvider, useSession } from '@/lib/session';
@@ -79,6 +80,20 @@ function ThemedApp() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.paper } }}>
         <Stack.Protected guard={status === 'signedIn'}>
           <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="new/index" />
+          <Stack.Screen name="new/[id]/index" />
+          <Stack.Screen name="new/[id]/basics" />
+          <Stack.Screen name="new/[id]/input" />
+          <Stack.Screen name="new/[id]/cant-read" />
+          <Stack.Screen name="new/[id]/plan" />
+          <Stack.Screen name="new/[id]/done" />
+          <Stack.Screen name="join/index" />
+          <Stack.Screen name="join/[code]" />
+          <Stack.Screen name="project/[id]/index" />
+          <Stack.Screen name="project/[id]/pick" />
+          <Stack.Screen name="project/[id]/settings" />
+          <Stack.Screen name="project/[id]/members" />
+          <Stack.Screen name="project/[id]/task/[taskId]" />
           <Stack.Screen name="dev/gallery" />
         </Stack.Protected>
         <Stack.Protected guard={status === 'signedOut'}>
@@ -99,7 +114,9 @@ export default function RootLayout() {
           <I18nProvider>
             <ToastProvider>
               <SessionProvider>
-                <ThemedApp />
+                <UnreadProvider>
+                  <ThemedApp />
+                </UnreadProvider>
               </SessionProvider>
             </ToastProvider>
           </I18nProvider>

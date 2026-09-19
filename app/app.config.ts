@@ -70,6 +70,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       },
     ],
     './plugins/with-release-signing',
+    './plugins/with-android-accent',
   ],
   experiments: { typedRoutes: true },
 });

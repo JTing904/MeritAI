@@ -49,7 +49,23 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [overlays, setOverlays] = useState(0);
   const anim = useRef(new Animated.Value(0)).current;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Where the current toast is: fading in / showing, or fading out (null = none).
+  const phase = useRef<'in' | 'out' | null>(null);
   const reduce = useReduceMotion();
+
+  const fadeIn = useCallback(() => {
+    Animated.timing(anim, { toValue: 1, duration: reduce.current ? 0 : 200, useNativeDriver: true }).start();
+  }, [anim, reduce]);
+
+  const fadeOut = useCallback(() => {
+    Animated.timing(anim, { toValue: 0, duration: reduce.current ? 0 : 200, useNativeDriver: true }).start(({ finished }) => {
+      // A newer toast interrupts this fade-out; only clear when the fade really completed.
+      if (finished) {
+        phase.current = null;
+        setMessage(null);
+      }
+    });
+  }, [anim, reduce]);
 
   const show = useCallback(
     (text: string) => {
@@ -57,16 +73,23 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       anim.stopAnimation();
       setMessage({ text, id: Date.now() });
       anim.setValue(0);
-      Animated.timing(anim, { toValue: 1, duration: reduce.current ? 0 : 200, useNativeDriver: true }).start();
+      phase.current = 'in';
+      fadeIn();
       timer.current = setTimeout(() => {
-        Animated.timing(anim, { toValue: 0, duration: reduce.current ? 0 : 200, useNativeDriver: true }).start(({ finished }) => {
-          // A newer toast interrupts this fade-out; only clear when the fade really completed.
-          if (finished) setMessage(null);
-        });
+        phase.current = 'out';
+        fadeOut();
       }, DURATION);
     },
-    [anim, reduce],
+    [anim, fadeIn, fadeOut],
   );
+
+  // The toast moves to another host when a sheet opens or closes. When the old host unmounts before the
+  // new one mounts, the value loses its last view and React Native stops its animation mid-fade (the
+  // toast would stay invisible, or never clear): finish that fade on the new host.
+  useEffect(() => {
+    if (phase.current === 'in') fadeIn();
+    else if (phase.current === 'out') fadeOut();
+  }, [overlays, fadeIn, fadeOut]);
 
   const addOverlay = useCallback(() => {
     setOverlays((n) => n + 1);

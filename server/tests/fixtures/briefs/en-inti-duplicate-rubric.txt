@@ -1,0 +1,17 @@
+INTI International University
+Diploma in Information Technology
+DIT2213 Mobile Application Development - Group Project
+
+Tasks and weightage
+• Wireframes and UI design (20%)
+• Android app development (50%)
+• Final presentation (20%)
+• Meeting minutes (10%)
+
+Marking rubric
+Criteria                   Weight   Excellent (4)       Good (3)       Poor (1)
+Wireframes and UI design   20%      Clear, complete     Minor gaps     Missing screens
+Android app development    50%      All features work   Some bugs      Does not run
+Final presentation         20%      Confident           Reads slides   Unprepared
+Meeting minutes            10%      Every meeting       Some           None
+Total                      100%

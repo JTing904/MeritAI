@@ -1,0 +1,22 @@
+Multimedia University (MMU)
+Faculty of Computing and Informatics
+TMA1301 Computational Methods - Mini Project Brief
+
+Instructions:
+1. This is a group assignment. Each group should have 3 to 5 members.
+2. All work must be your own. Plagiarism will result in zero marks.
+3. Submit your files through MMU eBwise before the deadline.
+
+Project Tasks
+Your group is required to complete the following:
+a) Conduct a literature review on numerical methods for solving non-linear equations.
+b) Implement the bisection, Newton-Raphson and secant methods in Python.
+   i. Each method must print the number of iterations.
+   ii. Use a tolerance of 1e-6.
+c) Compare the accuracy and speed of the three methods using at least five test functions.
+d) Write a technical report of 2,000 to 2,500 words.
+e) Prepare a 10-minute presentation with slides.
+f) Keep minutes of every group meeting.
+
+Assessment
+Your mini project will be assessed on correctness, the clarity of the report and the quality of the presentation.

@@ -1,0 +1,14 @@
+Varsity Hackathon 2026 - Kuala Lumpur
+Theme: Smart Campus
+
+Judging criteria
+Innovation and originality — 30 points
+Technical implementation — 30 points
+Social impact — 20 points
+Pitch presentation — 20 points
+Total: 100 points
+
+Rules
+1. Teams of 3 to 5 students from any Malaysian university.
+2. All code must be written during the 36-hour event.
+3. Teams that go over the 5-minute pitch limit lose 5 points.

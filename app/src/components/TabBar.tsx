@@ -73,7 +73,8 @@ export function TabBar({ state, navigation, insets, unread = 0 }: BottomTabBarPr
                   </View>
                 )}
               </View>
-              <Txt v="tab" color={focused ? 'grapeText' : 'muted'}>
+              {/* One line, never broken mid-word: a large system font shrinks the label to fit the tab. */}
+              <Txt v="tab" color={focused ? 'grapeText' : 'muted'} numberOfLines={1} adjustsFontSizeToFit maxFontSizeMultiplier={1.2}>
                 {label}
               </Txt>
             </Pressable>

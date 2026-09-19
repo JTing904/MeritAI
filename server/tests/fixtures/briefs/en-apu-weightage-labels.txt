@@ -1,0 +1,28 @@
+ASIA PACIFIC UNIVERSITY OF TECHNOLOGY & INNOVATION
+CT046-3-2 Systems Analysis and Design - Group Assignment
+Intake: APD2F2609
+
+Deliverable 1: Project Proposal
+Weightage: 15%
+Due: Week 5
+Describe the chosen organisation, the problems it faces and the objectives of the new system.
+
+Deliverable 2: Requirements Specification
+Weightage: 25%
+Due: Week 8
+Collect requirements through interviews and questionnaires, and document them with use case diagrams.
+
+Deliverable 3: System Design Document
+Weightage: 30%
+Due: Week 11
+Produce the ERD, data flow diagrams and interface mock-ups.
+
+Deliverable 4: Presentation
+Weightage: 20%
+Due: Week 13
+
+Deliverable 5: Peer Assessment
+Weightage: 10%
+Individual marks may be adjusted by up to 20% based on the peer assessment.
+
+Total weightage: 100%

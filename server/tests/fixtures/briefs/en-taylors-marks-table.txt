@@ -1,0 +1,27 @@
+TAYLOR'S UNIVERSITY
+School of Computer Science
+PRG2104 Object-Oriented Programming - Group Assignment
+Weightage: 40% of the module
+
+Assignment Overview
+Your team will build a desktop Library Booking application in Java. Read the whole brief before you start,
+and keep every version of your code in a shared Git repository.
+
+Marking Scheme
+Component                                        Marks
+Requirements analysis and UML diagrams .......... 15 marks
+Java application (source code and features) ..... 40 marks
+Testing report .................................. 15 marks
+User manual ..................................... 10 marks
+Video demonstration (max 10 minutes) ............ 10 marks
+Group meetings log .............................. 10 marks
+Total                                            100 marks
+
+Late Submission
+5 marks will be deducted for each day the assignment is late.
+
+Grade   Marks
+A       80 and above
+A-      75 – 79
+B+      70 – 74
+B       65 – 69

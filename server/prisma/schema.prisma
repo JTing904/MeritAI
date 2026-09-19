@@ -19,6 +19,125 @@ enum Locale {
   en
 }
 
+/// Highlighter ("荧光笔") colours, in assignment order (shared/constants.ts HIGHLIGHTERS).
+enum Highlighter {
+  lemon
+  gum
+  mint
+  sky
+  tang
+  lilac
+  lime
+  aqua
+}
+
+enum ProjectStatus {
+  /// Being set up by the leader; only the leader sees it; no invite code yet.
+  DRAFT
+  ACTIVE
+  /// Past the deadline, waiting for the leader to confirm it was submitted (M5).
+  AWAITING_CONFIRM
+  /// Ended; the 14-day grace period runs until deleteAfter (M5).
+  ENDED
+}
+
+enum MemberRole {
+  LEADER
+  MEMBER
+}
+
+enum TaskKind {
+  CODE
+  DOC
+  RESEARCH
+  DESIGN
+  MEETING
+}
+
+enum TaskStatus {
+  TODO
+  DOING
+  REVIEWING
+  DONE
+  HALF
+  FAIL
+}
+
+/// How the draft's tasks were produced.
+enum PlanSource {
+  MANUAL
+  RULES
+  MODEL
+  AI
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  REVOKED
+}
+
+enum SwapStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+  EXPIRED
+  VOID
+}
+
+/// Why a pending swap stopped counting (REQUIREMENTS §13).
+enum SwapVoidReason {
+  SWITCHED
+  STARTED
+  SWAPPED_ELSEWHERE
+  LEFT
+  RESPLIT
+}
+
+/// Who a notification went to, shown in its meta line (全组都收到 / 只有你收到 / 只有组长收到).
+enum NotificationAudience {
+  GROUP
+  ONLY_YOU
+  ONLY_LEADER
+}
+
+enum NotificationType {
+  SWAP_REQUEST
+  SWAP_ACCEPTED
+  SWAP_DECLINED
+  SWAP_EXPIRED
+  SWAP_VOID
+  MEMBER_NEEDS_PACKAGE
+  MEMBER_LEFT
+  MEMBER_REMOVED
+  REMOVED_YOU
+  TASK_ADDED
+  TASK_MOVED_IN
+  TASK_MOVED_OUT
+  RESPLIT
+  PACKAGE_ASSIGNED
+  LEADER_TRANSFERRED
+}
+
+/// Entries of the project feed (动态).
+enum ActivityType {
+  PLAN_CONFIRMED
+  JOINED
+  LEFT
+  REMOVED
+  PICKED
+  SWITCHED
+  SWAPPED
+  ASSIGNED
+  TASK_ADDED
+  TASK_MOVED
+  TASK_STARTED
+  RESPLIT
+  LEADER_TRANSFERRED
+}
+
 model User {
   id             String   @id @default(cuid())
   name           String
@@ -32,8 +151,12 @@ model User {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  sessions Session[]
-  accounts AuthAccount[]
+  sessions        Session[]
+  accounts        AuthAccount[]
+  memberships     Member[]
+  createdProjects Project[]      @relation("ProjectCreator")
+  sentInvites     Invite[]       @relation("InviteSender")
+  notifications   Notification[]
 }
 
 /// A signed-in device. Only the SHA-256 hash of the bearer token is stored.
@@ -63,4 +186,275 @@ model AuthAccount {
 
   @@unique([provider, providerAccountId])
   @@unique([userId, provider])
+}
+
+model Project {
+  id              String        @id @default(cuid())
+  name            String
+  /// 简称 / 课程代码, e.g. "CS302" (optional).
+  shortCode       String?
+  /// 课程或团队名称 (optional).
+  courseName      String?
+  /// 组别, e.g. "第 7 组" (optional).
+  groupLabel      String?
+  /// Tag colour on project cards; auto-picked to avoid the creator's other projects.
+  color           Highlighter
+  /// Whole-project deadline (required). Tasks without a due date use it.
+  deadline        DateTime
+  /// IANA time zone, e.g. "Asia/Kuala_Lumpur". Reminders and date-only due dates use it.
+  timezone        String
+  /// Language for AI-generated task names and group messages (defaults to the leader's).
+  locale          Locale        @default(zh)
+  /// Team size including the leader (2–8).
+  teamSize        Int
+  /// The leader only manages: packages = teamSize - 1 and the leader is not ranked.
+  leaderManages   Boolean       @default(false)
+  status          ProjectStatus @default(DRAFT)
+  /// Wizard step the draft was left on (1–6), for "继续编辑".
+  draftStep       Int           @default(1)
+  planSource      PlanSource?
+  /// Text of the brief (typed, or extracted from the uploaded file); kept for re-parsing and AI later.
+  briefText       String?
+  briefFileName   String?
+  inviteCode      String?       @unique
+  /// "owner/name" when a GitHub repo is connected (M8).
+  repoFullName    String?
+  createdById     String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  activatedAt     DateTime?
+  /// Bumped on every change to packages, owners, members, or a task's package/owner/status/start/points,
+  /// so a re-split preview can tell it went stale (STALE_PREVIEW).
+  packagesVersion Int           @default(0)
+
+  createdBy          User                @relation("ProjectCreator", fields: [createdById], references: [id])
+  members            Member[]
+  packages           Package[]
+  tasks              Task[]
+  features           Feature[]
+  milestones         Milestone[]
+  invites            Invite[]
+  retiredInviteCodes RetiredInviteCode[]
+  swapRequests       SwapRequest[]
+  notifications      Notification[]
+  activity           ActivityEvent[]
+
+  @@index([createdById])
+}
+
+model Member {
+  id                String      @id @default(cuid())
+  projectId         String
+  userId            String
+  role              MemberRole  @default(MEMBER)
+  color             Highlighter
+  joinedAt          DateTime    @default(now())
+  /// Set when the member leaves or is removed. History (points, report) is kept.
+  leftAt            DateTime?
+  /// Removed by the leader: cannot come back with the invite code.
+  removed           Boolean     @default(false)
+  /// When the leader was told this member has no package while none is free (MEMBER_NEEDS_PACKAGE).
+  /// Sent once; cleared when the member gets a package.
+  packageReminderAt DateTime?
+
+  project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  package       Package?
+  tasks         Task[]          @relation("TaskOwner")
+  startedTasks  Task[]          @relation("TaskStarter")
+  swapsSent     SwapRequest[]   @relation("SwapRequester")
+  swapsReceived SwapRequest[]   @relation("SwapTarget")
+  activity      ActivityEvent[]
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
+
+/// An equal share of the work. Picked first come, first served (M3).
+model Package {
+  id        String   @id @default(cuid())
+  projectId String
+  /// 1-based number shown as 任务包 {index}.
+  index     Int
+  /// Member who picked it (one package per member).
+  ownerId   String?  @unique
+  createdAt DateTime @default(now())
+
+  project        Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner          Member?       @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  tasks          Task[]
+  swapsRequested SwapRequest[] @relation("SwapRequesterPackage")
+  swapsTargeted  SwapRequest[] @relation("SwapTargetPackage")
+
+  @@unique([projectId, index])
+}
+
+/// A feature group (功能分组): code, report section and tests of one feature stay together.
+model Feature {
+  id        String @id @default(cuid())
+  projectId String
+  name      String
+  order     Int
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+
+  @@index([projectId])
+}
+
+model Milestone {
+  id        String   @id @default(cuid())
+  projectId String
+  /// Short tag, e.g. "M1" or "S1".
+  label     String
+  name      String
+  dueAt     DateTime
+  order     Int
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tasks   Task[]
+
+  @@index([projectId])
+}
+
+model Task {
+  id             String     @id @default(cuid())
+  projectId      String
+  /// Per-project number (#12) used in commit messages without an AI key.
+  number         Int
+  title          String
+  description    String?
+  kind           TaskKind   @default(DOC)
+  /// Contribution points in tenths (125 = 12.5 分). An active project's tasks sum to exactly 1000.
+  points         Int
+  /// Null → the project deadline applies.
+  dueAt          DateTime?
+  /// What the planner suggested (shown as "AI 原本建议 …" when the leader changed it).
+  suggestedDueAt DateTime?
+  estimateHours  Float?
+  order          Int
+  featureId      String?
+  milestoneId    String?
+  packageId      String?
+  /// Member doing the task (the package owner; a started task stays with whoever started it).
+  ownerId        String?
+  status         TaskStatus @default(TODO)
+  startedAt      DateTime?
+  /// Who started it (开始做; later also evidence, commits, marking done). Kept when the task changes
+  /// hands, cleared when it is released. A package counts as started only through its owner's own start.
+  startedById    String?
+  /// The due date the leader set by hand; a later deadline change gives it back (never past the deadline).
+  leaderDueAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  feature   Feature?   @relation(fields: [featureId], references: [id], onDelete: SetNull)
+  milestone Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  package   Package?   @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  owner     Member?    @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  startedBy Member?    @relation("TaskStarter", fields: [startedById], references: [id], onDelete: SetNull)
+
+  @@unique([projectId, number])
+  @@index([projectId])
+  @@index([packageId])
+  @@index([ownerId])
+}
+
+/// Invitation by email or GitHub username; shown on the invitee's home screen.
+model Invite {
+  id             String       @id @default(cuid())
+  projectId      String
+  invitedById    String
+  /// Lower-cased.
+  email          String?
+  /// Lower-cased, without "@".
+  githubUsername String?
+  status         InviteStatus @default(PENDING)
+  createdAt      DateTime     @default(now())
+  respondedAt    DateTime?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitedBy User    @relation("InviteSender", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([githubUsername])
+  @@index([projectId])
+}
+
+/// Codes replaced by "重新生成", so joining with one says it expired rather than "not found".
+model RetiredInviteCode {
+  code      String   @id
+  projectId String
+  retiredAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+/// 互换请求: a member with a not-started package asks the owner of another not-started package.
+model SwapRequest {
+  id                 String          @id @default(cuid())
+  projectId          String
+  requesterId        String
+  targetId           String
+  /// Package indexes are snapshotted in notification payloads; these go null if a re-split deletes the package.
+  requesterPackageId String?
+  targetPackageId    String?
+  status             SwapStatus      @default(PENDING)
+  voidReason         SwapVoidReason?
+  /// Member whose action voided it (who started, switched, left or was removed; the leader for a re-split).
+  voidedById         String?
+  createdAt          DateTime        @default(now())
+  /// createdAt + 72 h. Expired lazily (no scheduler yet).
+  expiresAt          DateTime
+  /// When the status left PENDING.
+  respondedAt        DateTime?
+
+  project          Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requester        Member         @relation("SwapRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  target           Member         @relation("SwapTarget", fields: [targetId], references: [id], onDelete: Cascade)
+  requesterPackage Package?       @relation("SwapRequesterPackage", fields: [requesterPackageId], references: [id], onDelete: SetNull)
+  targetPackage    Package?       @relation("SwapTargetPackage", fields: [targetPackageId], references: [id], onDelete: SetNull)
+  notifications    Notification[]
+
+  @@index([projectId, status])
+  @@index([requesterId, status])
+  @@index([targetId, status])
+}
+
+/// One row per recipient. `payload` is a NotificationPayload (shared/types.ts), names and indexes snapshotted.
+model Notification {
+  id        String                @id @default(cuid())
+  userId    String
+  projectId String?
+  type      NotificationType
+  audience  NotificationAudience?
+  /// Shown under 「跟我有关」.
+  mine      Boolean               @default(true)
+  payload   Json
+  swapId    String?
+  createdAt DateTime              @default(now())
+  readAt    DateTime?
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  swap    SwapRequest? @relation(fields: [swapId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt, id])
+  @@index([userId, readAt])
+}
+
+/// The project feed (动态). `payload` is an ActivityPayload (shared/types.ts).
+model ActivityEvent {
+  id        String       @id @default(cuid())
+  projectId String
+  actorId   String?
+  type      ActivityType
+  payload   Json
+  createdAt DateTime     @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  actor   Member? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt, id])
 }

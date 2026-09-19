@@ -1,0 +1,5 @@
+Our group needs to do these for the hackathon:
+- Build the booking app prototype
+- Design the pitch deck
+- Interview 10 students about the problem
+- Record a 2-minute demo video

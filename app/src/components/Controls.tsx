@@ -45,15 +45,18 @@ export function Seg<T extends string>({
   value,
   onChange,
   label,
+  disabled = false,
 }: {
   options: SegOption<T>[];
   value: T;
   onChange: (v: T) => void;
   label: string;
+  /** Not usable: announced as disabled, out of the tab order, ignores presses. */
+  disabled?: boolean;
 }) {
   const s = useStyles();
   return (
-    <View style={s.seg} role="radiogroup" aria-label={label}>
+    <View style={s.seg} role="radiogroup" aria-label={label} aria-disabled={disabled}>
       {options.map((o) => {
         const on = o.value === value;
         return (
@@ -62,7 +65,10 @@ export function Seg<T extends string>({
             onPress={() => onChange(o.value)}
             role="radio"
             aria-checked={on}
-            {...spaceActivates(() => onChange(o.value))}
+            disabled={disabled}
+            aria-disabled={disabled}
+            tabIndex={disabled ? -1 : undefined}
+            {...(disabled ? {} : spaceActivates(() => onChange(o.value)))}
             collapsable={false}
             style={[s.segBtn, on && s.segOn]}>
             <Txt v="small" weight={700} color={on ? 'ink' : 'muted'}>

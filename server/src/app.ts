@@ -8,7 +8,15 @@ import type { Db } from "./lib/db";
 import { AppError } from "./lib/errors";
 import { fail, ok } from "./lib/http";
 import { devRoutes } from "./routes/dev";
+import { homeRoutes } from "./routes/home";
+import { inviteRoutes } from "./routes/invites";
+import { joinRoutes } from "./routes/join";
 import { meRoutes, sessionRoutes } from "./routes/me";
+import { memberRoutes } from "./routes/members";
+import { notificationRoutes } from "./routes/notifications";
+import { packageRoutes } from "./routes/packages";
+import { projectRoutes } from "./routes/projects";
+import { swapRoutes } from "./routes/swaps";
 import { APP_VERSION } from "./version";
 
 export type AppEnv = {
@@ -64,6 +72,14 @@ export function createApp(deps: AppDeps) {
   app.route("/dev", devRoutes);
   app.route("/me", meRoutes);
   app.route("/auth/session", sessionRoutes);
+  app.route("/home", homeRoutes);
+  app.route("/projects", projectRoutes);
+  app.route("/projects", packageRoutes);
+  app.route("/projects", memberRoutes);
+  app.route("/swaps", swapRoutes);
+  app.route("/notifications", notificationRoutes);
+  app.route("/join", joinRoutes);
+  app.route("/invites", inviteRoutes);
 
   app.notFound((c) => fail(c, 404, "NOT_FOUND", "Route not found"));
 

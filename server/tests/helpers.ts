@@ -1,8 +1,10 @@
 import "dotenv/config";
 import { createApp } from "../src/app";
 import { createDb, type Db } from "../src/lib/db";
+import { testDatabaseUrl } from "./test-db";
 
-export const testDb: Db = createDb(process.env.TEST_DATABASE_URL!);
+// TEST_DATABASE_URL, or the database named by TEST_DB on the same server (see test-db.ts).
+export const testDb: Db = createDb(testDatabaseUrl());
 export const testApp = createApp({ db: () => testDb, webOrigins: ["http://localhost:8081"] });
 
 /** Empties every table (except Prisma's migration log) so each test starts clean. */

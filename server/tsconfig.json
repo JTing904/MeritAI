@@ -14,5 +14,5 @@
     "verbatimModuleSyntax": true,
     "noEmit": true
   },
-  "include": ["src", "tests", "prisma", "prisma.config.ts", "vitest.config.ts", "../shared"]
+  "include": ["src", "tests", "scripts", "prisma", "prisma.config.ts", "vitest.config.ts", "../shared"]
 }

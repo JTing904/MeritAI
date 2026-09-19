@@ -19,6 +19,7 @@ export class ApiClientError extends Error {
 
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  /** JSON body, or a FormData for file uploads (sent as multipart). */
   body?: unknown;
   token?: string | null;
   signal?: AbortSignal;
@@ -26,8 +27,10 @@ type RequestOptions = {
 
 /** Calls the MeritAI API and unwraps the `{ success, data, error }` envelope. */
 export async function api<T>(path: string, { method = 'GET', body, token, signal }: RequestOptions = {}): Promise<T> {
+  const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  // Multipart: let fetch set the Content-Type with its boundary.
+  if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let res: Response;
@@ -35,11 +38,12 @@ export async function api<T>(path: string, { method = 'GET', body, token, signal
     res = await fetch(`${API_URL}/api${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
       signal,
     });
-  } catch {
+  } catch (err) {
     // Offline, server down, or aborted by a timeout: all mean "can't reach the server".
+    if (__DEV__ && !signal?.aborted) console.warn(`[api] ${method} ${path} failed:`, err);
     throw new ApiClientError('NETWORK', `Network request to ${API_URL} failed`);
   }
 

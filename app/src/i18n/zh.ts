@@ -1,5 +1,15 @@
 // Chinese copy (primary; taken verbatim from the approved prototype where it exists).
 // en.ts must have exactly the same shape; a missing English string is a type error.
+// Feature copy lives in ./sections/<feature>.zh.ts so features can grow independently.
+import { homeZh } from './sections/home.zh';
+import { joinZh } from './sections/join.zh';
+import { labelsZh } from './sections/labels.zh';
+import { membersZh } from './sections/members.zh';
+import { notifsZh } from './sections/notifs.zh';
+import { pickZh } from './sections/pick.zh';
+import { pickerZh } from './sections/picker.zh';
+import { projectZh } from './sections/project.zh';
+import { wizardZh } from './sections/wizard.zh';
 
 export const zh = {
   tabs: { home: '首页', tasks: '任务', notifs: '通知', me: '我', nav: '主导航', unread: (n: number) => `${n} 条未读` },
@@ -21,9 +31,16 @@ export const zh = {
     devUnavailable: '这个服务器没有开启一键登录。',
     signingIn: '正在登录…',
   },
-  home: { title: '首页', myProfile: '我的' },
+  labels: labelsZh,
+  home: homeZh,
+  wizard: wizardZh,
+  join: joinZh,
+  project: projectZh,
+  pick: pickZh,
+  picker: pickerZh,
+  members: membersZh,
+  notifs: notifsZh,
   tasks: { title: '我的任务' },
-  notifs: { title: '通知' },
   me: {
     title: '我',
     appearance: '外观',
@@ -63,6 +80,27 @@ export const zh = {
     CONFLICT: '刚刚有人改过，请刷新后再试。',
     RATE_LIMITED: '操作太频繁了，请稍后再试。',
     INTERNAL: '服务器出错了，请稍后再试。',
+    INVITE_CODE_INVALID: '找不到这个邀请码，请检查一下有没有打错。',
+    INVITE_CODE_EXPIRED: '这个邀请码已经失效了，组长换了新的邀请码。',
+    REMOVED_FROM_PROJECT: '你已经被组长移出这个项目，不能再用邀请码加入。',
+    PROJECT_ENDED: '这个项目已经结束了，不能再加入。',
+    NOT_A_DRAFT: '这个项目已经建好了，不能再用新建流程修改。',
+    PLAN_EMPTY: '还没有任务，至少要有一个任务才能分包。',
+    DEADLINE_IN_PAST: '截止日期要在现在之后。',
+    DUE_AFTER_DEADLINE: '任务的截止日期不能晚于项目截止日期。',
+    TASK_LOCKED: '这个任务已经开始或完成了，不能删除或改分数。',
+    PACKAGE_TAKEN: '这个任务包刚被别人选走了',
+    PACKAGE_STARTED: '你已开工，不能换包',
+    TARGET_STARTED: '对方已开工，不能互换',
+    NEEDS_OWN_PACKAGE: '先选一个任务包，才能申请互换',
+    SWAP_LIMIT: '一次只能申请一个互换，先取消原来的申请',
+    SWAP_NOT_PENDING: '这个互换请求已经处理过或失效了',
+    ALREADY_HAS_PACKAGE: 'TA 已经有任务包了',
+    LEADER_ONLY_MANAGES: '只管理的组长不用选任务包',
+    LEADER_MUST_TRANSFER: '你是组长，要先把组长转给别人才能退出',
+    TASK_FINISHED: '这个任务已经完成，不能移动',
+    STALE_PREVIEW: '情况有变，请重新看一下预览',
+    TEAM_FULL: '这个项目已经 8 个人了，不能再加入',
   },
 };
 

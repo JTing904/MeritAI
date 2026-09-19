@@ -21,10 +21,15 @@ export function Rich({ parts, v = 'title', size, label }: { parts: RichPart[]; v
       });
     } else rows[rows.length - 1]!.push(part);
   }
-  const text = parts.map((p) => (typeof p === 'string' ? p : p.text)).join('');
+  // Read aloud as one line: a break between Latin text is a space ("pts.\nPick"), in Chinese nothing.
+  const text = parts
+    .map((p) => (typeof p === 'string' ? p : p.text))
+    .join('')
+    .replace(/([!-~])\n(?=[!-~])/g, '$1 ')
+    .replace(/\n/g, '');
 
   return (
-    <View accessible role="heading" {...headingLevel(1)} aria-label={label ?? text.replace(/\n/g, '')}>
+    <View accessible role="heading" {...headingLevel(1)} aria-label={label ?? text}>
       {rows.map((row, r) => (
         <View key={r} style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end' }}>
           {row.map((part, i) =>

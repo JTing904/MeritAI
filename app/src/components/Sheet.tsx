@@ -1,5 +1,5 @@
-import { useEffect, useRef, type ReactNode } from 'react';
-import { AccessibilityInfo, Animated, Easing, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AccessibilityInfo, Animated, Easing, Keyboard, Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '@/i18n';
 import { makeStyles } from '@/theme';
@@ -28,6 +28,27 @@ const useStyles = makeStyles((c) =>
   }),
 );
 
+/**
+ * The keyboard height React Native reports while a sheet is open (Android; 0 elsewhere).
+ * Sheets are edge-to-edge Modals, so the keyboard doesn't resize their window: the sheet makes room itself.
+ * The reported height leaves out the navigation bar, but the keyboard covers that strip too.
+ */
+function useSheetKeyboard(active: boolean): number {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    if (!active || Platform.OS !== 'android') return;
+    setHeight(Keyboard.isVisible() ? (Keyboard.metrics()?.height ?? 0) : 0);
+    const show = Keyboard.addListener('keyboardDidShow', (e) => setHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+      setHeight(0);
+    };
+  }, [active]);
+  return height;
+}
+
 type SheetProps = {
   visible: boolean;
   onClose: () => void;
@@ -41,6 +62,7 @@ export function Sheet({ visible, onClose, title, children }: SheetProps) {
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
   const rise = useRef(new Animated.Value(0)).current;
+  const keyboard = useSheetKeyboard(visible);
   useToastOverlay(visible);
 
   useEffect(() => {
@@ -55,14 +77,22 @@ export function Sheet({ visible, onClose, title, children }: SheetProps) {
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
-      <View style={s.root}>
+      {/* Lifting the whole sheet above the keyboard shrinks its scroll area, and Android then scrolls
+          the focused input back into view by itself. The navigation bar strip is under the keyboard
+          then, so the lift takes it over from the content's bottom padding. */}
+      <View style={[s.root, keyboard > 0 && { paddingBottom: keyboard + insets.bottom }]}>
         <Animated.View
           role="dialog"
           aria-modal
           aria-label={label}
           style={[s.sheet, { opacity: rise, transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [40, 0] }) }] }]}>
           <View style={s.grab} />
-          <ScrollView contentContainerStyle={[s.content, { paddingBottom: 28 + insets.bottom }]} bounces={false}>
+          <ScrollView
+            contentContainerStyle={[s.content, { paddingBottom: 28 + (keyboard > 0 ? 0 : insets.bottom) }]}
+            bounces={false}
+            keyboardShouldPersistTaps="handled"
+            // iOS: the keyboard overlaps the sheet; inset the scroll area instead of lifting it.
+            automaticallyAdjustKeyboardInsets>
             {title && (
               <Txt v="sheetTitle" role="heading" style={{ marginBottom: 4 }}>
                 {title}

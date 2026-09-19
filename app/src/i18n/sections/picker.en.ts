@@ -1,0 +1,42 @@
+import type { pickerZh } from './picker.zh';
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+export const pickerEn: typeof pickerZh = {
+  titleTask: 'Pick a due date',
+  titleProject: 'Pick the project deadline',
+  quickLabel: 'Common dates',
+  quick: {
+    tomorrow: 'Tomorrow',
+    thisFriday: 'This Friday',
+    nextFriday: 'Next Friday',
+    deadline: 'Deadline',
+    twoWeeks: 'In 2 weeks',
+    oneMonth: 'In a month',
+    twoMonths: 'In 2 months',
+  },
+  month: (y, m) => `${MONTHS[m - 1] ?? m} ${y}`,
+  prevMonth: 'Previous month',
+  nextMonth: 'Next month',
+  weekdays: ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'],
+  today: 'Today',
+  day: (date, deadline, today) => `${date}${deadline ? ', project deadline' : ''}${today ? ', today' : ''}`,
+  due: (when) => `Due ${when}`,
+  noDay: 'No date picked yet',
+  endOfDay: (city) => `A date alone means 23:59 that day · ${city} time`,
+  zoneTime: (city) => `${city} time`,
+  changeZone: 'Change time zone',
+  deadlineDay: "🏁 Project deadline · tasks can't be due later",
+  changeTime: 'Change time',
+  time: 'Time',
+  commonTimes: 'Common times',
+  otherTime: 'Other time',
+  hourLess: '1 hour earlier',
+  hourMore: '1 hour later',
+  minuteLess: '5 minutes earlier',
+  minuteMore: '5 minutes later',
+  clear: 'No due date',
+  confirm: 'Done',
+  confirmAt: (when) => `Done · ${when}`,
+  noDateHint: (deadline) => `Without a date, reminders follow the project deadline (${deadline}).`,
+};

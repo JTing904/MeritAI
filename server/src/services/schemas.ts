@@ -1,0 +1,109 @@
+// Request body schemas (zod). Unknown keys are dropped, not rejected, so the app can send a whole form.
+import { z } from "zod";
+import { canonicalTimeZone } from "../lib/plan/dates";
+
+/** Optional text field: "" and whitespace clear it (null); a missing key leaves it unchanged (undefined). */
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullish()
+    .transform((v) => (v === undefined ? undefined : v || null));
+
+/** "2026-11-06" (end of that day in the project's time zone) or a full ISO date-time with Z or an offset. */
+export const DateInput = z.union([z.iso.date(), z.iso.datetime({ offset: true })]);
+
+const BasicsFields = {
+  name: z.string().trim().min(1).max(80),
+  shortCode: optionalText(20),
+  courseName: optionalText(80),
+  groupLabel: optionalText(40),
+  deadline: DateInput,
+  timezone: z.string().transform((tz, ctx) => {
+    const zone = canonicalTimeZone(tz);
+    if (zone === null) {
+      ctx.addIssue({ code: "custom", message: "Use an IANA time zone such as Asia/Kuala_Lumpur" });
+      return z.NEVER;
+    }
+    return zone;
+  }),
+  teamSize: z.number().int().min(2).max(8),
+  leaderManages: z.boolean(),
+  repoFullName: z
+    .string()
+    .trim()
+    .max(140)
+    .regex(/^([\w.-]+\/[\w.-]+)?$/, "Use owner/name")
+    .nullish()
+    .transform((v) => (v === undefined ? undefined : v || null)),
+};
+
+export const ProjectBasicsSchema = z.object(BasicsFields);
+export type ProjectBasicsBody = z.infer<typeof ProjectBasicsSchema>;
+
+export const ProjectPatchSchema = z.object({ ...BasicsFields, draftStep: z.number().int().min(1).max(6) }).partial();
+export type ProjectPatchBody = z.infer<typeof ProjectPatchSchema>;
+
+export const TASK_KINDS = ["CODE", "DOC", "RESEARCH", "DESIGN", "MEETING"] as const;
+/** A draft can hold at most this many tasks. */
+export const MAX_TASKS = 200;
+
+const TaskFields = {
+  title: z.string().trim().min(1).max(120),
+  kind: z.enum(TASK_KINDS),
+  /** Tenths; while drafting any total is fine (confirm rescales to 1000). */
+  points: z.number().int().min(0).max(10_000),
+  dueAt: DateInput.nullish(),
+  description: optionalText(2000),
+  featureId: z.string().min(1).nullish(),
+  milestoneId: z.string().min(1).nullish(),
+};
+
+export const TaskSchema = z.object(TaskFields);
+export type TaskBody = z.infer<typeof TaskSchema>;
+export const TaskPatchSchema = z.object(TaskFields).partial();
+export type TaskPatchBody = z.infer<typeof TaskPatchSchema>;
+
+export const ManualPlanSchema = z.object({ tasks: z.array(TaskSchema).max(MAX_TASKS) });
+
+export const BriefTextSchema = z.object({ text: z.string() });
+
+export const SplitLargeSchema = z.object({ locale: z.enum(["zh", "en"]).optional() });
+
+export const InviteSchema = z.object({ targets: z.string().max(5000) });
+
+// ─── M3: packages, swaps, members, notifications ─────────────────────────────
+
+/** Adding a task to an ACTIVE project: it gets exactly these points (0.1–99.9 分) and the rest rescale. */
+export const ActiveTaskSchema = z.object({ ...TaskFields, points: z.number().int().min(1).max(999) });
+
+export const AssignSchema = z.object({ memberId: z.string().min(1) });
+export const SwapCreateSchema = z.object({ packageId: z.string().min(1) });
+export const MoveTaskSchema = z.object({ packageId: z.string().min(1) });
+export const ResplitPreviewSchema = z.object({ count: z.number().int() });
+export const ResplitSchema = z.object({ count: z.number().int(), version: z.number().int() });
+export const DevStatusSchema = z.object({ status: z.enum(["TODO", "DOING", "DONE", "HALF"]) });
+export type DevTaskStatus = z.infer<typeof DevStatusSchema>["status"];
+export const MarkReadSchema = z.object({ upToId: z.string().min(1) });
+
+/** A query parameter sent empty (`?cursor=&limit=`) counts as left out. */
+const blankAsMissing = (v: unknown) => (v === "" ? undefined : v);
+
+/** Feed and notification lists: newest first, `cursor` = the last item id seen, `limit` ≤ 50 (default 30). */
+export const PageQuerySchema = z.object({
+  cursor: z.preprocess(blankAsMissing, z.string().min(1).optional()),
+  limit: z
+    .preprocess(blankAsMissing, z.coerce.number().int().min(1).default(30))
+    .transform((n) => Math.min(n, 50)),
+});
+export type PageQuery = z.infer<typeof PageQuerySchema>;
+
+/** `mine=1` → only what is flagged 「跟我有关」. */
+export const NotificationQuerySchema = PageQuerySchema.extend({
+  mine: z
+    .string()
+    .optional()
+    .transform((v) => v === "1" || v === "true"),
+});
+export type NotificationQuery = z.infer<typeof NotificationQuerySchema>;

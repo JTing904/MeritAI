@@ -10,7 +10,31 @@ export type ErrorCode =
   | 'NOT_FOUND'
   | 'CONFLICT'
   | 'RATE_LIMITED'
-  | 'INTERNAL';
+  | 'INTERNAL'
+  // Joining with an invite code
+  | 'INVITE_CODE_INVALID'
+  | 'INVITE_CODE_EXPIRED'
+  | 'REMOVED_FROM_PROJECT'
+  | 'PROJECT_ENDED'
+  // Drafts and plans
+  | 'NOT_A_DRAFT'
+  | 'PLAN_EMPTY'
+  | 'DEADLINE_IN_PAST'
+  | 'DUE_AFTER_DEADLINE'
+  | 'TASK_LOCKED'
+  // Packages, swaps and members (M3)
+  | 'PACKAGE_TAKEN'
+  | 'PACKAGE_STARTED'
+  | 'TARGET_STARTED'
+  | 'NEEDS_OWN_PACKAGE'
+  | 'SWAP_LIMIT'
+  | 'SWAP_NOT_PENDING'
+  | 'ALREADY_HAS_PACKAGE'
+  | 'LEADER_ONLY_MANAGES'
+  | 'LEADER_MUST_TRANSFER'
+  | 'TASK_FINISHED'
+  | 'STALE_PREVIEW'
+  | 'TEAM_FULL';
 
 export type ApiError = { code: ErrorCode; message: string; details?: unknown };
 

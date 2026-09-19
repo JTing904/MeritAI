@@ -13,3 +13,6 @@ export function profileColor(userId: string): Highlighter {
 
 export const LOCALES = ['zh', 'en'] as const;
 export type Locale = (typeof LOCALES)[number];
+
+/** Largest brief file (wizard step 2 upload). The app checks it before uploading; the server enforces it. */
+export const MAX_BRIEF_BYTES = 10 * 1024 * 1024;
