@@ -119,7 +119,8 @@ export function InputStep({
       if (ctrl.signal.aborted) return;
       setReading(null);
       const code = errorCode(err);
-      if (from && code === 'NETWORK') setFileProblem({ reason: 'NETWORK', size: from.size, max: BRIEF_MAX_BYTES });
+      // The file stays picked and the button reads 再试一次; other errors are toasted.
+      if (from && (code === 'NETWORK' || code === 'TIMEOUT' || code === 'RETRY')) setFileProblem({ reason: 'NETWORK', size: from.size, max: BRIEF_MAX_BYTES });
       else show(t.errors[code]);
     }
   };

@@ -92,8 +92,27 @@ export type TaskView = {
   locked: boolean;
   /** Not finished and past its due date (or the project deadline when it has none). */
   overdue: boolean;
-  /** Tenths: DONE → points, HALF → half (rounded), else 0. */
+  /** Tenths, from `grade` (M4): EXCELLENT / PASS / SELF → points, HALF → half (rounded), else 0. */
   earnedPoints: number;
+  /** The counting attempt's grade (M4); a HALF task under re-review keeps it (and stays finished). */
+  grade: Grade | null;
+  /** When the counting grade was earned; null while not finished. */
+  finishedAt: string | null;
+  /** The latest attempt (any status) was handed in after the effective due. */
+  late: boolean;
+  /** 前置任务: the task this one waits for. */
+  prereqTaskId: string | null;
+  /** Attempts with at least one piece of evidence, or GRADED. */
+  attemptCount: number;
+  /** Evidence in the current (DRAFT / PENDING) attempt; 0 without one. */
+  evidenceCount: number;
+  /** Any evidence row of the task, in any attempt. */
+  hasEvidence: boolean;
+  /** 作业要求（原文）: the brief item's lines, markers stripped (null for typed / added tasks). Only TaskDetail.task
+   *  carries it: in ProjectView / DraftView task lists it is always null (the server leaves it out, A12). */
+  briefExcerpt: string | null;
+  /** A part made by 「把大任务拆开」. */
+  briefSplit: boolean;
 };
 
 /**
@@ -247,6 +266,12 @@ export type ProjectView = {
   /** Package counts a re-split accepts. */
   resplitRange: { min: number; max: number };
   swaps: SwapView[];
+  /** Leader: the project's PENDING attempts, oldest submitted first (待我审核). Everyone else: []. */
+  pendingReviews: PendingReview[];
+  /** The project keeps the brief's text (GET /projects/:id/brief works). */
+  briefAvailable: boolean;
+  /** The uploaded brief's file name (null when typed or none). */
+  briefFileName: string | null;
 };
 
 /** Home screen project card. */
@@ -290,7 +315,33 @@ export type PendingInvite = {
 };
 
 /** GET /api/home */
-export type HomeData = { projects: ProjectCard[]; invites: PendingInvite[] };
+export type HomeData = {
+  projects: ProjectCard[];
+  invites: PendingInvite[];
+  /**
+   * Effective due (ISO) of my TODO / DOING / FAIL tasks in ACTIVE projects that are overdue or due
+   * within the next 8 days (past dates included, so the home line can count 过期).
+   */
+  dueSoon: string[];
+  /** Projects I deleted for everyone and can still restore (only the leader who deleted them sees these). */
+  deletedProjects: DeletedProjectCard[];
+};
+
+/** A home card for a project the viewer deleted for everyone (为所有人删除项目). */
+export type DeletedProjectCard = {
+  id: string;
+  name: string;
+  shortCode: string | null;
+  color: Highlighter;
+  deletedAt: string;
+  /** Deleted for good from then on (deletedAt + 7 days); restorable until then. */
+  purgeAfter: string;
+};
+
+/** POST /api/projects/:id/leave-as-leader: hand the role to this active member, then leave. */
+export type LeaveAsLeaderInput = { newLeaderMemberId: string };
+/** POST /api/projects/:id/delete: `confirm` is the project tag, typed (case and spaces ignored). */
+export type DeleteProjectInput = { confirm: string };
 
 /** GET /api/join/:code (preview before joining). */
 export type JoinPreview = {
@@ -318,7 +369,9 @@ export type InviteOutcome = { target: string; result: 'INVITED' | 'ALREADY_MEMBE
 // ─── Packages, swaps, members, notifications (M3) ─────────────────────────────
 
 export type SwapStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'CANCELLED' | 'EXPIRED' | 'VOID';
-export type SwapVoidReason = 'SWITCHED' | 'STARTED' | 'SWAPPED_ELSEWHERE' | 'LEFT' | 'RESPLIT';
+export type SwapVoidReason = 'SWITCHED' | 'STARTED' | 'SWAPPED_ELSEWHERE' | 'LEFT' | 'RESPLIT' | 'PROJECT_DELETED';
+/** The reasons a SWAP_VOID notification can give (a re-split or a deleted project sends its own notice). */
+export type SwapVoidNoticeReason = Exclude<SwapVoidReason, 'RESPLIT' | 'PROJECT_DELETED'>;
 
 /** POST /api/projects/:id/packages/:packageId/assign */
 export type AssignInput = { memberId: string };
@@ -372,10 +425,18 @@ export type NotificationType =
   | 'TASK_MOVED_OUT'
   | 'RESPLIT'
   | 'PACKAGE_ASSIGNED'
-  | 'LEADER_TRANSFERRED';
+  | 'LEADER_TRANSFERRED'
+  | 'SUBMITTED'
+  | 'GRADED'
+  | 'GRADED_OUTSIDE'
+  | 'OVERRIDDEN'
+  | 'WAITING_ON_YOU'
+  | 'PREREQ_DONE'
+  | 'PROJECT_DELETED'
+  | 'PROJECT_RESTORED';
 
-/** 全组都收到 / 只有你收到 / 只有组长收到. */
-export type NotificationAudience = 'GROUP' | 'ONLY_YOU' | 'ONLY_LEADER';
+/** 全组都收到 / 只有你收到 / 只有组长收到 / 只有你和组长收到. */
+export type NotificationAudience = 'GROUP' | 'ONLY_YOU' | 'ONLY_LEADER' | 'YOU_AND_LEADER';
 
 /**
  * What a notification says, by type. Names, titles, package numbers and points are snapshotted when
@@ -387,8 +448,8 @@ export type NotificationPayload =
   | { type: 'SWAP_ACCEPTED'; target: PersonRef; targetPackageIndex: number }
   | { type: 'SWAP_DECLINED'; target: PersonRef }
   | { type: 'SWAP_EXPIRED'; target: PersonRef }
-  /** A re-split never sends this (its RESPLIT notification covers it). */
-  | { type: 'SWAP_VOID'; target: PersonRef; reason: Exclude<SwapVoidReason, 'RESPLIT'> }
+  /** A re-split or a deleted project never sends this (their own notifications cover it). */
+  | { type: 'SWAP_VOID'; target: PersonRef; reason: SwapVoidNoticeReason }
   /** To the leader. `joined`: the member just joined (「加入了 {tag}，但任务包都有人选了」). */
   | { type: 'MEMBER_NEEDS_PACKAGE'; member: PersonRef; joined: boolean }
   | { type: 'MEMBER_LEFT'; member: PersonRef; unfinishedCount: number }
@@ -396,18 +457,31 @@ export type NotificationPayload =
   | { type: 'REMOVED_YOU' }
   /** `packagePoints`: the receiving package's total after the rescale. */
   | { type: 'TASK_ADDED'; taskId: string; title: string; packageIndex: number; packagePoints: number }
-  /** `from` null: it came from a package nobody picked. `hasEvidence` is false until M4. */
+  /**
+   * `from` null: it came from a package nobody picked (or from someone who left). `fromPackageIndex`
+   * null: a leaver's released task, in no package. `hasEvidence`: any attempt of the task has evidence.
+   */
   | {
       type: 'TASK_MOVED_IN';
       taskId: string;
       title: string;
       from: PersonRef | null;
-      fromPackageIndex: number;
+      fromPackageIndex: number | null;
       toPackageIndex: number;
       hasEvidence: boolean;
     }
-  /** `to` null: it went to a package nobody picked. */
-  | { type: 'TASK_MOVED_OUT'; taskId: string; title: string; fromPackageIndex: number; to: PersonRef | null; toPackageIndex: number }
+  /**
+   * `to` null: it went to a package nobody picked. `fromPackageIndex` null: it was in no package (a
+   * submission that stayed with its owner when they switched or swapped, then graded 不通过).
+   */
+  | {
+      type: 'TASK_MOVED_OUT';
+      taskId: string;
+      title: string;
+      fromPackageIndex: number | null;
+      to: PersonRef | null;
+      toPackageIndex: number;
+    }
   /**
    * `package`: the recipient's package after the re-split (`oldIndex` only when its number changed),
    * or null without one; then `freePackages` says how many are left to pick.
@@ -419,7 +493,72 @@ export type NotificationPayload =
       packageCount: number;
     }
   | { type: 'PACKAGE_ASSIGNED'; packageIndex: number }
-  | { type: 'LEADER_TRANSFERRED'; from: PersonRef };
+  /** `leftAfter`: the old leader left the project right after handing the role over (leave-as-leader). */
+  | { type: 'LEADER_TRANSFERRED'; from: PersonRef; leftAfter?: boolean }
+  // M4. points / earned in tenths; `earned` = the TASK's earned points after the write (its counting grade).
+  /** To the leader. `allFiles`: every piece is a file (「{n} 份文件」, else 「{n} 份证据」). `dueAt`: effective due. */
+  | {
+      type: 'SUBMITTED';
+      taskId: string;
+      title: string;
+      submitter: PersonRef;
+      attemptNo: number;
+      evidenceCount: number;
+      allFiles: boolean;
+      dueAt: string;
+      late: boolean;
+    }
+  /** To the owner. `counting` false: a worse re-grade; the task still earns `earned` from an earlier attempt. */
+  | {
+      type: 'GRADED';
+      taskId: string;
+      title: string;
+      attemptNo: number;
+      grade: Exclude<Grade, 'SELF'>;
+      points: number;
+      earned: number;
+      counting: boolean;
+    }
+  | {
+      type: 'GRADED_OUTSIDE';
+      taskId: string;
+      title: string;
+      grade: Exclude<Grade, 'SELF'>;
+      points: number;
+      earned: number;
+      counting: boolean;
+      outsideNote: string | null;
+    }
+  /** `undone`: 撤销上次推翻 (`toGrade` is the grade it went back to). */
+  | {
+      type: 'OVERRIDDEN';
+      taskId: string;
+      title: string;
+      attemptNo: number;
+      fromGrade: Grade;
+      toGrade: Grade;
+      points: number;
+      earned: number;
+      counting: boolean;
+      undone: boolean;
+    }
+  /** To the prereq's owner and the leader. `forLeader`: this copy is the leader's. */
+  | {
+      type: 'WAITING_ON_YOU';
+      waitingTaskId: string;
+      waitingTitle: string;
+      prereqTaskId: string;
+      prereqTitle: string;
+      waiter: PersonRef;
+      prereqOwner: PersonRef | null;
+      setBy: PersonRef;
+      forLeader: boolean;
+    }
+  /** To the owner of each task that waited for the prereq. */
+  | { type: 'PREREQ_DONE'; prereqTaskId: string; prereqTitle: string; waitingTaskId: string; waitingTitle: string }
+  /** To every active member but the leader. `purgeAfter`: when it is deleted for good unless restored. */
+  | { type: 'PROJECT_DELETED'; leader: PersonRef; purgeAfter: string }
+  | { type: 'PROJECT_RESTORED'; leader: PersonRef };
 
 export type NotificationView = {
   id: string;
@@ -462,7 +601,16 @@ export type ActivityType =
   | 'TASK_MOVED'
   | 'TASK_STARTED'
   | 'RESPLIT'
-  | 'LEADER_TRANSFERRED';
+  | 'LEADER_TRANSFERRED'
+  | 'SUBMITTED'
+  | 'WITHDRAWN'
+  | 'GRADED'
+  | 'OVERRIDDEN'
+  | 'MEETING_DONE'
+  | 'START_UNDONE'
+  | 'PREREQ_SET'
+  | 'PROJECT_DELETED'
+  | 'PROJECT_RESTORED';
 
 /** What a feed entry says, by type (who did it is ActivityView.actor). Snapshotted when it happened. */
 export type ActivityPayload =
@@ -476,11 +624,50 @@ export type ActivityPayload =
   | { type: 'SWAPPED'; requester: PersonRef; requesterPackageIndex: number; targetPackageIndex: number }
   | { type: 'ASSIGNED'; packageIndex: number; member: PersonRef }
   | { type: 'TASK_ADDED'; taskId: string; title: string; packageIndex: number }
-  | { type: 'TASK_MOVED'; taskId: string; title: string; fromPackageIndex: number; toPackageIndex: number }
+  /** `fromPackageIndex` null: a leaver's released task, in no package. */
+  | { type: 'TASK_MOVED'; taskId: string; title: string; fromPackageIndex: number | null; toPackageIndex: number }
   | { type: 'TASK_STARTED'; taskId: string; title: string }
   | { type: 'RESPLIT'; packageCount: number }
   /** `member`: the new leader. */
-  | { type: 'LEADER_TRANSFERRED'; member: PersonRef };
+  | { type: 'LEADER_TRANSFERRED'; member: PersonRef }
+  | { type: 'SUBMITTED'; taskId: string; title: string; attemptNo: number }
+  | { type: 'WITHDRAWN'; taskId: string; title: string; attemptNo: number }
+  | {
+      type: 'GRADED';
+      taskId: string;
+      title: string;
+      owner: PersonRef | null;
+      grade: Grade;
+      attemptNo: number;
+      selfGraded: boolean;
+      outsideApp: boolean;
+    }
+  | {
+      type: 'OVERRIDDEN';
+      taskId: string;
+      title: string;
+      owner: PersonRef | null;
+      attemptNo: number;
+      fromGrade: Grade;
+      toGrade: Grade;
+      undone: boolean;
+    }
+  /** `attendeeCount`: the owner included. */
+  | { type: 'MEETING_DONE'; taskId: string; title: string; attendeeCount: number }
+  | { type: 'START_UNDONE'; taskId: string; title: string }
+  /** `cleared`: the prerequisite was removed (the prereq fields are null then). */
+  | {
+      type: 'PREREQ_SET';
+      taskId: string;
+      title: string;
+      prereqTaskId: string | null;
+      prereqTitle: string | null;
+      prereqOwner: PersonRef | null;
+      cleared: boolean;
+    }
+  /** The actor (the leader) deleted the project for everyone / restored it (seen once it is back). */
+  | { type: 'PROJECT_DELETED' }
+  | { type: 'PROJECT_RESTORED' };
 
 export type ActivityView = {
   id: string;
@@ -493,3 +680,185 @@ export type ActivityView = {
 
 /** GET /api/projects/:id/feed?cursor=&limit= (newest first). */
 export type FeedPage = { items: ActivityView[]; nextCursor: string | null };
+
+// ─── Tasks and evidence (M4) ──────────────────────────────────────────────────
+
+/** SELF: a meeting task its owner marked done. EXCELLENT / PASS / SELF earn full points, HALF half, FAIL none. */
+export type Grade = 'EXCELLENT' | 'PASS' | 'HALF' | 'FAIL' | 'SELF';
+/** DRAFT: evidence being collected; PENDING: 等组长审核; GRADED. */
+export type AttemptStatus = 'DRAFT' | 'PENDING' | 'GRADED';
+export type EvidenceKind = 'FILE' | 'LINK';
+
+/** 待我审核 (leader): one PENDING attempt. `dueAt`: the task's effective due. */
+export type PendingReview = {
+  taskId: string;
+  title: string;
+  ownerMemberId: string | null;
+  attemptNo: number;
+  submittedAt: string;
+  evidenceCount: number;
+  late: boolean;
+  dueAt: string;
+};
+
+export type EvidenceView = {
+  id: string;
+  kind: EvidenceKind;
+  /** File name, or a link's display text (the URL without its scheme, cut to 60 characters). */
+  name: string;
+  /** LINK only. Files open through GET /api/evidence/:id/link. */
+  url: string | null;
+  sizeBytes: number | null;
+  mimeType: string | null;
+  addedByMemberId: string | null;
+  createdAt: string;
+};
+
+/** 推翻评级 (newest first in AttemptView.changes; undone ones included). */
+export type GradeChangeView = {
+  id: string;
+  fromGrade: Grade;
+  toGrade: Grade;
+  reason: string;
+  byMemberId: string | null;
+  createdAt: string;
+  undoneAt: string | null;
+};
+
+/** One submission round (第 N 次). `counting`: its grade is the one the task earns. */
+export type AttemptView = {
+  id: string;
+  no: number;
+  status: AttemptStatus;
+  submittedAt: string | null;
+  submittedByMemberId: string | null;
+  late: boolean;
+  evidence: EvidenceView[];
+  grade: Grade | null;
+  gradeNote: string | null;
+  gradedByMemberId: string | null;
+  gradedAt: string | null;
+  selfGraded: boolean;
+  outsideApp: boolean;
+  outsideNote: string | null;
+  meeting: { summary: string; attendeeMemberIds: string[]; absentMemberIds: string[] } | null;
+  changes: GradeChangeView[];
+  counting: boolean;
+};
+
+export type ChecklistItemView = { id: string; text: string; done: boolean; order: number };
+
+/** A member as the task page shows them (owner, attendees, absentees). */
+export type TaskPerson = { memberId: string; name: string; color: Highlighter; active: boolean };
+
+/** A task another task refers to (waitedBy, briefSiblings). */
+export type TaskRef = { taskId: string; title: string; ownerMemberId: string | null; ownerName: string | null };
+
+/** GET /api/projects/:id/tasks/:taskId (every task write answers with it too). */
+export type TaskDetail = {
+  task: TaskView;
+  project: {
+    id: string;
+    tag: string;
+    color: Highlighter;
+    deadline: string;
+    timezone: string;
+    viewerMemberId: string;
+    viewerRole: MemberRole;
+    leaderMemberId: string | null;
+    leaderName: string | null;
+  };
+  owner: TaskPerson | null;
+  packageIndex: number | null;
+  /** Oldest first. */
+  attempts: AttemptView[];
+  /** The DRAFT or PENDING attempt. */
+  current: AttemptView | null;
+  countingAttemptId: string | null;
+  checklist: ChecklistItemView[];
+  prereq: {
+    taskId: string;
+    title: string;
+    ownerMemberId: string | null;
+    ownerName: string | null;
+    /** isFinished (a HALF task under re-review is finished). */
+    finished: boolean;
+    finishedAt: string | null;
+    /** Effective due. */
+    dueAt: string;
+    status: TaskStatus;
+    late: boolean;
+  } | null;
+  /** Tasks whose prereq is this one. */
+  waitedBy: TaskRef[];
+  /** Only for a 「把大任务拆开」 part: the other parts of the same brief item, in plan order; otherwise []. */
+  briefSiblings: TaskRef[];
+  /** Until when the owner may undo 「开始做」 (null when they can't). */
+  undoStartUntil: string | null;
+  storage: { usedBytes: number; capBytes: number; maxFileBytes: number; maxItems: number };
+  members: TaskPerson[];
+  /** = task.finishedAt. */
+  finishedAt: string | null;
+};
+
+/** POST …/grade. A reason (`note`) is required for HALF and FAIL. */
+export type GradeInput = { grade: Exclude<Grade, 'SELF'>; note?: string | null };
+/** POST …/grade-outside (组长代为完成). */
+export type GradeOutsideInput = GradeInput & { outsideNote?: string | null };
+/** POST …/override. `attemptId`: default the counting attempt. */
+export type OverrideInput = { grade: Exclude<Grade, 'SELF'>; reason: string; attemptId?: string };
+/** POST …/meeting-done. The server adds the owner to the attendees. */
+export type MeetingDoneInput = { summary: string; attendeeMemberIds: string[] };
+/** POST …/evidence/link */
+export type LinkEvidenceInput = { url: string };
+/** PUT …/checklist: replaces every item; items keep their tick by id, new ones (no id) start unticked. */
+export type ChecklistInput = { items: { id?: string | null; text: string }[] };
+/** POST …/checklist/:itemId/tick */
+export type TickInput = { done: boolean };
+/** PUT …/prereq (null clears it). */
+export type PrereqInput = { prereqTaskId: string | null };
+/** PATCH /api/projects/:id/tasks/:taskId of an ACTIVE project (points 1–999; the owner may send `description` only). */
+export type TaskPatchInput = Partial<TaskInput>;
+/** GET /api/evidence/:id/link: a signed URL the browser opens without the bearer token. */
+export type EvidenceLink = { url: string; expiresAt: string };
+
+/** GET /api/projects/:id/brief. `from` / `to`: the line range [from, to) of `text.split('\n')`. */
+export type BriefView = {
+  text: string;
+  fileName: string | null;
+  items: { taskId: string; title: string; ownerMemberId: string | null; from: number; to: number }[];
+};
+
+/**
+ * One row of 我的任务. `dueAt`: the effective due. `selfGraded` / `outsideApp` / `overridden` describe
+ * the counting attempt (`overridden`: it has a GradeChange that isn't undone).
+ */
+export type MyTaskRow = {
+  id: string;
+  projectId: string;
+  projectTag: string;
+  projectColor: Highlighter;
+  title: string;
+  kind: TaskKind;
+  points: number;
+  status: TaskStatus;
+  grade: Grade | null;
+  overdue: boolean;
+  late: boolean;
+  dueAt: string;
+  earnedPoints: number;
+  finishedAt: string | null;
+  selfGraded: boolean;
+  outsideApp: boolean;
+  overridden: boolean;
+};
+
+/** GET /api/tasks/mine: every task I own in my ACTIVE projects. */
+export type MyTasksView = {
+  /** TODO, DOING, REVIEWING, HALF, FAIL. */
+  open: MyTaskRow[];
+  /** DONE, newest finishedAt first. */
+  done: MyTaskRow[];
+  /** ACTIVE projects where I still need a package. */
+  withoutPackage: { projectId: string; projectTag: string }[];
+};

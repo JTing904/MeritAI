@@ -1,15 +1,15 @@
 import { apportion, balancePackages, packageCount } from "../../../shared/planning";
 import type { AdjustedTask } from "../../../shared/types";
-import type { Project, User } from "../generated/prisma/client";
+import { Prisma, type Project, type User } from "../generated/prisma/client";
 import { pickHighlighter, pickProjectColor } from "../lib/colors";
 import type { Db } from "../lib/db";
 import { AppError } from "../lib/errors";
 import { allocateInviteCode } from "../lib/invite-code";
-import { FINISHED_STATUSES } from "../lib/package-state";
+import { UNFINISHED_WHERE } from "../lib/package-state";
 import { spreadDueDates, toInstant } from "../lib/plan/dates";
 import { recordEvent } from "./notify";
 import type { ProjectBasicsBody, ProjectPatchBody } from "./schemas";
-import { lockAsMember, lockDraft, lockProject, memberUnderLock, TX_OPTIONS, type Tx } from "./tx";
+import { assertPointsTotal, lockAsMember, lockDraft, lockProject, memberUnderLock, TOTAL_POINTS, TX_OPTIONS, type Tx } from "./tx";
 
 const deadlineInPast = () => new AppError(400, "DEADLINE_IN_PAST", "The deadline must be in the future");
 
@@ -111,7 +111,7 @@ export async function updateProject(
  */
 async function rescheduleTasks(tx: Tx, project: Project, deadline: Date, timezone: string, now: Date): Promise<AdjustedTask[]> {
   const tasks = await tx.task.findMany({
-    where: { projectId: project.id, status: { notIn: [...FINISHED_STATUSES] } },
+    where: { projectId: project.id, AND: [UNFINISHED_WHERE] },
     orderBy: [{ order: "asc" }, { number: "asc" }],
   });
   const same = (a: Date | null, b: Date | null) => (a?.getTime() ?? null) === (b?.getTime() ?? null);
@@ -149,10 +149,17 @@ export async function confirmPlan(db: Db, projectId: string, now = new Date()): 
   await db.$transaction(async (tx) => {
     const project = await lockDraft(tx, projectId);
     if (project.deadline <= now) throw deadlineInPast();
-    const tasks = await tx.task.findMany({ where: { projectId }, orderBy: [{ order: "asc" }, { number: "asc" }] });
+    const tasks = await tx.task.findMany({
+      where: { projectId },
+      orderBy: [{ order: "asc" }, { number: "asc" }],
+      select: { id: true, points: true, featureId: true },
+    });
     if (tasks.length === 0) throw new AppError(409, "PLAN_EMPTY", "Add at least one task first");
 
-    const points = apportion(tasks.map((t) => t.points));
+    const points = apportion(
+      tasks.map((t) => t.points),
+      TOTAL_POINTS,
+    );
     const count = packageCount(project.teamSize, project.leaderManages);
     const balanced = balancePackages(
       tasks.map((t, i) => ({ id: t.id, points: points[i]!, group: t.featureId })),
@@ -160,20 +167,28 @@ export async function confirmPlan(db: Db, projectId: string, now = new Date()): 
     );
 
     await tx.package.deleteMany({ where: { projectId } });
+    const created = await tx.package.createManyAndReturn({
+      data: balanced.packages.map((_, i) => ({ projectId, index: i + 1 })),
+      select: { id: true, index: true },
+    });
+    const packageIdAt = new Map(created.map((p) => [p.index, p.id]));
     const packageOf = new Map<string, string>();
     for (const [i, pkg] of balanced.packages.entries()) {
-      const created = await tx.package.create({ data: { projectId, index: i + 1 }, select: { id: true } });
-      for (const taskId of pkg.taskIds) packageOf.set(taskId, created.id);
+      for (const taskId of pkg.taskIds) packageOf.set(taskId, packageIdAt.get(i + 1)!);
     }
 
-    // Move numbers out of the way first: (projectId, number) is unique while we renumber.
+    // Move numbers out of the way first: (projectId, number) is unique, and Postgres checks it row by row.
     await tx.task.updateMany({ where: { projectId }, data: { number: { increment: 1_000_000 } } });
-    for (const [i, task] of tasks.entries()) {
-      await tx.task.update({
-        where: { id: task.id },
-        data: { points: points[i]!, packageId: packageOf.get(task.id) ?? null, number: i + 1, order: i },
-      });
-    }
+    // One UPDATE for every task (A14): a 200-task plan was 200 round trips inside the lock.
+    const rows = tasks.map(
+      (task, i) =>
+        Prisma.sql`(${task.id}::text, ${points[i]!}::int, ${packageOf.get(task.id) ?? null}::text, ${i + 1}::int, ${i}::int)`,
+    );
+    await tx.$executeRaw`
+      UPDATE "Task" AS t
+      SET "points" = v.points, "packageId" = v.package_id, "number" = v.number, "order" = v.ord, "updatedAt" = ${now}
+      FROM (VALUES ${Prisma.join(rows)}) AS v(id, points, package_id, number, ord)
+      WHERE t."id" = v.id AND t."projectId" = ${projectId}`;
 
     await tx.project.update({
       where: { id: projectId },
@@ -192,6 +207,7 @@ export async function confirmPlan(db: Db, projectId: string, now = new Date()): 
       payload: { packageCount: balanced.packages.length },
       now,
     });
+    await assertPointsTotal(tx, projectId);
   }, TX_OPTIONS);
 }
 

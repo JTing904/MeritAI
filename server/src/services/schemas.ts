@@ -83,6 +83,8 @@ export const SwapCreateSchema = z.object({ packageId: z.string().min(1) });
 export const MoveTaskSchema = z.object({ packageId: z.string().min(1) });
 export const ResplitPreviewSchema = z.object({ count: z.number().int() });
 export const ResplitSchema = z.object({ count: z.number().int(), version: z.number().int() });
+export const LeaveAsLeaderSchema = z.object({ newLeaderMemberId: z.string().min(1) });
+export const DeleteProjectSchema = z.object({ confirm: z.string().max(200) });
 export const DevStatusSchema = z.object({ status: z.enum(["TODO", "DOING", "DONE", "HALF"]) });
 export type DevTaskStatus = z.infer<typeof DevStatusSchema>["status"];
 export const MarkReadSchema = z.object({ upToId: z.string().min(1) });
@@ -98,6 +100,45 @@ export const PageQuerySchema = z.object({
     .transform((n) => Math.min(n, 50)),
 });
 export type PageQuery = z.infer<typeof PageQuerySchema>;
+
+// ─── M4: tasks and evidence ───────────────────────────────────────────────────
+
+/** The four levels the leader gives (SELF is only set by 我开完了). */
+export const GradeSchema = z.enum(["EXCELLENT", "PASS", "HALF", "FAIL"]);
+/** `note`: the 理由 (required for HALF / FAIL: GRADE_REASON_REQUIRED in the service) or 评语. */
+export const GradeInputSchema = z.object({ grade: GradeSchema, note: optionalText(1000) });
+export type GradeBody = z.infer<typeof GradeInputSchema>;
+export const GradeOutsideSchema = z.object({ grade: GradeSchema, note: optionalText(1000), outsideNote: optionalText(300) });
+export type GradeOutsideBody = z.infer<typeof GradeOutsideSchema>;
+/** An empty reason is REASON_REQUIRED (the service checks it, so the app gets that code, not VALIDATION). */
+export const OverrideSchema = z.object({
+  grade: GradeSchema,
+  reason: z.string().trim().max(1000),
+  attemptId: z.string().min(1).optional(),
+});
+export type OverrideBody = z.infer<typeof OverrideSchema>;
+/** An empty summary is SUMMARY_REQUIRED (checked in the service). */
+export const MeetingDoneSchema = z.object({
+  summary: z.string().trim().max(500),
+  attendeeMemberIds: z.array(z.string().min(1)).max(8),
+});
+export type MeetingDoneBody = z.infer<typeof MeetingDoneSchema>;
+/**
+ * The scheme, URL and length checks (MAX_LINK_CHARS = 2000) are INVALID_LINK in the service, so a link
+ * a little too long gets that code, not VALIDATION; this bound only refuses absurd bodies.
+ */
+export const LinkSchema = z.object({ url: z.string().trim().max(20_000) });
+export const ChecklistSchema = z.object({
+  items: z
+    .array(z.object({ id: z.string().min(1).nullish(), text: z.string().trim().min(1).max(200) }))
+    .max(20),
+});
+export type ChecklistBody = z.infer<typeof ChecklistSchema>;
+export const TickSchema = z.object({ done: z.boolean() });
+export const PrereqSchema = z.object({ prereqTaskId: z.string().min(1).nullable() });
+/** PATCH of an ACTIVE project's task: any subset; points 1–999 tenths (the rest rescale to 1000). */
+export const ActiveTaskPatchSchema = z.object({ ...TaskFields, points: z.number().int().min(1).max(999) }).partial();
+export type ActiveTaskPatchBody = z.infer<typeof ActiveTaskPatchSchema>;
 
 /** `mine=1` → only what is flagged 「跟我有关」. */
 export const NotificationQuerySchema = PageQuerySchema.extend({

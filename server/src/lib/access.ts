@@ -6,8 +6,22 @@ export type ProjectAccess = { project: Project; member: Member };
 export const isActiveMember = (m: Pick<Member, "leftAt" | "removed">) => m.leftAt === null && !m.removed;
 
 /**
+ * Whether `member` (null: not in the project) may see `project`: an active member of a project that isn't
+ * deleted for everyone, and only the leader while it is a draft. Views that already load the members use
+ * this instead of a separate membership query (A14).
+ */
+export function canSee(
+  project: Pick<Project, "deletedAt" | "status">,
+  member: Pick<Member, "leftAt" | "removed" | "role"> | null | undefined,
+): boolean {
+  if (!member || !isActiveMember(member) || project.deletedAt !== null) return false;
+  return project.status !== "DRAFT" || member.role === "LEADER";
+}
+
+/**
  * The project and the viewer's membership, for an active member. Anyone else gets 404 (not 403),
- * so project ids can't be probed. A draft is only visible to its leader.
+ * so project ids can't be probed. A draft is only visible to its leader; a project deleted for
+ * everyone (deletedAt) to nobody (its leader restores it through its own route).
  */
 export async function requireActiveMember(
   db: Prisma.TransactionClient,
@@ -18,9 +32,8 @@ export async function requireActiveMember(
     where: { projectId_userId: { projectId, userId } },
     include: { project: true },
   });
-  if (!member || !isActiveMember(member)) throw notFound("Project");
+  if (!member || !canSee(member.project, member)) throw notFound("Project");
   const { project, ...rest } = member;
-  if (project.status === "DRAFT" && rest.role !== "LEADER") throw notFound("Project");
   return { project, member: rest };
 }
 

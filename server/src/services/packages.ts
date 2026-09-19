@@ -1,17 +1,24 @@
-// Picking, switching, assigning, moving and starting (spec §2).
+// Picking, switching, assigning, moving and starting (M3 spec §2; M4 §2 amends starting and moving).
 import type { PersonRef } from "../../../shared/types";
-import type { Package } from "../generated/prisma/client";
+import type { Member, Package, Prisma, Task } from "../generated/prisma/client";
 import { isActiveMember } from "../lib/access";
 import type { Db } from "../lib/db";
 import { AppError, forbidden, notFound } from "../lib/errors";
-import { FINISHED_STATUSES, isFinished, isLocked, packageStarted, releaseTaskData } from "../lib/package-state";
+import { FINISHED_WHERE, isFinished, isLocked, packageStarted, releaseTaskData, UNFINISHED_WHERE } from "../lib/package-state";
 import { bumpPackages, notify, recordEvent, remindPackageless, voidSwaps } from "./notify";
-import type { DevTaskStatus } from "./schemas";
 import { lockAsMember, TX_OPTIONS, type Tx } from "./tx";
 
 export const packageTaken = () => new AppError(409, "PACKAGE_TAKEN", "Someone just took this package");
 export const ownPackageStarted = () => new AppError(409, "PACKAGE_STARTED", "You've started, so you can't switch packages");
 const leaderOnlyManages = () => new AppError(409, "LEADER_ONLY_MANAGES", "A leader who only manages doesn't pick a package");
+
+/**
+ * Tasks with a submission waiting for the leader (交了就不换手, M4 spec §15 #1): they never change hands.
+ * When their package does, they stay with the submitter and leave the package (packageId = null), like a
+ * leaver's REVIEWING task.
+ */
+export const UNDER_REVIEW_WHERE = { attempts: { some: { status: "PENDING" } } } satisfies Prisma.TaskWhereInput;
+export const NOT_UNDER_REVIEW_WHERE = { attempts: { none: { status: "PENDING" } } } satisfies Prisma.TaskWhereInput;
 
 /** A member as payloads snapshot them. */
 export const personRef = (m: { id: string; user: { name: string } }): PersonRef => ({ memberId: m.id, name: m.user.name });
@@ -31,19 +38,19 @@ export async function isPackageStarted(tx: Tx, pkg: Pick<Package, "id" | "ownerI
   const tasks = await tx.task.findMany({
     where: {
       packageId: pkg.id,
-      OR: [{ startedById: pkg.ownerId }, { ownerId: pkg.ownerId, status: { in: [...FINISHED_STATUSES] } }],
+      OR: [{ startedById: pkg.ownerId }, { AND: [{ ownerId: pkg.ownerId }, FINISHED_WHERE] }],
     },
-    select: { packageId: true, ownerId: true, status: true, startedAt: true, startedById: true },
+    select: { packageId: true, ownerId: true, status: true, grade: true, startedAt: true, startedById: true },
   });
   return packageStarted(pkg, tasks);
 }
 
-/** Gives a free package to `memberId`; its unfinished tasks nobody owns become theirs. */
+/** Gives a free package to `memberId`; its unfinished tasks nobody owns (and nobody submitted) become theirs. */
 async function claimPackage(tx: Tx, packageId: string, memberId: string): Promise<void> {
   const { count } = await tx.package.updateMany({ where: { id: packageId, ownerId: null }, data: { ownerId: memberId } });
   if (count !== 1) throw packageTaken();
   await tx.task.updateMany({
-    where: { packageId, ownerId: null, status: { notIn: [...FINISHED_STATUSES] } },
+    where: { packageId, ownerId: null, AND: [UNFINISHED_WHERE, NOT_UNDER_REVIEW_WHERE] },
     data: { ownerId: memberId },
   });
 }
@@ -67,10 +74,15 @@ export async function pickPackage(db: Db, projectId: string, packageId: string, 
       // the switcher holds in it goes back to nobody, so whoever picks the package next gets it. A package
       // that isn't started holds no locked task its owner started and nothing its owner finished, so any
       // locked one was started by someone else (or handed back): it keeps its progress and starter, and
-      // the next picker doesn't count as started (REQUIREMENTS §13). Finished work never changes hands.
+      // the next picker doesn't count as started (REQUIREMENTS §13). Finished work never changes hands,
+      // and neither does a submission waiting for review: it stays the switcher's, outside the package.
       await tx.package.update({ where: { id: current.id }, data: { ownerId: null } });
       await tx.task.updateMany({
-        where: { packageId: current.id, ownerId: member.id, status: { notIn: [...FINISHED_STATUSES] } },
+        where: { packageId: current.id, ownerId: member.id, AND: [UNFINISHED_WHERE, UNDER_REVIEW_WHERE] },
+        data: { packageId: null },
+      });
+      await tx.task.updateMany({
+        where: { packageId: current.id, ownerId: member.id, AND: [UNFINISHED_WHERE] },
         data: { ownerId: null },
       });
       await voidSwaps(tx, { projectId, memberIds: [member.id], reason: "SWITCHED", voidedById: member.id, now, notify: true });
@@ -139,7 +151,11 @@ export async function assignPackage(
 
 /**
  * Leader: moves one unfinished task into another package. Into an owned package it changes hands and
- * keeps its progress; into a free package it is released. Both owners hear about it (never the leader).
+ * keeps its progress (and its evidence); into a free package it is released. Both owners hear about it
+ * (never the leader). A task waiting for review can't move (TASK_UNDER_REVIEW: grade it first). A task
+ * in no package (a leaver's, released after grading, or a failed submission that stayed with its owner
+ * when they switched or swapped) may move too: there is no 「from」 package then, and a still-active
+ * owner hears about it all the same.
  */
 export async function moveTask(
   db: Db,
@@ -156,10 +172,13 @@ export async function moveTask(
     const dest = await tx.package.findFirst({ where: { id: packageId, projectId }, include: { owner: { include: WITH_NAME } } });
     if (!dest) throw notFound("Package");
     if (isFinished(task)) throw new AppError(409, "TASK_FINISHED", "This task is finished, so it can't be moved");
-    // Only finished work of people who left has no package, and finished tasks don't move.
-    if (task.packageId === null) throw new AppError(400, "VALIDATION", "This task isn't in a package");
+    if (await tx.attempt.count({ where: { taskId: task.id, status: "PENDING" } })) {
+      throw new AppError(409, "TASK_UNDER_REVIEW", "They've already submitted this. Grade it first, then move it");
+    }
     if (task.packageId === dest.id) throw new AppError(400, "VALIDATION", "The task is already in this package");
-    const from = await tx.package.findUniqueOrThrow({ where: { id: task.packageId } });
+    const from = task.packageId === null ? null : await tx.package.findUniqueOrThrow({ where: { id: task.packageId } });
+    // 已交的证据跟着任务走: evidence of any attempt stays with the task.
+    const hasEvidence = (await tx.evidence.count({ where: { taskId: task.id } })) > 0;
 
     await tx.task.update({
       where: { id: task.id },
@@ -183,9 +202,9 @@ export async function moveTask(
           taskId: task.id,
           title: task.title,
           from: oldOwner ? personRef(oldOwner) : null,
-          fromPackageIndex: from.index,
+          fromPackageIndex: from?.index ?? null,
           toPackageIndex: dest.index,
-          hasEvidence: false,
+          hasEvidence,
         },
         now,
       });
@@ -199,7 +218,7 @@ export async function moveTask(
         payload: {
           taskId: task.id,
           title: task.title,
-          fromPackageIndex: from.index,
+          fromPackageIndex: from?.index ?? null,
           to: newOwner ? personRef(newOwner) : null,
           toPackageIndex: dest.index,
         },
@@ -210,75 +229,57 @@ export async function moveTask(
       projectId,
       actorId: leader.id,
       type: "TASK_MOVED",
-      payload: { taskId: task.id, title: task.title, fromPackageIndex: from.index, toPackageIndex: dest.index },
+      payload: { taskId: task.id, title: task.title, fromPackageIndex: from?.index ?? null, toPackageIndex: dest.index },
       now,
     });
     await bumpPackages(tx, projectId);
   }, TX_OPTIONS);
 }
 
-/** 开始做: only the task's owner; already started → no-op. Starting ends the owner's pending swaps. */
+export type StartOptions = {
+  /** False: only a never-started task starts (case a); never re-attribute (组长代为完成). Default true. */
+  allowReattribute?: boolean;
+};
+
+/**
+ * Starting (开工, M4 spec §2), under the caller's project lock; the caller bumps. (a) Not started yet:
+ * `member` starts it (TODO → DOING). (b) Started by someone else but now owned by `member` (a task moved
+ * in half-done): the start becomes theirs (REQUIREMENTS §13: 要你自己开始做才算), keeping the original
+ * startedAt. Both end `member`'s pending swaps (reason STARTED) and add TASK_STARTED to the feed.
+ * (c) Anything else changes nothing. Returns whether it changed the task.
+ */
+export async function startUnderLock(
+  tx: Tx,
+  task: Pick<Task, "id" | "projectId" | "title" | "status" | "ownerId" | "startedAt" | "startedById">,
+  member: Pick<Member, "id">,
+  now: Date,
+  opts: StartOptions = {},
+): Promise<boolean> {
+  if (task.startedAt === null) {
+    await tx.task.update({
+      where: { id: task.id },
+      data: { startedAt: now, startedById: member.id, ...(task.status === "TODO" ? { status: "DOING" as const } : {}) },
+    });
+  } else if ((opts.allowReattribute ?? true) && task.startedById !== member.id && task.ownerId === member.id) {
+    await tx.task.update({ where: { id: task.id }, data: { startedById: member.id } });
+  } else {
+    return false;
+  }
+  await voidSwaps(tx, { projectId: task.projectId, memberIds: [member.id], reason: "STARTED", voidedById: member.id, now, notify: true });
+  await recordEvent(tx, { projectId: task.projectId, actorId: member.id, type: "TASK_STARTED", payload: { taskId: task.id, title: task.title }, now });
+  return true;
+}
+
+/**
+ * 开始做: only the task's owner. Starts it, or makes a moved-in task someone else started theirs
+ * (startUnderLock); otherwise a no-op. Starting ends the owner's pending swaps.
+ */
 export async function startTask(db: Db, projectId: string, taskId: string, userId: string, now = new Date()): Promise<void> {
   await db.$transaction(async (tx) => {
     const { member } = await lockAsMember(tx, projectId, userId);
     const task = await tx.task.findFirst({ where: { id: taskId, projectId } });
     if (!task) throw notFound("Task");
     if (task.ownerId !== member.id) throw forbidden("Only the task's owner can start it");
-    if (task.startedAt !== null) return;
-
-    await tx.task.update({
-      where: { id: task.id },
-      data: { startedAt: now, startedById: member.id, ...(task.status === "TODO" ? { status: "DOING" as const } : {}) },
-    });
-    await voidSwaps(tx, { projectId, memberIds: [member.id], reason: "STARTED", voidedById: member.id, now, notify: true });
-    await recordEvent(tx, { projectId, actorId: member.id, type: "TASK_STARTED", payload: { taskId: task.id, title: task.title }, now });
-    await bumpPackages(tx, projectId);
-  }, TX_OPTIONS);
-}
-
-/**
- * Development only (POST /api/dev/tasks/:taskId/status): an active member of the task's project (404
- * otherwise) sets a status on a task that has an owner and a package. Leaving TODO counts as the owner
- * starting it (their swaps end, as with 开始做), and so does finishing it, even when someone else
- * started it (REQUIREMENTS §13 开工); TODO clears the start.
- */
-export async function setDevTaskStatus(
-  db: Db,
-  taskId: string,
-  userId: string,
-  status: DevTaskStatus,
-  now = new Date(),
-): Promise<void> {
-  const found = await db.task.findUnique({ where: { id: taskId }, select: { projectId: true } });
-  if (!found) throw notFound("Task");
-  await db.$transaction(async (tx) => {
-    const { project } = await lockAsMember(tx, found.projectId, userId);
-    const task = await tx.task.findUnique({ where: { id: taskId } });
-    if (!task) throw notFound("Task");
-    if (task.ownerId === null || task.packageId === null) {
-      throw new AppError(409, "CONFLICT", "Only a task with an owner and a package can change status here");
-    }
-
-    if (status === "TODO") {
-      await tx.task.update({ where: { id: task.id }, data: { status, startedAt: null, startedById: null } });
-    } else {
-      const starting = task.startedAt === null;
-      const finishing = isFinished({ status }) && !isFinished(task);
-      await tx.task.update({
-        where: { id: task.id },
-        data: { status, ...(starting ? { startedAt: now, startedById: task.ownerId } : {}) },
-      });
-      if (starting || finishing) {
-        await voidSwaps(tx, {
-          projectId: project.id,
-          memberIds: [task.ownerId],
-          reason: "STARTED",
-          voidedById: task.ownerId,
-          now,
-          notify: true,
-        });
-      }
-    }
-    await bumpPackages(tx, project.id);
+    if (await startUnderLock(tx, task, member, now)) await bumpPackages(tx, projectId);
   }, TX_OPTIONS);
 }

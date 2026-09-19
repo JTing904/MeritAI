@@ -3,11 +3,12 @@ import { z } from "zod";
 import { profileColor } from "../../../shared/constants";
 import type { DevPerson, LoginResult } from "../../../shared/types";
 import type { AppEnv } from "../app";
-import { createSession, devLoginEnabled, requireUser, toMe } from "../lib/auth";
+import { createSession, requireUser, toMe } from "../lib/auth";
 import { readBody } from "../lib/body";
+import { devLoginEnabled } from "../lib/dev-gate";
 import { notFound } from "../lib/errors";
 import { ok } from "../lib/http";
-import { setDevTaskStatus } from "../services/packages";
+import { setDevTaskStatus } from "../services/dev-tasks";
 import { DevStatusSchema } from "../services/schemas";
 
 // Developer one-tap login. Every route answers 404 unless dev login is enabled,
@@ -40,7 +41,7 @@ devRoutes.post("/login", async (c) => {
   return ok<LoginResult>(c, { token, user: toMe(user) });
 });
 
-// Until M4 grades tasks, this is how testers mark one started, done or half done: signed in, and only
+// How testers mark a task started, done or half done without going through evidence and grading: signed in, and only
 // in a project they are an active member of (dev login alone must not reach other people's projects).
 devRoutes.post("/tasks/:taskId/status", async (c) => {
   const user = await requireUser(c);

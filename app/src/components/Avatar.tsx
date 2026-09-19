@@ -36,7 +36,7 @@ export function Avatar({
         alignItems: 'center',
         justifyContent: 'center',
       }}>
-      <Txt v="body" size={s.glyph} weight={900} color="onHl" style={{ lineHeight: Math.round(s.glyph * 1.2) }}>
+      <Txt v="body" size={s.glyph} weight={900} color="onHl" style={{ lineHeight: Math.round(s.glyph * 1.2) }} maxFontSizeMultiplier={1.2}>
         {glyph}
       </Txt>
     </View>

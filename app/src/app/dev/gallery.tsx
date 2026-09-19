@@ -1,3 +1,4 @@
+import { Redirect } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { Avatar, AvatarStack } from '@/components/Avatar';
@@ -16,8 +17,12 @@ import { useTheme } from '@/theme';
 import { HIGHLIGHTERS } from '@/theme/tokens';
 
 // Developer page: every shared component in both themes, to compare against the prototype on a real device.
-// Sample names below are placeholders for the check only.
-export default function Gallery() {
+// Sample names below are placeholders for the check only. Development builds only (the route is also guarded).
+export default function GalleryRoute() {
+  return __DEV__ ? <Gallery /> : <Redirect href="/" />;
+}
+
+function Gallery() {
   const { t } = useI18n();
   const { c } = useTheme();
   const toast = useToast();

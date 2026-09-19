@@ -1,11 +1,11 @@
 import type { Href } from 'expo-router';
-import { formatTotal } from '@shared/planning';
-import type { NotificationView } from '@shared/types';
+import { formatPoints, formatTotal } from '@shared/planning';
+import type { Grade, NotificationView } from '@shared/types';
 import type { Messages } from '@/i18n/zh';
 import type { InlinePart } from '@/i18n/sections/home.zh';
 import type { Highlighter } from '@/theme/tokens';
 
-export type NotifAction = 'decline' | 'accept' | 'resplit' | 'pick';
+export type NotifAction = 'decline' | 'accept' | 'resplit' | 'pick' | 'openTask' | 'grade';
 
 export type NotifLook = {
   emoji: string;
@@ -21,6 +21,13 @@ export type NotifLook = {
 
 type Copy = Messages['notifs'];
 
+/** Tile of a grade notification (M4 spec §8): full ✅ mint, 拿一半 🌓 tang, 不通过 ❌ tang. */
+function gradeTile(grade: Grade): Pick<NotifLook, 'emoji' | 'tint'> {
+  if (grade === 'HALF') return { emoji: '🌓', tint: 'tang' };
+  if (grade === 'FAIL') return { emoji: '❌', tint: 'tang' };
+  return { emoji: '✅', tint: 'mint' };
+}
+
 /** The reason shown on a void swap request, as the person who was asked reads it. */
 function requestVoidReason(swap: NonNullable<NotificationView['swap']>, copy: Copy['request']['reason']): string | null {
   switch (swap.voidReason) {
@@ -34,6 +41,8 @@ function requestVoidReason(swap: NonNullable<NotificationView['swap']>, copy: Co
       return swap.voidedByRequester ? copy.LEFT : null;
     case 'RESPLIT':
       return copy.RESPLIT;
+    case 'PROJECT_DELETED':
+      return copy.PROJECT_DELETED;
     default:
       return null;
   }
@@ -63,7 +72,7 @@ function swapRequestParts(n: NotificationView, p: Extract<NotificationView['payl
 }
 
 /**
- * Emoji, tint, text, buttons and tap target of one notification (M3 spec §8). Null for a type this
+ * Emoji, tint, text, buttons and tap target of one notification (M3 and M4 spec §8). Null for a type this
  * version of the app doesn't know (an older APK talking to a newer server): the list skips it.
  */
 export function describeNotification(n: NotificationView, copy: Copy): NotifLook | null {
@@ -71,6 +80,8 @@ export function describeNotification(n: NotificationView, copy: Copy): NotifLook
   const id = n.projectId;
   const open = n.projectOpen && id !== null;
   const projectHref: Href | null = open ? { pathname: '/project/[id]', params: { id } } : null;
+  const taskHref = (taskId: string, grade = false): Href | null =>
+    open ? { pathname: '/project/[id]/task/[taskId]', params: grade ? { id, taskId, grade: '1' } : { id, taskId } } : null;
   const p = n.payload;
 
   switch (p.type) {
@@ -113,9 +124,13 @@ export function describeNotification(n: NotificationView, copy: Copy): NotifLook
         href: projectHref,
       };
     case 'TASK_MOVED_IN': {
-      const parts = p.from
-        ? copy.movedIn.fromOwned(p.title, p.from.name, p.toPackageIndex)
-        : copy.movedIn.fromFree(p.title, p.fromPackageIndex, p.toPackageIndex);
+      // In no package before: 「从 X 的包」 wouldn't be true even when someone held it.
+      const parts =
+        p.fromPackageIndex === null
+          ? copy.movedIn.fromNowhere(p.title, p.toPackageIndex)
+          : p.from
+            ? copy.movedIn.fromOwned(p.title, p.from.name, p.toPackageIndex)
+            : copy.movedIn.fromFree(p.title, p.fromPackageIndex, p.toPackageIndex);
       return {
         emoji: '↔️',
         tint: 'sky',
@@ -124,16 +139,18 @@ export function describeNotification(n: NotificationView, copy: Copy): NotifLook
         href: projectHref,
       };
     }
-    case 'TASK_MOVED_OUT':
-      return {
-        emoji: '↔️',
-        tint: 'sky',
-        parts: p.to
-          ? copy.movedOut.toOwned(p.title, p.fromPackageIndex, p.to.name, p.toPackageIndex)
-          : copy.movedOut.toFree(p.title, p.fromPackageIndex, p.toPackageIndex),
-        actions: [],
-        href: projectHref,
-      };
+    case 'TASK_MOVED_OUT': {
+      const from = p.fromPackageIndex;
+      const parts =
+        from === null
+          ? p.to
+            ? copy.movedOut.fromNowhereToOwned(p.title, p.to.name, p.toPackageIndex)
+            : copy.movedOut.fromNowhereToFree(p.title, p.toPackageIndex)
+          : p.to
+            ? copy.movedOut.toOwned(p.title, from, p.to.name, p.toPackageIndex)
+            : copy.movedOut.toFree(p.title, from, p.toPackageIndex);
+      return { emoji: '↔️', tint: 'sky', parts, actions: [], href: projectHref };
+    }
     case 'RESPLIT': {
       const pkg = p.package;
       if (pkg) {
@@ -157,7 +174,18 @@ export function describeNotification(n: NotificationView, copy: Copy): NotifLook
     case 'PACKAGE_ASSIGNED':
       return { emoji: '📦', tint: 'gum', parts: copy.assigned(p.packageIndex), actions: [], href: projectHref };
     case 'LEADER_TRANSFERRED':
-      return { emoji: '👑', tint: 'lemon', parts: copy.leaderTransferred(p.from.name), actions: [], href: projectHref };
+      return {
+        emoji: '👑',
+        tint: 'lemon',
+        parts: p.leftAfter ? copy.leaderTransferredLeft(p.from.name, tag) : copy.leaderTransferred(p.from.name),
+        actions: [],
+        href: projectHref,
+      };
+    // Leader deleted / restored the project: a deleted one can't be opened (projectOpen is false).
+    case 'PROJECT_DELETED':
+      return { emoji: '🗑️', tint: 'sky', parts: copy.projectDeleted(p.leader.name, tag), actions: [], href: projectHref };
+    case 'PROJECT_RESTORED':
+      return { emoji: '♻️', tint: 'mint', parts: copy.projectRestored(p.leader.name, tag), actions: [], href: projectHref };
     case 'MEMBER_LEFT':
       return { emoji: '🚪', tint: 'sky', parts: copy.memberLeft(p.member.name, tag, p.unfinishedCount), actions: [], href: projectHref };
     case 'MEMBER_REMOVED':
@@ -170,6 +198,91 @@ export function describeNotification(n: NotificationView, copy: Copy): NotifLook
       };
     case 'REMOVED_YOU':
       return { emoji: '🚪', tint: 'sky', parts: copy.removedYou(tag), actions: [], href: projectHref };
+    // M4: the task page opens on tap and through the button.
+    case 'SUBMITTED': {
+      const due = new Date(p.dueAt);
+      const parts = copy.submitted({
+        name: p.submitter.name,
+        title: p.title,
+        no: p.attemptNo,
+        count: p.evidenceCount,
+        allFiles: p.allFiles,
+        month: due.getMonth() + 1,
+        day: due.getDate(),
+        late: p.late,
+      });
+      // ?grade=1 opens the grade sheet, only while the attempt is still waiting (the task page checks).
+      const href = taskHref(p.taskId, true);
+      return { emoji: '📨', tint: 'lemon', parts, actions: href ? ['grade'] : [], href };
+    }
+    case 'GRADED': {
+      const href = taskHref(p.taskId);
+      const text = {
+        title: p.title,
+        grade: p.grade,
+        no: p.attemptNo,
+        pts: formatPoints(p.points),
+        earned: formatPoints(p.earned),
+        counting: p.counting,
+      };
+      const redo = p.grade === 'HALF' || p.grade === 'FAIL';
+      return { ...gradeTile(p.grade), parts: copy.graded(text), actions: href && redo ? ['openTask'] : [], href };
+    }
+    case 'GRADED_OUTSIDE': {
+      const href = taskHref(p.taskId);
+      const text = {
+        title: p.title,
+        grade: p.grade,
+        pts: formatPoints(p.points),
+        earned: formatPoints(p.earned),
+        counting: p.counting,
+        note: p.outsideNote,
+      };
+      const redo = p.grade === 'HALF' || p.grade === 'FAIL';
+      return { ...gradeTile(p.grade), parts: copy.gradedOutside(text), actions: href && redo ? ['openTask'] : [], href };
+    }
+    case 'OVERRIDDEN': {
+      const href = taskHref(p.taskId);
+      const text = {
+        title: p.title,
+        from: p.fromGrade,
+        to: p.toGrade,
+        pts: formatPoints(p.points),
+        earned: formatPoints(p.earned),
+        counting: p.counting,
+      };
+      return {
+        ...gradeTile(p.toGrade),
+        parts: p.undone ? copy.overrideUndone(text) : copy.overridden(text),
+        actions: href ? ['openTask'] : [],
+        href,
+      };
+    }
+    case 'WAITING_ON_YOU': {
+      // The leader opens the task that waits; the prereq's owner opens their own task.
+      const href = taskHref(p.forLeader ? p.waitingTaskId : p.prereqTaskId);
+      let parts: InlinePart[];
+      if (p.forLeader) {
+        parts = p.prereqOwner
+          ? copy.waiting.toLeader(p.waiter.name, p.prereqOwner.name, p.prereqTitle)
+          : copy.waiting.toLeaderNoOwner(p.waiter.name, p.prereqTitle);
+      } else if (p.setBy.memberId !== p.waiter.memberId) {
+        parts = copy.waiting.byLeader(p.waiter.name, p.waitingTitle, p.prereqTitle);
+      } else {
+        parts = copy.waiting.byWaiter(p.waiter.name, p.prereqTitle);
+      }
+      return { emoji: '⏰', tint: 'lilac', parts, actions: href ? ['openTask'] : [], href };
+    }
+    case 'PREREQ_DONE': {
+      const href = taskHref(p.waitingTaskId);
+      return {
+        emoji: '🔨',
+        tint: 'sky',
+        parts: copy.prereqDone(p.prereqTitle, p.waitingTitle),
+        actions: href ? ['openTask'] : [],
+        href,
+      };
+    }
     default:
       return null;
   }

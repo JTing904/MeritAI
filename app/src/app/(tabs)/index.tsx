@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, RefreshControl, View } from 'react-native';
-import type { PendingInvite, ProjectCard as ProjectCardData, ProjectView } from '@shared/types';
+import type { DeletedProjectCard, PendingInvite, ProjectCard as ProjectCardData, ProjectView } from '@shared/types';
 import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/Button';
 import { Card, SectionHeader } from '@/components/Card';
@@ -11,11 +11,12 @@ import { Rich } from '@/components/Rich';
 import { Screen } from '@/components/Screen';
 import { useToast } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
+import { dueSoonLine } from '@/features/home/dueSoon';
 import { EmptyHome } from '@/features/home/EmptyHome';
 import { Fab, FAB_SPACE } from '@/features/home/Fab';
-import { givenName } from '@/features/home/format';
+import { givenName, projectTag } from '@/features/home/format';
 import { InviteCard } from '@/features/home/InviteCard';
-import { DraftCard, ProjectCard } from '@/features/home/ProjectCard';
+import { DeletedCard, DraftCard, ProjectCard } from '@/features/home/ProjectCard';
 import { useHome } from '@/features/home/useHome';
 import { draftStepHref } from '@/features/wizard/nav';
 import { useI18n } from '@/i18n';
@@ -32,9 +33,10 @@ export default function HomeScreen() {
   const home = useHome();
   const [answering, setAnswering] = useState<{ id: string; kind: 'accept' | 'decline' } | null>(null);
   const [deleting, setDeleting] = useState<ProjectCardData | null>(null);
+  const [restoring, setRestoring] = useState<string | null>(null);
 
   const data = home.data;
-  const empty = data !== null && data.projects.length === 0;
+  const empty = data !== null && data.projects.length === 0 && data.deletedProjects.length === 0;
 
   const answer = async (invite: PendingInvite, kind: 'accept' | 'decline') => {
     setAnswering({ id: invite.id, kind });
@@ -69,6 +71,21 @@ export default function HomeScreen() {
     void home.reload();
   };
 
+  const restore = async (project: DeletedProjectCard) => {
+    if (restoring) return;
+    setRestoring(project.id);
+    try {
+      await request<null>(`/projects/${encodeURIComponent(project.id)}/restore`, { method: 'POST' });
+      home.patch((d) => ({ ...d, deletedProjects: d.deletedProjects.filter((p) => p.id !== project.id) }));
+      show(t.home.deleted.restored(projectTag(project.name, project.shortCode)));
+    } catch (err) {
+      show(t.errors[errorCode(err)]);
+    } finally {
+      setRestoring(null);
+      void home.reload();
+    }
+  };
+
   return (
     <View style={{ flex: 1 }}>
       <Screen
@@ -93,7 +110,7 @@ export default function HomeScreen() {
           <Rich parts={[t.home.hello.before, { hl: 'lemon', text: givenName(me.name) }, t.home.hello.after]} />
           {data && (
             <Txt v="text" color="muted" style={{ marginTop: 4 }}>
-              {empty ? t.home.subWelcome : t.home.subIdle}
+              {empty ? t.home.subWelcome : dueSoonLine(data.dueSoon, t.home)}
             </Txt>
           )}
         </View>
@@ -144,6 +161,9 @@ export default function HomeScreen() {
                 />
               ),
             )}
+            {data.deletedProjects.map((p) => (
+              <DeletedCard key={p.id} project={p} busy={restoring === p.id} onRestore={() => void restore(p)} />
+            ))}
           </>
         )}
 

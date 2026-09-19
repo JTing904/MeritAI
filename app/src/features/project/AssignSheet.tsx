@@ -49,7 +49,7 @@ export function AssignSheet({
   };
 
   return (
-    <Sheet visible onClose={busy ? () => {} : onClose} title={a.title(pkg.index)}>
+    <Sheet visible onClose={onClose} title={a.title(pkg.index)}>
       <Txt v="small" color="ink2">
         {a.body}
       </Txt>

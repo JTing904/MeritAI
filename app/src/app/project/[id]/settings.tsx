@@ -13,6 +13,7 @@ import { Icon } from '@/components/Icon';
 import { AppBar, Screen } from '@/components/Screen';
 import { useToast } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
+import { DeleteProjectSheet } from '@/features/members/DeleteProjectSheet';
 import { activeMembers, peopleLabel } from '@/features/members/format';
 import { InviteCodeBox } from '@/features/members/InvitePanel';
 import { LoadState } from '@/features/members/LoadState';
@@ -149,7 +150,7 @@ function Settings({
         ) : null}
       </Card>
 
-      {leader ? <LeaderOnly /> : null}
+      {leader ? <LeaderOnly project={project} onError={onError} /> : null}
 
       {editing && leader ? (
         <ProjectInfoSheet project={project} onClose={() => setEditing(false)} onSaved={setProject} onError={onError} />
@@ -158,10 +159,15 @@ function Settings({
   );
 }
 
-/** AI key, integrations and 结束项目 exactly as the mockup, disabled until their milestones. */
-function LeaderOnly() {
+/**
+ * AI key, integrations and 结束项目 exactly as the mockup, disabled until their milestones; then the
+ * working 删除项目 card (为所有人删除项目).
+ */
+function LeaderOnly({ project, onError }: { project: ProjectView; onError: (err: unknown) => void }) {
   const { t } = useI18n();
   const s = t.members.settings;
+  const [deleting, setDeleting] = useState(false);
+  const tag = projectTag(project.basics.name, project.basics.shortCode);
   return (
     <>
       <Card style={{ gap: 10 }}>
@@ -236,6 +242,21 @@ function LeaderOnly() {
         <Button title={s.endButton} kind="danger" block disabled />
       </Card>
       <DevNote milestone="M5" />
+
+      <Card style={{ gap: 10 }}>
+        <Txt v="body" weight={700} color="bad">
+          {s.deleteTitle}
+        </Txt>
+        <Hint>{s.deleteHint}</Hint>
+        <Button title={s.deleteButton} kind="danger" block onPress={() => setDeleting(true)} />
+      </Card>
+      <DeleteProjectSheet
+        visible={deleting}
+        projectId={project.basics.id}
+        tag={tag}
+        onClose={() => setDeleting(false)}
+        onError={onError}
+      />
     </>
   );
 }

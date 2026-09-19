@@ -6,8 +6,16 @@ import { readPref, writePref } from '@/lib/prefs';
 // draft is kept) and an app restart on this device.
 
 const memory = new Map<string, string>();
+// Bumped on sign-out: a step still on screen then must not write its text back afterwards.
+let epoch = 0;
 const storageKey = (draftId: string) => `meritai.brief.${draftId}`;
 const SAVE_DELAY_MS = 400;
+
+/** Sign-out: forget every draft's typed text in memory (storage is cleared by clearUserPrefs). */
+export function forgetTypedBriefs() {
+  epoch++;
+  memory.clear();
+}
 
 /** Whether text typed for this draft is waiting in memory (known before the first render). */
 export const hasTypedBrief = (draftId: string) => memory.has(draftId);
@@ -23,13 +31,20 @@ export function useTypedBrief(draftId: string, onRestore?: () => void) {
   const pending = useRef<string | null>(null);
   const restored = useRef(onRestore);
   restored.current = onRestore;
+  const born = useRef(epoch);
+  const save = useCallback(
+    (value: string | null) => {
+      if (born.current === epoch) void writePref(storageKey(draftId), value);
+    },
+    [draftId],
+  );
 
   // After an app restart the text is only in storage.
   useEffect(() => {
     if (touched.current) return;
     let alive = true;
     void readPref(storageKey(draftId)).then((saved) => {
-      if (!alive || !saved || touched.current) return;
+      if (!alive || !saved || touched.current || born.current !== epoch) return;
       memory.set(draftId, saved);
       setTextState(saved);
       restored.current?.();
@@ -45,15 +60,16 @@ export function useTypedBrief(draftId: string, onRestore?: () => void) {
       if (timer.current === null) return;
       clearTimeout(timer.current);
       timer.current = null;
-      void writePref(storageKey(draftId), pending.current);
+      save(pending.current);
     },
-    [draftId],
+    [save],
   );
 
   const setText = useCallback(
     (value: string) => {
       touched.current = true;
       setTextState(value);
+      if (born.current !== epoch) return;
       const kept = value.trim() ? value : null;
       if (kept) memory.set(draftId, kept);
       else memory.delete(draftId);
@@ -61,10 +77,10 @@ export function useTypedBrief(draftId: string, onRestore?: () => void) {
       if (timer.current !== null) clearTimeout(timer.current);
       timer.current = setTimeout(() => {
         timer.current = null;
-        void writePref(storageKey(draftId), kept);
+        save(kept);
       }, SAVE_DELAY_MS);
     },
-    [draftId],
+    [draftId, save],
   );
 
   const clear = useCallback(() => {

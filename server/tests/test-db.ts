@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { assertLocalDatabaseUrl } from "../scripts/local-db-guard";
 
 const NAME = /^[A-Za-z0-9_]{1,63}$/;
 
@@ -12,6 +13,8 @@ const databaseName = (url: string) => decodeURIComponent(new URL(url).pathname.r
 export function testDatabaseUrl(): string {
   const base = process.env.TEST_DATABASE_URL;
   if (!base) throw new Error("TEST_DATABASE_URL is not set (see .env.example)");
+  // The tests truncate every table: never anything but a database on this machine (A22).
+  assertLocalDatabaseUrl(base, "TEST_DATABASE_URL");
   const name = testDatabaseOverride();
   if (!name) return base;
   const url = new URL(base);

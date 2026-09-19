@@ -15,6 +15,15 @@ export function givenName(fullName: string): string {
   return name.split(/\s+/)[0] || name;
 }
 
+/**
+ * 为所有人删除项目: the typed text must be the project tag, ignoring case and spaces (「cs 302」 matches
+ * 「CS302」). The app and the server both check it.
+ */
+export function deleteConfirmMatches(typed: string, tag: string): boolean {
+  const norm = (s: string) => s.replace(/\s+/g, '').toLowerCase();
+  return norm(tag) !== '' && norm(typed) === norm(tag);
+}
+
 /** The project tag (card tag, notification meta): the short code, or the first few characters of the name. */
 export function projectTag(name: string, shortCode: string | null): string {
   const code = shortCode?.trim();

@@ -1,16 +1,54 @@
-// Copy for the notifications tab (owned by the notifs feature). Notification texts: M3 spec §8, verbatim.
+// Copy for the notifications tab (owned by the notifs feature). Notification texts: M3 spec §8 and M4 spec §8
+// (NotifsM4 mockup), verbatim.
 import type { InlinePart } from './home.zh';
+import { labelsZh } from './labels.zh';
+
+export type GradeKey = keyof typeof labelsZh.grade;
+/** The four levels a leader grades with. */
+export type LevelKey = Exclude<GradeKey, 'SELF'>;
+
+/** Points already formatted (formatPoints). `earned`: what the task earns after the write (its counting grade). */
+export type GradeText = { title: string; grade: LevelKey; no: number; pts: string; earned: string; counting: boolean };
+export type OutsideText = Omit<GradeText, 'no'> & { note: string | null };
+export type OverrideText = { title: string; from: GradeKey; to: GradeKey; pts: string; earned: string; counting: boolean };
+export type SubmittedText = {
+  name: string;
+  title: string;
+  no: number;
+  count: number;
+  /** Every piece is a file (「份文件」, else 「份证据」). */
+  allFiles: boolean;
+  month: number;
+  day: number;
+  late: boolean;
+};
+
+const isFull = (g: GradeKey) => g === 'EXCELLENT' || g === 'PASS' || g === 'SELF';
+
+/** GRADED / GRADED_OUTSIDE: what the grade is worth (not counting: the earlier, better attempt still counts). */
+const gradeGain = (g: GradeText | OutsideText) => {
+  if (!g.counting) return `仍按之前的 ${g.earned} 分`;
+  if (isFull(g.grade)) return `拿满 ${g.pts} 分`;
+  return g.grade === 'HALF' ? `现在拿 ${g.earned} 分，改好重交可以拿满` : '0 分，改好可以重交';
+};
+
+/** OVERRIDDEN: the task's points after the change. */
+const overrideGain = (o: OverrideText) => {
+  if (!o.counting) return `仍按 ${o.earned} 分`;
+  if (isFull(o.to)) return `拿满 ${o.pts} 分`;
+  return o.to === 'HALF' ? `现在拿 ${o.earned} 分` : '0 分';
+};
 
 export const notifsZh = {
   title: '通知',
   filterLabel: '通知筛选',
   filter: { all: '全部', mine: '跟我有关' },
   /** Meta line: {projectTag} · {audience} · {relative time}. */
-  audience: { GROUP: '全组都收到', ONLY_YOU: '只有你收到', ONLY_LEADER: '只有组长收到' },
+  audience: { GROUP: '全组都收到', ONLY_YOU: '只有你收到', ONLY_LEADER: '只有组长收到', YOU_AND_LEADER: '只有你和组长收到' },
   unread: '未读',
   empty: '还没有通知',
   footer: '提醒只跟截止日期走：到期前 24 小时提醒负责人，过期了通知全组，每种只发一次。',
-  actions: { decline: '拒绝', accept: '同意互换', resplit: '重新分包', pick: '去选任务包' },
+  actions: { decline: '拒绝', accept: '同意互换', resplit: '重新分包', pick: '去选任务包', openTask: '打开任务', grade: '去评级' },
   toast: {
     accepted: (n: number) => `互换好了！任务包 ${n} 是你的了`,
     declined: '已拒绝互换',
@@ -38,6 +76,7 @@ export const notifsZh = {
       SWAPPED_ELSEWHERE: '其中一个包已经换给别人了',
       LEFT: 'TA 退出了项目',
       RESPLIT: '组长重新分了包',
+      PROJECT_DELETED: '组长删除过这个项目',
     },
   },
 
@@ -71,6 +110,8 @@ export const notifsZh = {
       ` 的包移到了你的「任务包 ${n}」。`,
     ],
     fromFree: (title: string, m: number, n: number): InlinePart[] => [`组长把「${title}」从「任务包 ${m}」移到了你的「任务包 ${n}」。`],
+    /** A leaver's released task, in no package (M4). */
+    fromNowhere: (title: string, n: number): InlinePart[] => [`组长把「${title}」移到了你的「任务包 ${n}」。`],
     evidence: '已交的证据也一起移过来了。',
   },
   movedOut: {
@@ -82,6 +123,13 @@ export const notifsZh = {
     toFree: (title: string, m: number, n: number): InlinePart[] => [
       `组长把「${title}」从你的「任务包 ${m}」移到了「任务包 ${n}」（还没人选）。`,
     ],
+    /** It was in no package before (M4: a submission that stayed with you, then 不通过). */
+    fromNowhereToOwned: (title: string, to: string, n: number): InlinePart[] => [
+      `组长把「${title}」移到了 `,
+      { b: to },
+      ` 的「任务包 ${n}」。`,
+    ],
+    fromNowhereToFree: (title: string, n: number): InlinePart[] => [`组长把「${title}」移到了「任务包 ${n}」（还没人选）。`],
   },
   resplit: {
     same: (n: number, pts: string): InlinePart[] => [
@@ -95,6 +143,19 @@ export const notifsZh = {
   },
   assigned: (n: number): InlinePart[] => [`组长把「任务包 ${n}」指派给了你。还没开工时，你也可以换到别的空包。`],
   leaderTransferred: (from: string): InlinePart[] => [{ b: from }, ' 把组长转给了你。现在你可以管理任务、成员和项目设置。'],
+  /** LEADER_TRANSFERRED with leftAfter: the old leader left right after (leave-as-leader). */
+  leaderTransferredLeft: (from: string, tag: string): InlinePart[] => [
+    { b: from },
+    ` 把组长转给了你，然后退出了 ${tag}。现在你可以管理任务、成员和项目设置。`,
+  ],
+  projectDeleted: (leader: string, tag: string): InlinePart[] => [
+    '组长 ',
+    { b: leader },
+    ' 删除了 ',
+    { b: tag },
+    '。7 天后会彻底删除；如果组长恢复了，项目会回到你的首页。你的徽章会保留。',
+  ],
+  projectRestored: (leader: string, tag: string): InlinePart[] => ['组长 ', { b: leader }, ' 恢复了 ', { b: tag }, '，项目回到了你的首页。'],
   memberLeft: (name: string, tag: string, unfinished: number): InlinePart[] => [
     { b: name },
     unfinished > 0
@@ -109,4 +170,53 @@ export const notifsZh = {
       : ` 移出了 ${tag}。做完的分数会保留。`,
   ],
   removedYou: (tag: string): InlinePart[] => [`组长把你移出了 ${tag}。你做完的分数会保留在团队报告里。`],
+
+  // M4: tasks and evidence.
+  /** To the leader. A resubmission (no > 1) leaves out the due date unless it was late. */
+  submitted: (x: SubmittedText): InlinePart[] => {
+    const count = `${x.count} 份${x.allFiles ? '文件' : '证据'}`;
+    const due = labelsZh.due.date(x.month, x.day);
+    const last = x.late ? `${count}，截止 ${due}，迟交了。` : x.no > 1 ? `${count}。` : `${count}，截止 ${due}。`;
+    return x.no > 1
+      ? [{ b: x.name }, ` 重交了「${x.title}」（第 ${x.no} 次），请你审核。${last}`]
+      : [{ b: x.name }, ` 交了「${x.title}」，请你审核。${last}`];
+  },
+  graded: (g: GradeText): InlinePart[] => {
+    const word = labelsZh.grade[g.grade];
+    if (!g.counting) return [`第 ${g.no} 次：组长评了你的「${g.title}」：`, { b: word }, `，${gradeGain(g)}。理由在任务页。`];
+    const prefix = g.no > 1 ? `第 ${g.no} 次：` : '';
+    const reason = isFull(g.grade) ? '' : '理由在任务页。';
+    return [`${prefix}组长评了你的「${g.title}」：`, { b: word }, `，${gradeGain(g)}。${reason}`];
+  },
+  gradedOutside: (g: OutsideText): InlinePart[] => [
+    `组长代为完成了你的「${g.title}」：`,
+    { b: labelsZh.grade[g.grade] },
+    `，${gradeGain(g)}。${g.note ? `证据在 App 外交了：「${g.note}」。` : '证据在 App 外交了。'}`,
+  ],
+  overridden: (o: OverrideText): InlinePart[] => [
+    `组长把你的「${o.title}」从「${labelsZh.grade[o.from]}」改成了「${labelsZh.grade[o.to]}」：${overrideGain(o)}。理由在任务页。`,
+  ],
+  overrideUndone: (o: OverrideText): InlinePart[] => [
+    `组长撤销了上次推翻，你的「${o.title}」回到「${labelsZh.grade[o.to]}」：${overrideGain(o)}。`,
+  ],
+  /** WAITING_ON_YOU: to the prereq's owner (set by the waiter or by the leader) or to the leader. */
+  waiting: {
+    byWaiter: (waiter: string, prereq: string): InlinePart[] => [{ b: waiter }, ` 说在等你的「${prereq}」。`],
+    byLeader: (waiter: string, waiting: string, prereq: string): InlinePart[] => [
+      '组长标了 ',
+      { b: waiter },
+      ` 的「${waiting}」要先等你的「${prereq}」。`,
+    ],
+    toLeader: (waiter: string, owner: string, prereq: string): InlinePart[] => [
+      { b: waiter },
+      ' 说在等 ',
+      { b: owner },
+      ` 的「${prereq}」。`,
+    ],
+    toLeaderNoOwner: (waiter: string, prereq: string): InlinePart[] => [
+      { b: waiter },
+      ` 说在等「${prereq}」，那个任务还没人负责。`,
+    ],
+  },
+  prereqDone: (prereq: string, waiting: string): InlinePart[] => [`「${prereq}」做完了，可以开始「${waiting}」了。`],
 };

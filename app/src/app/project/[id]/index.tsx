@@ -6,12 +6,13 @@ import type { PackageView, TaskView } from '@shared/types';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { Seg } from '@/components/Controls';
-import { DevNote } from '@/components/DevNote';
 import { Icon } from '@/components/Icon';
 import { AppBar, Screen } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
 import { AssignSheet } from '@/features/project/AssignSheet';
+import { BriefCard } from '@/features/project/BriefCard';
 import { FeedList, useFeed } from '@/features/project/Feed';
+import { Leaderboard } from '@/features/project/Leaderboard';
 import { ProjectHero } from '@/features/project/Hero';
 import { LeaderTools } from '@/features/project/LeaderTools';
 import { MoveTaskSheet } from '@/features/project/MoveTaskSheet';
@@ -19,13 +20,17 @@ import { NeedsPackageCard, PackagelessBanner } from '@/features/project/NeedsPac
 import { PackageList } from '@/features/project/PackageList';
 import { isFinished } from '@/features/project/parts';
 import { ResplitSheet } from '@/features/project/ResplitSheet';
+import { ReviewQueue } from '@/features/project/ReviewQueue';
 import { useProject } from '@/features/project/useProject';
 import { useI18n } from '@/i18n';
 import { useTheme } from '@/theme';
 
 type Tab = 'packages' | 'rank' | 'feed';
 
-/** Project page (ProjectLeader + NoPackage mockups, proto §4.5). `?open=resplit` opens the re-split sheet. */
+/**
+ * Project page (ProjectLeader, NoPackage and ReviewQueue mockups, proto §4.5). `?open=resplit` opens the
+ * re-split sheet.
+ */
 export default function ProjectScreen() {
   const { id, open } = useLocalSearchParams<{ id: string; open?: string }>();
   const { t } = useI18n();
@@ -48,7 +53,9 @@ export default function ProjectScreen() {
   const someoneWaiting = !!project?.members.some((m) => m.needsPackage);
   const assigning =
     (tools && someoneWaiting && project.packages.find((pkg) => pkg.id === assigningId && pkg.ownerMemberId === null)) || null;
-  const moving = (tools && project.tasks.find((task) => task.id === movingId && !isFinished(task.status))) || null;
+  // A task waiting for review can't move (TASK_UNDER_REVIEW): grade it first.
+  const moving =
+    (tools && project.tasks.find((task) => task.id === movingId && !isFinished(task) && task.status !== 'REVIEWING')) || null;
   // Forget a sheet whose target stopped being valid, so it doesn't reopen if the target becomes valid again.
   useEffect(() => {
     if (assigningId && !assigning) setAssigningId(null);
@@ -116,8 +123,10 @@ export default function ProjectScreen() {
       ) : (
         <>
           <ProjectHero project={project} />
+          <ReviewQueue project={project} />
           <NeedsPackageCard project={project} onResplit={() => setResplitting(true)} />
           {!project.viewerNeedsPackage ? <PackagelessBanner project={project} onResplit={() => setResplitting(true)} /> : null}
+          <BriefCard project={project} />
 
           <Seg
             label={p.tabs.label}
@@ -145,7 +154,7 @@ export default function ProjectScreen() {
               </Txt>
             </>
           ) : tab === 'rank' ? (
-            <DevNote milestone="M4" />
+            <Leaderboard project={project} />
           ) : (
             <View style={{ gap: 12 }}>
               <FeedList project={project} feed={feed} />

@@ -118,9 +118,10 @@ export function useFeed(projectId: string, active: boolean, version: number): Fe
 }
 
 /** One feed sentence (§9): short names, 你 for the viewer. */
-function sentence(item: ActivityView, viewerId: string, f: Messages['project']['feed']): Inline[] {
+function sentence(item: ActivityView, viewerId: string, f: Messages['project']['feed'], grades: Messages['labels']['grade']): Inline[] {
   const person = (p: PersonRef): Who => ({ name: givenName(p.name), you: p.memberId === viewerId });
   const a: Who = item.actor ? person(item.actor) : { name: f.someone, you: false };
+  const someone: Who = { name: f.someone, you: false };
   const p = item.payload;
   switch (p.type) {
     case 'PLAN_CONFIRMED':
@@ -142,13 +143,40 @@ function sentence(item: ActivityView, viewerId: string, f: Messages['project']['
     case 'TASK_ADDED':
       return f.TASK_ADDED(a, p.title, p.packageIndex);
     case 'TASK_MOVED':
-      return f.TASK_MOVED(a, p.title, p.fromPackageIndex, p.toPackageIndex);
+      return p.fromPackageIndex === null
+        ? f.TASK_MOVED_UNPACKAGED(a, p.title, p.toPackageIndex)
+        : f.TASK_MOVED(a, p.title, p.fromPackageIndex, p.toPackageIndex);
     case 'TASK_STARTED':
       return f.TASK_STARTED(a, p.title);
     case 'RESPLIT':
       return f.RESPLIT(a, p.packageCount);
     case 'LEADER_TRANSFERRED':
       return f.LEADER_TRANSFERRED(a, person(p.member));
+    case 'SUBMITTED':
+      return f.SUBMITTED(a, p.title, p.attemptNo);
+    case 'WITHDRAWN':
+      return f.WITHDRAWN(a, p.title);
+    case 'GRADED': {
+      if (p.selfGraded) return f.GRADED_SELF(a, p.title);
+      const owner = p.owner ? person(p.owner) : someone;
+      return p.outsideApp ? f.GRADED_OUTSIDE(a, owner, p.title, grades[p.grade]) : f.GRADED(a, owner, p.title, grades[p.grade]);
+    }
+    case 'OVERRIDDEN':
+      return p.undone
+        ? f.OVERRIDE_UNDONE(a, p.title, grades[p.toGrade])
+        : f.OVERRIDDEN(a, p.owner ? person(p.owner) : someone, p.title, grades[p.fromGrade], grades[p.toGrade]);
+    case 'MEETING_DONE':
+      return f.MEETING_DONE(a, p.title, p.attendeeCount);
+    case 'START_UNDONE':
+      return f.START_UNDONE(a, p.title);
+    case 'PREREQ_SET':
+      return p.cleared || p.prereqTitle === null
+        ? f.PREREQ_CLEARED(a, p.title)
+        : f.PREREQ_SET(a, p.title, p.prereqTitle, p.prereqOwner ? person(p.prereqOwner) : null);
+    case 'PROJECT_DELETED':
+      return f.PROJECT_DELETED(a);
+    case 'PROJECT_RESTORED':
+      return f.PROJECT_RESTORED(a);
   }
 }
 
@@ -187,7 +215,7 @@ export function FeedList({ project, feed }: { project: ProjectView; feed: FeedSt
           <View key={item.id} style={s.item}>
             {item.actor ? <Avatar name={item.actor.name} hl={item.actor.color} size="sm" decorative /> : <View style={s.noAvatar} />}
             <View style={s.body}>
-              <InlineText parts={sentence(item, project.viewerMemberId, f)} v="small" />
+              <InlineText parts={sentence(item, project.viewerMemberId, f, t.labels.grade)} v="small" />
               <Txt v="meta" size={11.5} style={{ marginTop: 2 }}>
                 {relativeTime(item.createdAt, t.labels.relative)}
               </Txt>

@@ -30,7 +30,7 @@ export function Logo() {
             justifyContent: 'center',
             transform: [{ rotate: '-6deg' }],
           }}>
-          <Txt v="brand" size={17} color="onHl">
+          <Txt v="brand" size={17} color="onHl" maxFontSizeMultiplier={1.2}>
             M
           </Txt>
         </View>

@@ -48,7 +48,7 @@ type Props = {
   onToggle: (packageId: string) => void;
   /** Leader: 指派给… on a free package (only offered while someone needs a package). */
   onAssign: (pkg: PackageView) => void;
-  /** Leader: 「⋯」 on an unfinished task. */
+  /** Leader: 「⋯」 on an unfinished task that isn't waiting for review. */
   onMove: (task: TaskView) => void;
 };
 
@@ -96,6 +96,7 @@ function PackageCard({
   const running = project.basics.status === 'ACTIVE';
   const canAssign = leader && running && !owner && project.members.some((m) => m.needsPackage);
   const tasks = project.tasks.filter((task) => task.packageId === pkg.id);
+  const reviewing = tasks.some((task) => task.status === 'REVIEWING');
   const id = project.basics.id;
 
   const who = owner ? (mine ? k.mine : owner.name) : k.free;
@@ -106,11 +107,15 @@ function PackageCard({
     t.labels.packageN(pkg.index),
     who,
     pkg.overdueCount > 0 ? k.overdue(pkg.overdueCount) : null,
+    reviewing ? t.labels.status.REVIEWING : null,
     owner ? k.earned(earned) : null,
     owner ? k.total(total) : k.totalOnly(total),
   ]
     .filter(Boolean)
     .join(' · ');
+
+  // 📨 等组长审核 while any task of the package waits for the leader's grade (after the overdue chip).
+  const reviewingChip = reviewing ? <Chip>{`${t.labels.statusEmoji.REVIEWING} ${t.labels.status.REVIEWING}`}</Chip> : null;
 
   const whoLine = (
     <View style={s.who}>
@@ -119,6 +124,7 @@ function PackageCard({
         {who}
       </Txt>
       {pkg.overdueCount > 0 ? <Chip tone="bad">{k.overdue(pkg.overdueCount)}</Chip> : null}
+      {reviewingChip}
     </View>
   );
 
@@ -160,6 +166,7 @@ function PackageCard({
           </Txt>
         </Pressable>
         {pkg.overdueCount > 0 ? <Chip tone="bad">{k.overdue(pkg.overdueCount)}</Chip> : null}
+        {reviewingChip}
         <Button title={k.assign} kind="soft" small onPress={onAssign} />
       </View>
       <View importantForAccessibility="no-hide-descendants" aria-hidden>
@@ -211,7 +218,7 @@ function PackageCard({
                     {points}
                   </Txt>
                 </Pressable>
-                {leader && running && !isFinished(task.status) ? <MoreButton label={k.move} onPress={() => onMove(task)} /> : null}
+                {leader && running && !isFinished(task) && task.status !== 'REVIEWING' ? <MoreButton label={k.move} onPress={() => onMove(task)} /> : null}
               </View>
             );
           })}

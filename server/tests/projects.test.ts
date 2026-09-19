@@ -26,16 +26,16 @@ const CODE_CHARS = "[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]";
 const klDate = (days: number) => localDate(new Date(Date.now() + days * DAY), KL);
 
 describe("time zone helpers", () => {
-  it("puts a date-only due date at 23:59 in the project's time zone", () => {
-    expect(endOfLocalDay("2026-10-01", KL).toISOString()).toBe("2026-10-01T15:59:00.000Z");
-    expect(endOfLocalDay("2026-10-01", "UTC").toISOString()).toBe("2026-10-01T23:59:00.000Z");
+  it("puts a date-only due date at 23:59:59.999 in the project's time zone", () => {
+    expect(endOfLocalDay("2026-10-01", KL).toISOString()).toBe("2026-10-01T15:59:59.999Z");
+    expect(endOfLocalDay("2026-10-01", "UTC").toISOString()).toBe("2026-10-01T23:59:59.999Z");
   });
 
   it("handles daylight saving changes", () => {
     // New York: DST starts 2026-03-08 and ends 2026-11-01.
-    expect(endOfLocalDay("2026-03-08", "America/New_York").toISOString()).toBe("2026-03-09T03:59:00.000Z");
-    expect(endOfLocalDay("2026-11-01", "America/New_York").toISOString()).toBe("2026-11-02T04:59:00.000Z");
-    expect(endOfLocalDay("2026-10-04", "Australia/Sydney").toISOString()).toBe("2026-10-04T12:59:00.000Z");
+    expect(endOfLocalDay("2026-03-08", "America/New_York").toISOString()).toBe("2026-03-09T03:59:59.999Z");
+    expect(endOfLocalDay("2026-11-01", "America/New_York").toISOString()).toBe("2026-11-02T04:59:59.999Z");
+    expect(endOfLocalDay("2026-10-04", "Australia/Sydney").toISOString()).toBe("2026-10-04T12:59:59.999Z");
   });
 
   it("reads the local calendar date of an instant", () => {
@@ -46,13 +46,13 @@ describe("time zone helpers", () => {
 
   it("spreads due dates evenly up to the deadline", () => {
     const start = new Date("2026-09-20T02:00:00Z");
-    const deadline = new Date("2026-10-30T15:59:00Z");
+    const deadline = new Date("2026-10-30T15:59:59.999Z");
     const dues = spreadDueDates(4, start, deadline, KL).map((d) => d.toISOString());
     expect(dues).toEqual([
-      "2026-09-30T15:59:00.000Z",
-      "2026-10-10T15:59:00.000Z",
-      "2026-10-20T15:59:00.000Z",
-      "2026-10-30T15:59:00.000Z",
+      "2026-09-30T15:59:59.999Z",
+      "2026-10-10T15:59:59.999Z",
+      "2026-10-20T15:59:59.999Z",
+      "2026-10-30T15:59:59.999Z",
     ]);
   });
 
@@ -106,7 +106,7 @@ describe("POST /api/projects (wizard step 1)", () => {
     const date = klDate(30);
     const draft = await createDraft(token, { deadline: date });
     expect(draft.basics.deadline).toBe(endOfLocalDay(date, KL).toISOString());
-    expect(draft.basics.deadline.slice(11)).toBe("15:59:00.000Z");
+    expect(draft.basics.deadline.slice(11)).toBe("15:59:59.999Z");
   });
 
   it("stores blank optional fields as null", async () => {
@@ -425,7 +425,7 @@ describe("POST /api/projects/:id/confirm", () => {
     expect(res.status).toBe(200);
     const view = res.data;
     expect(view.basics).toMatchObject({ status: "ACTIVE", draftStep: 6, packageCount: 5 });
-    expect(view.inviteCode).toMatch(new RegExp(`^CS302-${CODE_CHARS}{4}$`));
+    expect(view.inviteCode).toMatch(new RegExp(`^CS302-${CODE_CHARS}{8}$`));
     expect(view.viewerRole).toBe("LEADER");
     expect(view.members).toMatchObject([
       { id: view.viewerMemberId, userId: user.id, name: "陈思远", color: "lemon", role: "LEADER", active: true, packageId: null },
@@ -527,9 +527,9 @@ describe("POST /api/projects/:id/confirm", () => {
   it("uses random letters for the code when there is no usable short code", async () => {
     const { token } = await login(0);
     const view = await createActive(token, { shortCode: "软工" });
-    expect(view.inviteCode).toMatch(new RegExp(`^${CODE_CHARS}{6}-${CODE_CHARS}{4}$`));
+    expect(view.inviteCode).toMatch(new RegExp(`^${CODE_CHARS}{6}-${CODE_CHARS}{8}$`));
     const long = await createActive(token, { shortCode: "mkt-201 marketing" });
-    expect(long.inviteCode).toMatch(new RegExp(`^MKT201-${CODE_CHARS}{4}$`));
+    expect(long.inviteCode).toMatch(new RegExp(`^MKT201-${CODE_CHARS}{8}$`));
   });
 
   it("confirms only once when tapped twice at the same time", async () => {
@@ -618,7 +618,7 @@ describe("POST /api/projects/:id/invite-code/reset", () => {
       token: leader.token,
     });
     expect(res.status).toBe(200);
-    expect(res.data.inviteCode).toMatch(new RegExp(`^CS302-${CODE_CHARS}{4}$`));
+    expect(res.data.inviteCode).toMatch(new RegExp(`^CS302-${CODE_CHARS}{8}$`));
     expect(res.data.inviteCode).not.toBe(view.inviteCode);
     expect(await testDb.retiredInviteCode.findUnique({ where: { code: view.inviteCode! } })).toMatchObject({
       projectId: view.basics.id,
@@ -670,7 +670,7 @@ describe("POST /api/projects/:id/brief", () => {
     const dues = d.tasks.map((t) => t.dueAt!);
     expect(d.tasks.map((t) => t.suggestedDueAt)).toEqual(dues);
     expect(dues.at(-1)).toBe(d.basics.deadline);
-    for (const due of dues.slice(0, -1)) expect(due.slice(11)).toBe("15:59:00.000Z"); // 23:59 in KL
+    for (const due of dues.slice(0, -1)) expect(due.slice(11)).toBe("15:59:59.999Z"); // 23:59:59.999 in KL
     expect([...dues].sort()).toEqual(dues);
   });
 
@@ -1002,7 +1002,7 @@ describe("changing the project deadline", () => {
     await call(`/api/join/${view.inviteCode}`, { method: "POST", token: member.token });
     // Finished work keeps the date it was done against.
     const done = view.tasks.find((t) => t.title === RUBRIC_TASKS[3]!.title)!;
-    await testDb.task.update({ where: { id: done.id }, data: { status: "DONE" } });
+    await testDb.task.update({ where: { id: done.id }, data: { status: "DONE", grade: "PASS" } });
     const deadline = iso(new Date(Date.now() + 30 * DAY));
     const res = await call<ProjectView>(`/api/projects/${view.basics.id}`, { method: "PATCH", token: leader.token, body: { deadline } });
     expect(res.status).toBe(200);
@@ -1170,13 +1170,13 @@ describe("the project view (M3 fields)", () => {
     // A finished one task (their own start) and is late on the other.
     await testDb.task.update({
       where: { id: a1 },
-      data: { ownerId: aId, status: "DONE", startedAt: past, startedById: aId, dueAt: past, estimateHours: 1.5 },
+      data: { ownerId: aId, status: "DONE", grade: "PASS", startedAt: past, startedById: aId, dueAt: past, estimateHours: 1.5 },
     });
     await testDb.task.update({ where: { id: a2 }, data: { ownerId: aId, dueAt: past, estimateHours: 2.25 } });
     // B holds work someone else started (moved in), which isn't B's start, and finished another task:
     // finishing counts as starting (REQUIREMENTS §13 开工), so B's package is started.
     await testDb.task.update({ where: { id: b1 }, data: { ownerId: bId, status: "DOING", startedAt: past, startedById: t.leaderId } });
-    await testDb.task.update({ where: { id: b2 }, data: { ownerId: bId, status: "HALF" } });
+    await testDb.task.update({ where: { id: b2 }, data: { ownerId: bId, status: "HALF", grade: "HALF" } });
 
     const view = await viewAs(t.members[0]!.token, t.projectId);
     const task = (id: string) => view.tasks.find((x) => x.id === id)!;
@@ -1209,7 +1209,7 @@ describe("the project view (M3 fields)", () => {
     expect(view.packagesVersion).toBe((await testDb.project.findUniqueOrThrow({ where: { id: t.projectId } })).packagesVersion);
 
     // Without the finished task, work someone else started alone isn't B's start.
-    await testDb.task.update({ where: { id: b2 }, data: { status: "TODO" } });
+    await testDb.task.update({ where: { id: b2 }, data: { status: "TODO", grade: null } });
     expect((await viewAs(t.members[0]!.token, t.projectId)).packages.find((p) => p.id === p2!.id)!.started).toBe(false);
   });
 

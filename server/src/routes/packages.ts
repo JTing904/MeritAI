@@ -1,7 +1,6 @@
 import { Hono } from "hono";
 import type { ProjectView, ResplitPreview } from "../../../shared/types";
 import type { AppEnv } from "../app";
-import { requireActiveMember, requireLeader } from "../lib/access";
 import { requireUser } from "../lib/auth";
 import { readBody } from "../lib/body";
 import { ok } from "../lib/http";
@@ -11,25 +10,19 @@ import { AssignSchema, MoveTaskSchema, ResplitPreviewSchema, ResplitSchema, Swap
 import { requestSwap } from "../services/swaps";
 import { loadViewFor } from "../services/views";
 
-// Packages of an ACTIVE project (mounted at /projects; no path overlaps projectRoutes). The access checks
-// here only choose 404 vs 403 early: every service re-checks under the project lock (lockAsMember).
+// Packages of an ACTIVE project (mounted at /projects; no path overlaps projectRoutes). The routes don't
+// check the membership themselves: every service does under the project lock (lockAsMember: 404 / 403),
+// and the view they answer with is read together with it (A14).
 export const packageRoutes = new Hono<AppEnv>();
 
 type Ctx = Parameters<typeof requireUser>[0];
 
 async function asMember(c: Ctx) {
   const user = await requireUser(c);
-  const projectId = c.req.param("id")!;
-  await requireActiveMember(c.var.db, projectId, user.id);
-  return { user, projectId };
+  return { user, projectId: c.req.param("id")! };
 }
 
-async function asLeader(c: Ctx) {
-  const user = await requireUser(c);
-  const projectId = c.req.param("id")!;
-  await requireLeader(c.var.db, projectId, user.id);
-  return { user, projectId };
-}
+const asLeader = asMember;
 
 packageRoutes.post("/:id/packages/:packageId/pick", async (c) => {
   const { user, projectId } = await asMember(c);

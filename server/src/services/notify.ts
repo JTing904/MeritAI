@@ -130,7 +130,7 @@ export type VoidSwapsInput = {
   /** Member whose action voided them (stored; they get no SWAP_VOID). */
   voidedById: string | null;
   now: Date;
-  /** Send SWAP_VOID to each active requester other than `voidedById`. Never sent for RESPLIT. */
+  /** Send SWAP_VOID to each active requester other than `voidedById`. Never sent for RESPLIT or PROJECT_DELETED. */
   notify: boolean;
 };
 
@@ -159,7 +159,7 @@ export async function voidSwaps(tx: Tx, input: VoidSwapsInput): Promise<string[]
     });
     if (count !== 1) continue;
     voided.push(swap.id);
-    if (!input.notify || reason === "RESPLIT") continue;
+    if (!input.notify || reason === "RESPLIT" || reason === "PROJECT_DELETED") continue;
     if (!isActiveMember(swap.requester) || swap.requester.id === voidedById) continue;
     await notify(tx, {
       userIds: [swap.requester.userId],

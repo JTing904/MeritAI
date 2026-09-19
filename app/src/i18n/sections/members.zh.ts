@@ -37,6 +37,10 @@ export const membersZh = {
     endHint:
       '确认作业已经交了之后，大家有 14 天可以下载团队贡献报告，之后整个项目会被删除（徽章会保留）。截止日过了 7 天还没确认，会自动结束。',
     endButton: '确认已交，结束项目',
+    /** The danger card at the bottom (leader): opens DeleteProjectSheet. */
+    deleteTitle: '删除项目',
+    deleteHint: '为所有人删除这个项目：所有人都会马上看不到它。7 天内你可以在首页恢复，之后彻底删除。',
+    deleteButton: '删除项目',
   },
 
   /** ProjectInfoSheet (leader): name, labels, deadline and time zone. */
@@ -73,11 +77,40 @@ export const membersZh = {
     removedLine: (date: string, pts: string) => `${date}被移出 · 做完的 ${pts} 分会保留在报告里`,
     invite: '邀请组员',
     leave: '退出项目',
-    leaderCantLeave: '你是组长，要先把组长转给别人才能退出。',
     leaveTitle: (tag: string) => `退出 ${tag}？`,
     leaveBody: '你做完的分数会保留；没做完的任务会变成没人负责。之后还可以用邀请码回来。',
     leaveConfirm: '退出项目',
     left: (tag: string) => `已退出 ${tag}`,
+  },
+
+  /** LeaderLeaveSheet: the leader taps 「退出项目」 (LeaderLeave mockup). */
+  leaderLeave: {
+    title: (tag: string) => `退出 ${tag}？`,
+    body: '你是组长，先选一个做法。',
+    self: '我自己退出',
+    selfSub: '选一个人当新组长，然后你退出。项目和大家的任务、分数都不受影响。',
+    deleteAll: '为所有人删除项目',
+    deleteAllSub: '所有人都看不到这个项目了。7 天内你可以恢复，之后彻底删除。',
+    hint: '组里只剩你一个人时，只有「为所有人删除项目」。',
+  },
+
+  /** PickNewLeaderSheet (PickNewLeader mockup). */
+  pickLeader: {
+    title: '谁来当新组长？',
+    body: 'TA 会收到通知，之后由 TA 管理任务、成员和项目设置。',
+    pkg: (n: number) => `任务包 ${n}`,
+    noPackage: '还没有任务包',
+    confirm: (name: string) => `转让给${name}并退出`,
+    hint: '你做完的分数会保留；没做完的任务会变成没人负责，新组长可以再移给别人。',
+  },
+
+  /** DeleteProjectSheet (DeleteProject mockup), from the members page and project settings. */
+  deleteProject: {
+    title: (tag: string) => `为所有人删除 ${tag}？`,
+    warn: '所有人都会马上看不到这个项目，并收到通知。7 天内你可以在首页恢复；7 天后项目、任务、文件会彻底删除。大家的徽章会保留。',
+    label: (tag: string) => `打一遍项目简称「${tag}」才能删除`,
+    confirm: '为所有人删除',
+    done: (tag: string) => `已删除 ${tag}，7 天内可以在首页恢复`,
   },
 
   /** MemberActions sheet (leader taps ⋯ on a member). */

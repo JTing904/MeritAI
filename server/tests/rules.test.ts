@@ -3,7 +3,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type { TaskKind } from "../../shared/types";
 import { canonicalTimeZone, endOfLocalDay, isValidTimeZone, localDate, spreadDueDates, toInstant, wallClock, zonedTime } from "../src/lib/plan/dates";
-import { cleanTitle, guessKind, MAX_TITLE_CHARS, parseBriefWithRules, TYPED_PARAGRAPH_CHARS } from "../src/lib/plan/rules";
+import { extractBriefText } from "../src/lib/plan/extract";
+import { cleanTitle, guessKind, MAX_TITLE_CHARS, normalizeBrief, parseBriefWithRules, type RuleExcerpt, TYPED_PARAGRAPH_CHARS } from "../src/lib/plan/rules";
 
 const FIXTURES = fileURLToPath(new URL("./fixtures/briefs/", import.meta.url));
 const brief = (name: string) => readFileSync(FIXTURES + name, "utf8");
@@ -737,29 +738,29 @@ describe("dates", () => {
 
   it("converts wall-clock times in a zone", () => {
     expect(zonedTime(2026, 10, 1, 23, 59, KL).toISOString()).toBe("2026-10-01T15:59:00.000Z");
-    expect(endOfLocalDay("2026-10-01", KL).toISOString()).toBe("2026-10-01T15:59:00.000Z");
+    expect(endOfLocalDay("2026-10-01", KL).toISOString()).toBe("2026-10-01T15:59:59.999Z");
     expect(localDate(new Date("2026-09-30T16:30:00Z"), KL)).toBe("2026-10-01");
     expect(localDate(new Date("2026-09-30T15:30:00Z"), KL)).toBe("2026-09-30");
   });
 
   it("handles daylight saving time", () => {
     const NY = "America/New_York";
-    expect(endOfLocalDay("2026-03-08", NY).toISOString()).toBe("2026-03-09T03:59:00.000Z");
-    expect(endOfLocalDay("2026-11-01", NY).toISOString()).toBe("2026-11-02T04:59:00.000Z");
-    expect(endOfLocalDay("2026-07-01", NY).toISOString()).toBe("2026-07-02T03:59:00.000Z");
+    expect(endOfLocalDay("2026-03-08", NY).toISOString()).toBe("2026-03-09T03:59:59.999Z");
+    expect(endOfLocalDay("2026-11-01", NY).toISOString()).toBe("2026-11-02T04:59:59.999Z");
+    expect(endOfLocalDay("2026-07-01", NY).toISOString()).toBe("2026-07-02T03:59:59.999Z");
     // 02:30 does not exist on 8 March 2026 in New York: it lands just after the gap.
     expect(wallClock(zonedTime(2026, 3, 8, 2, 30, NY), NY)).toMatchObject({ hour: 3, minute: 30 });
   });
 
   it("reads date-only inputs as 23:59 in the zone", () => {
-    expect(toInstant("2026-10-01", KL).toISOString()).toBe("2026-10-01T15:59:00.000Z");
+    expect(toInstant("2026-10-01", KL).toISOString()).toBe("2026-10-01T15:59:59.999Z");
     expect(toInstant("2026-10-01T10:00:00.000Z", KL).toISOString()).toBe("2026-10-01T10:00:00.000Z");
   });
 
   it("spreads due dates evenly to 23:59 local, the last one at the deadline", () => {
     const start = new Date("2026-09-30T16:00:00Z"); // 1 Oct 00:00 in KL
     const deadline = new Date("2026-10-11T15:59:00Z"); // 11 Oct 23:59 in KL
-    expect(spreadDueDates(2, start, deadline, KL).map((d) => d.toISOString())).toEqual(["2026-10-06T15:59:00.000Z", deadline.toISOString()]);
+    expect(spreadDueDates(2, start, deadline, KL).map((d) => d.toISOString())).toEqual(["2026-10-06T15:59:59.999Z", deadline.toISOString()]);
 
     const dues = spreadDueDates(7, new Date("2026-09-19T02:00:00Z"), new Date("2026-11-06T10:00:00Z"), KL);
     expect(dues).toHaveLength(7);
@@ -777,5 +778,107 @@ describe("dates", () => {
     expect(spreadDueDates(2, deadline, start, KL)).toEqual([start, start]);
     expect(spreadDueDates(1, start, deadline, KL)).toEqual([deadline]);
     expect(spreadDueDates(0, start, deadline, KL)).toEqual([]);
+  });
+});
+
+// 作业要求（原文） (M4 spec §2): where each task's item is in the brief, and its lines without markers.
+describe("excerpt capture", () => {
+  const excerpts = (text: string, typed = false) => {
+    const r = parseBriefWithRules(text, { typed });
+    if (!r.ok) throw new Error(`no tasks: ${r.reason}`);
+    return r.tasks.map((t) => [t.title, t.excerpt] as [string, RuleExcerpt | null]);
+  };
+  const MARKER_RE = /^\s*(?:[-*•–·]|\d{1,2}[.)、．）]|[（(]\d{1,2}[）)]|[a-z][.)]|[（(][a-z][）)]|[ivx]+[.)])\s/i;
+
+  /** Every range is a non-empty run of the normalized text that starts with the item's own line. */
+  function checkRanges(text: string, rows: [string, RuleExcerpt | null][]) {
+    const lines = normalizeBrief(text).split("\n");
+    for (const [title, ex] of rows) {
+      expect(ex, title).not.toBeNull();
+      expect(ex!.from, title).toBeLessThan(ex!.to);
+      expect(ex!.to, title).toBeLessThanOrEqual(lines.length);
+      // Wrapped titles are joined from several lines: the first line carries the title's start.
+      expect(lines[ex!.from]!, title).toContain(title.slice(0, 12));
+      expect(ex!.lines[0], title).toContain(title.slice(0, 12));
+      for (const l of ex!.lines) expect(l, title).not.toMatch(MARKER_RE);
+      // No blank line at the end of a range.
+      expect(lines[ex!.to - 1]!.trim(), title).not.toBe("");
+    }
+  }
+
+  it("quotes each scored item of the MKT201 brief on its own line", () => {
+    const text = brief("zh-mkt201-marketing.txt");
+    const rows = excerpts(text);
+    checkRanges(text, rows);
+    expect(rows).toEqual([
+      ["书面报告", { from: 11, to: 12, lines: ["书面报告（40 分）：不少于 3000 字，须包含本地化与定价分析。"] }],
+      ["口头报告", { from: 12, to: 13, lines: ["口头报告（30 分）：每组 10 分钟课堂演示，另加 5 分钟问答。"] }],
+      ["问卷调查", { from: 13, to: 14, lines: ["问卷调查（20 分）：至少回收 50 份有效问卷，并附数据分析。"] }],
+      ["小组会议记录", { from: 14, to: 15, lines: ["小组会议记录（10 分）：每次组会都要记录出席人员和讨论内容。"] }],
+    ]);
+  });
+
+  it("includes the nested sub-points of a rubric item, and ends at the next top-level item", () => {
+    const text = brief("en-um-nested-rubric.txt");
+    const rows = excerpts(text);
+    checkRanges(text, rows);
+    expect(rows).toEqual([
+      ["Program", { from: 3, to: 7, lines: ["Program (60%)", "Correctness of output (25%)", "Code structure and comments (20%)", "Error handling (15%)"] }],
+      ["Report", { from: 7, to: 10, lines: ["Report (25%)", "Flowcharts and pseudocode (15%)", "User guide (10%)"] }],
+      ["Presentation", { from: 10, to: 11, lines: ["Presentation (15%)"] }],
+    ]);
+  });
+
+  it("keeps a blank line inside a nested block and drops trailing blank lines", () => {
+    const text = "Group project rubric\n\n1. Program (60%)\n   a. Correctness (30%)\n\n   b. Comments (30%)\n\n2. Report (40%)\n";
+    const rows = excerpts(text);
+    expect(rows.map(([title]) => title)).toEqual(["Program", "Report"]);
+    expect(rows[0]![1]).toEqual({ from: 2, to: 6, lines: ["Program (60%)", "Correctness (30%)", "Comments (30%)"] });
+    expect(rows[1]![1]).toEqual({ from: 7, to: 8, lines: ["Report (40%)"] });
+  });
+
+  it("quotes list items with their nested points (zh sections)", () => {
+    const text = brief("zh-newera-list-sections.txt");
+    const rows = excerpts(text);
+    checkRanges(text, rows);
+    expect(rows.map(([, ex]) => [ex!.from, ex!.to])).toEqual([
+      [8, 9],
+      [9, 10],
+      [10, 13],
+      [13, 14],
+      [14, 15],
+    ]);
+    expect(rows[2]![1]!.lines).toEqual(["开发点餐网站，至少包含菜单、购物车和订单三个页面。", "使用 HTML、CSS 和 JavaScript。", "订单资料存入数据库。"]);
+  });
+
+  it("joins wrapped lines into their item (a PDF list) and takes the nested dashes along", async () => {
+    const bytes = new Uint8Array(readFileSync(FIXTURES + "en-mmu-list-wrapped.pdf"));
+    const extracted = await extractBriefText(bytes, "brief.pdf", "application/pdf");
+    if (!extracted.ok) throw new Error("extract failed");
+    const rows = excerpts(extracted.text);
+    checkRanges(extracted.text, rows);
+    expect(rows.map(([, ex]) => [ex!.from, ex!.to])).toEqual([
+      [10, 12],
+      [12, 13],
+      [13, 16],
+      [17, 18],
+      [18, 19],
+    ]);
+    // The wrapped second line is part of the item's sentence, not a line of its own.
+    expect(rows[0]![1]!.lines).toEqual(["Interview at least three shop owners in Cyberjaya to collect their requirements for an online ordering website."]);
+    expect(rows[2]![1]!.lines).toEqual(["Develop the website using PHP and MySQL.", "The website must work on mobile phones.", "Store all orders in the database."]);
+  });
+
+  it("maps items of an inline list back to their shared line, and gives typed descriptions none", () => {
+    const text = brief("zh-typed-inline-numbered.txt");
+    expect(excerpts(text)).toEqual([
+      ["做一个订餐小程序", { from: 0, to: 1, lines: ["做一个订餐小程序"] }],
+      ["写使用说明书", { from: 0, to: 1, lines: ["写使用说明书"] }],
+      ["做 PPT 上台展示", { from: 0, to: 1, lines: ["做 PPT 上台展示"] }],
+      ["每周开一次组会", { from: 0, to: 1, lines: ["每周开一次组会"] }],
+    ]);
+    expect(excerpts(text, true).map(([, ex]) => ex)).toEqual([null, null, null, null]);
+    // A typed brief with scores gets none either.
+    expect(excerpts(brief("zh-mkt201-marketing.txt"), true).map(([, ex]) => ex)).toEqual([null, null, null, null]);
   });
 });

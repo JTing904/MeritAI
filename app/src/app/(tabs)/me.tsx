@@ -28,7 +28,10 @@ function useServerHealth() {
       .then((h) => setState(h.db ? 'ok' : 'dbDown'))
       .catch(() => setState('down'));
   }, []);
-  useEffect(check, [check]);
+  // Only the developer tools show it: release builds don't spend a request on it.
+  useEffect(() => {
+    if (__DEV__) check();
+  }, [check]);
   return { state, check };
 }
 
@@ -122,7 +125,7 @@ export default function MeScreen() {
 
       <Button title={t.me.signOut} kind="danger" block onPress={() => setConfirmOut(true)} />
 
-      {__DEV__ || API_URL.startsWith('http://') ? (
+      {__DEV__ ? (
         <>
           <SectionHeader title={t.me.devTools} />
           <List>

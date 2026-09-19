@@ -1,6 +1,6 @@
 // The pure M3 package rules (spec §2) that every service shares.
 import { describe, expect, it } from "vitest";
-import type { TaskStatus } from "../../shared/types";
+import type { Grade, TaskStatus } from "../../shared/types";
 import {
   earnedPoints,
   isFinished,
@@ -17,6 +17,7 @@ type TaskRow = {
   packageId: string | null;
   ownerId: string | null;
   status: TaskStatus;
+  grade: Grade | null;
   startedAt: Date | null;
   startedById: string | null;
   points: number;
@@ -27,6 +28,7 @@ const task = (over: Partial<TaskRow> = {}): TaskRow => ({
   packageId: "p1",
   ownerId: null,
   status: "TODO",
+  grade: null,
   startedAt: null,
   startedById: null,
   points: 100,
@@ -34,9 +36,14 @@ const task = (over: Partial<TaskRow> = {}): TaskRow => ({
 });
 
 describe("task state", () => {
-  it("counts DONE and HALF as finished", () => {
+  it("counts DONE and HALF as finished, and any task whose grade isn't FAIL (M4)", () => {
     const all: TaskStatus[] = ["TODO", "DOING", "REVIEWING", "DONE", "HALF", "FAIL"];
-    expect(all.filter((status) => isFinished({ status }))).toEqual(["DONE", "HALF"]);
+    expect(all.filter((status) => isFinished({ status, grade: null }))).toEqual(["DONE", "HALF"]);
+    // A HALF task resubmitted shows REVIEWING but keeps its HALF grade: still finished.
+    expect(isFinished({ status: "REVIEWING", grade: "HALF" })).toBe(true);
+    expect(isFinished({ status: "REVIEWING", grade: "FAIL" })).toBe(false);
+    expect(isFinished({ status: "REVIEWING", grade: null })).toBe(false);
+    expect(isFinished({ status: "DONE", grade: "SELF" })).toBe(true);
   });
 
   it("locks a task once it left TODO or was started", () => {
@@ -46,22 +53,27 @@ describe("task state", () => {
     expect(isLocked(task({ status: "DONE" }))).toBe(true);
   });
 
-  it("earns all of a DONE task, half (rounded) of a HALF one, nothing otherwise", () => {
-    expect(earnedPoints({ status: "DONE", points: 125 })).toBe(125);
-    expect(earnedPoints({ status: "HALF", points: 125 })).toBe(63);
-    expect(earnedPoints({ status: "HALF", points: 124 })).toBe(62);
-    for (const status of ["TODO", "DOING", "REVIEWING", "FAIL"] as const) expect(earnedPoints({ status, points: 125 })).toBe(0);
+  it("earns by grade: all for a full grade, half (rounded) for HALF, nothing otherwise", () => {
+    for (const grade of ["EXCELLENT", "PASS", "SELF"] as const) expect(earnedPoints({ grade, points: 125 })).toBe(125);
+    expect(earnedPoints({ grade: "HALF", points: 125 })).toBe(63);
+    expect(earnedPoints({ grade: "HALF", points: 124 })).toBe(62);
+    expect(earnedPoints({ grade: "FAIL", points: 125 })).toBe(0);
+    expect(earnedPoints({ grade: null, points: 125 })).toBe(0);
   });
 
   it("is overdue when unfinished past its due date, or past the deadline without one", () => {
     const now = new Date("2026-10-10T00:00:00Z");
     const project = { deadline: new Date("2026-10-09T00:00:00Z") };
     const later = { deadline: new Date("2026-12-01T00:00:00Z") };
-    expect(isOverdue({ status: "TODO", dueAt: null }, project, now)).toBe(true);
-    expect(isOverdue({ status: "TODO", dueAt: null }, later, now)).toBe(false);
-    expect(isOverdue({ status: "DOING", dueAt: new Date("2026-10-01T00:00:00Z") }, later, now)).toBe(true);
-    expect(isOverdue({ status: "HALF", dueAt: new Date("2026-10-01T00:00:00Z") }, later, now)).toBe(false);
-    expect(isOverdue({ status: "TODO", dueAt: now }, later, now)).toBe(false);
+    const past = new Date("2026-10-01T00:00:00Z");
+    expect(isOverdue({ status: "TODO", grade: null, dueAt: null }, project, now)).toBe(true);
+    expect(isOverdue({ status: "TODO", grade: null, dueAt: null }, later, now)).toBe(false);
+    expect(isOverdue({ status: "DOING", grade: null, dueAt: past }, later, now)).toBe(true);
+    expect(isOverdue({ status: "HALF", grade: "HALF", dueAt: past }, later, now)).toBe(false);
+    expect(isOverdue({ status: "FAIL", grade: "FAIL", dueAt: past }, later, now)).toBe(true);
+    expect(isOverdue({ status: "TODO", grade: null, dueAt: now }, later, now)).toBe(false);
+    // 等组长审核 is never on the overdue list (M4).
+    expect(isOverdue({ status: "REVIEWING", grade: null, dueAt: past }, later, now)).toBe(false);
   });
 
   it("releases a task: no owner, not started, DOING back to TODO, REVIEWING/FAIL kept", () => {

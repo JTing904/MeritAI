@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { useTheme } from '@/theme';
 import type { Highlighter } from '@/theme/tokens';
@@ -8,7 +8,8 @@ type Kind = 'primary' | 'soft' | 'hl' | 'danger';
 
 export type ButtonProps = {
   title: string;
-  onPress?: () => void;
+  /** An async handler blocks further presses until it settles (a double tap never sends twice). */
+  onPress?: () => void | Promise<unknown>;
   kind?: Kind;
   /** Highlighter colour for kind="hl". */
   hl?: Highlighter;
@@ -44,6 +45,19 @@ export function Button({
 }: ButtonProps) {
   const { c } = useTheme();
   const [pressed, setPressed] = useState(false);
+  // Synchronous: `loading` only arrives with the next render, too late for a second tap in the same frame.
+  const inFlight = useRef(false);
+  const press = () => {
+    if (inFlight.current || !onPress) return;
+    const result = onPress();
+    if (result && typeof result.then === 'function') {
+      inFlight.current = true;
+      const settle = () => {
+        inFlight.current = false;
+      };
+      result.then(settle, settle);
+    }
+  };
 
   const palette = {
     primary: { face: c.grape, lip: c.grapePress, text: c.onGrape },
@@ -60,7 +74,7 @@ export function Button({
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={press}
       disabled={inactive}
       onPressIn={() => setPressed(true)}
       onPressOut={() => setPressed(false)}

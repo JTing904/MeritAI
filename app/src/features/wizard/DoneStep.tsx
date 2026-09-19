@@ -12,6 +12,7 @@ import { Txt } from '@/components/Txt';
 import { useI18n } from '@/i18n';
 import { errorCode, type ClientErrorCode } from '@/lib/api';
 import { packageSpread } from '@/lib/packages';
+import { useIdempotencyKey } from '@/lib/idempotency';
 import { useSession } from '@/lib/session';
 import { makeStyles, useTheme } from '@/theme';
 import { Field, Hint, Input } from './Field';
@@ -49,6 +50,7 @@ export function DoneStep({ id }: { id: string }) {
   const { t } = useI18n();
   const w = t.wizard.done;
   const { request } = useSession();
+  const idem = useIdempotencyKey();
   const { show } = useToast();
   const [project, setProject] = useState<ProjectView | null>(null);
   const [error, setError] = useState<ClientErrorCode | null>(null);
@@ -84,7 +86,12 @@ export function DoneStep({ id }: { id: string }) {
     sending.current = true;
     setInviting(true);
     try {
-      const res = await request<InviteOutcome[]>(`/projects/${id}/invites`, { method: 'POST', body: { targets } });
+      const res = await request<InviteOutcome[]>(`/projects/${id}/invites`, {
+        method: 'POST',
+        body: { targets },
+        idempotencyKey: idem.keyFor(targets),
+      });
+      idem.done();
       setOutcomes(res);
       const sent = res.filter((o) => o.result === 'INVITED').length;
       if (sent) show(w.invited(sent));

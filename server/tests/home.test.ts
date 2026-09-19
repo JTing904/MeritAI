@@ -16,7 +16,7 @@ describe("GET /api/home", () => {
 
   it("is empty for someone new", async () => {
     const { token } = await login(0);
-    expect(await home(token)).toEqual({ projects: [], invites: [] });
+    expect(await home(token)).toEqual({ projects: [], invites: [], dueSoon: [], deletedProjects: [] });
   });
 
   it("shows a draft only to the leader who created it", async () => {
@@ -180,14 +180,45 @@ describe("GET /api/home", () => {
     await testDb.package.create({ data: { projectId: t.projectId, index: 3 } });
     expect(await card(late.token)).toMatchObject({ packageCount: 3, freePackages: 1 });
 
-    // Points earned by the team (DONE → all, HALF → half).
+    // Points earned by the team (a full grade → all, HALF → half).
     const [done, half] = await testDb.task.findMany({ where: { projectId: t.projectId }, orderBy: { number: "asc" } });
-    await testDb.task.update({ where: { id: done!.id }, data: { status: "DONE" } });
-    await testDb.task.update({ where: { id: half!.id }, data: { status: "HALF" } });
+    await testDb.task.update({ where: { id: done!.id }, data: { status: "DONE", grade: "PASS" } });
+    await testDb.task.update({ where: { id: half!.id }, data: { status: "HALF", grade: "HALF" } });
     expect((await card(t.leader.token)).earnedPoints).toBe(done!.points + Math.round(half!.points / 2));
 
     // An ended project hands out no packages.
     await testDb.project.update({ where: { id: t.projectId }, data: { status: "ENDED" } });
     expect(await card(late.token)).toMatchObject({ needsPackage: false });
+  });
+});
+
+describe("HomeData.dueSoon (M4)", () => {
+  it("lists the effective dues of my open, not-submitted tasks in ACTIVE projects: overdue ones and the next 8 days", async () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const tasks = Array.from({ length: 16 }, (_, i) => ({ title: `任务 ${i + 1}`, kind: "DOC" as const, points: 100 }));
+    const t = await activeWith(2, { tasks });
+    const member = t.members[0]!;
+    await call(`/api/projects/${t.projectId}/packages/${t.view.packages[1]!.id}/pick`, { method: "POST", token: member.token });
+    const me = await testDb.member.findFirstOrThrow({ where: { projectId: t.projectId, userId: member.user.id } });
+    const mine = await testDb.task.findMany({ where: { ownerId: me.id }, orderBy: { number: "asc" } });
+    expect(mine.length).toBeGreaterThanOrEqual(8);
+    const now = Date.now();
+    const due = (days: number) => new Date(now + days * DAY);
+    const set = (i: number, data: Parameters<typeof testDb.task.update>[0]["data"]) => testDb.task.update({ where: { id: mine[i]!.id }, data });
+
+    await set(0, { dueAt: due(-3) }); // TODO, overdue: counted (过期)
+    await set(1, { dueAt: due(1), status: "DOING", startedAt: new Date(), startedById: me.id });
+    await set(2, { dueAt: due(-1), status: "FAIL", grade: "FAIL", startedAt: new Date() }); // to redo, overdue
+    await set(3, { dueAt: due(-2), status: "REVIEWING", startedAt: new Date() }); // waiting for review: not counted
+    await set(4, { dueAt: due(2), status: "HALF", grade: "HALF", startedAt: new Date() }); // finished: not counted
+    await set(5, { dueAt: due(3), status: "DONE", grade: "PASS", startedAt: new Date() });
+    await set(6, { dueAt: due(9) }); // too far ahead
+    for (let i = 7; i < mine.length; i++) await set(i, { dueAt: null }); // the deadline, weeks away
+
+    expect((await home(member.token)).dueSoon).toEqual([due(-3), due(-1), due(1)].map((d) => d.toISOString()));
+    // Someone else's tasks never show; an ended project neither.
+    expect((await home(t.leader.token)).dueSoon).toEqual([]);
+    await testDb.project.update({ where: { id: t.projectId }, data: { status: "ENDED" } });
+    expect((await home(member.token)).dueSoon).toEqual([]);
   });
 });

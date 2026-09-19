@@ -4,7 +4,9 @@ import type { Prisma } from "../generated/prisma/client";
 /** No 0/O or 1/I: codes are read aloud and typed from screenshots. */
 export const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PREFIX_MAX = 6;
-const SUFFIX_LENGTH = 4;
+// 32^8 ≈ 1.1 × 10^12 codes per prefix, and /join is rate limited: not guessable. Older 4-character
+// codes keep working (lookups are by the whole code).
+const SUFFIX_LENGTH = 8;
 const MAX_ATTEMPTS = 20;
 
 export function randomCodeChars(length: number): string {
@@ -19,7 +21,7 @@ export function codePrefix(shortCode: string | null | undefined): string {
   return cleaned || randomCodeChars(PREFIX_MAX);
 }
 
-/** e.g. "CS302-7Q4P". */
+/** e.g. "CS302-7Q4PX9KM". */
 export function makeInviteCode(shortCode: string | null | undefined): string {
   return `${codePrefix(shortCode)}-${randomCodeChars(SUFFIX_LENGTH)}`;
 }

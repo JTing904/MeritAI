@@ -137,7 +137,7 @@ export function ProjectInfoSheet({
   };
 
   return (
-    <Sheet visible onClose={busy ? () => {} : onClose} title={w.title}>
+    <Sheet visible onClose={onClose} title={w.title}>
       <Field label={w.name} error={shown('name')}>
         <Input
           label={w.name}

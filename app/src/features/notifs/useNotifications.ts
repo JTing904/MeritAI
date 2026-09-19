@@ -28,7 +28,7 @@ function listPath(filter: NotifFilter, cursor: string | null) {
  */
 export function useNotifications() {
   const { request } = useSession();
-  const { refresh: refreshBadge } = useUnread();
+  const { refresh: refreshBadge, report: reportBadge } = useUnread();
   const { t } = useI18n();
   // show is stable; the object useToast returns is not (it would re-run the focus effect every render).
   const { show: showToast } = useToast();
@@ -68,13 +68,15 @@ export function useNotifications() {
   const markRead = useCallback(
     async (upToId: string) => {
       try {
-        await request<UnreadCount>('/notifications/read', { method: 'POST', body: { upToId } });
+        // The answer is the unread count left: the badge takes it without asking again.
+        const left = await request<UnreadCount>('/notifications/read', { method: 'POST', body: { upToId } });
+        reportBadge(left.count);
       } catch {
         // Not fatal: the items stay unread and the next visit tries again.
+        refreshBadge();
       }
-      refreshBadge();
     },
-    [request, refreshBadge],
+    [request, refreshBadge, reportBadge],
   );
 
   const loadFirst = useCallback(
@@ -86,6 +88,7 @@ export function useNotifications() {
         const page = await request<NotificationPage>(listPath(which, null));
         if (id !== latest.current) return;
         unreadPrefix.current = which === 'all' ? page.unreadCount : 0;
+        reportBadge(page.unreadCount); // every unread row, whichever filter
         remember(page.items, 0);
         setList({ filter: which, items: page.items, nextCursor: page.nextCursor });
         setError(null);
@@ -106,7 +109,7 @@ export function useNotifications() {
       }
     },
     // remember and setList only touch refs and a state setter, so they are left out.
-    [request, markRead, showToast, t],
+    [request, markRead, reportBadge, showToast, t],
   );
 
   useFocusEffect(

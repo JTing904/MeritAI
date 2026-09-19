@@ -1,17 +1,42 @@
-import type { notifsZh } from './notifs.zh';
+import { labelsEn } from './labels.en';
+import type { GradeKey, GradeText, notifsZh, OutsideText, OverrideText } from './notifs.zh';
 
 const tasks = (k: number) => (k === 1 ? 'the 1 unfinished task now has no owner' : `the ${k} unfinished tasks now have no owner`);
+
+const isFull = (g: GradeKey) => g === 'EXCELLENT' || g === 'PASS' || g === 'SELF';
+
+const gradeGain = (g: GradeText | OutsideText) => {
+  if (!g.counting) return `still ${g.earned} pts from before`;
+  if (isFull(g.grade)) return `full ${g.pts} pts`;
+  return g.grade === 'HALF' ? `${g.earned} pts for now; fix it and resubmit for full points` : '0 pts; fix it and resubmit';
+};
+
+const overrideGain = (o: OverrideText) => {
+  if (!o.counting) return `still ${o.earned} pts`;
+  if (isFull(o.to)) return `full ${o.pts} pts`;
+  return o.to === 'HALF' ? `${o.earned} pts now` : '0 pts';
+};
+
+const pieces = (n: number, allFiles: boolean) =>
+  allFiles ? (n === 1 ? '1 file' : `${n} files`) : n === 1 ? '1 piece of evidence' : `${n} pieces of evidence`;
 
 export const notifsEn: typeof notifsZh = {
   title: 'Notifications',
   filterLabel: 'Notification filter',
   filter: { all: 'All', mine: 'For me' },
-  audience: { GROUP: 'Whole team', ONLY_YOU: 'Only you', ONLY_LEADER: 'Only the leader' },
+  audience: { GROUP: 'Whole team', ONLY_YOU: 'Only you', ONLY_LEADER: 'Only the leader', YOU_AND_LEADER: 'Only you and the leader' },
   unread: 'Unread',
   empty: 'No notifications yet',
   footer:
     'Reminders only follow due dates: the owner hears 24 hours before a task is due, and the whole team hears once it is overdue. Each is sent only once.',
-  actions: { decline: 'Decline', accept: 'Accept swap', resplit: 'Re-split', pick: 'Pick a package' },
+  actions: {
+    decline: 'Decline',
+    accept: 'Accept swap',
+    resplit: 'Re-split',
+    pick: 'Pick a package',
+    openTask: 'Open task',
+    grade: 'Grade it',
+  },
   toast: {
     accepted: (n) => `Swapped! Package ${n} is yours now`,
     declined: 'Swap declined',
@@ -36,6 +61,7 @@ export const notifsEn: typeof notifsZh = {
       SWAPPED_ELSEWHERE: 'one of the packages was swapped with someone else',
       LEFT: 'they left the project',
       RESPLIT: 'the leader re-split the packages',
+      PROJECT_DELETED: 'the leader deleted the project',
     },
   },
 
@@ -64,11 +90,14 @@ export const notifsEn: typeof notifsZh = {
   movedIn: {
     fromOwned: (title, from, n) => [`The leader moved "${title}" from `, { b: from }, `'s package to your Package ${n}.`],
     fromFree: (title, m, n) => [`The leader moved "${title}" from Package ${m} to your Package ${n}.`],
+    fromNowhere: (title, n) => [`The leader moved "${title}" to your Package ${n}.`],
     evidence: ' The evidence already handed in moved with it.',
   },
   movedOut: {
     toOwned: (title, m, to, n) => [`The leader moved "${title}" from your Package ${m} to `, { b: to }, `'s Package ${n}.`],
     toFree: (title, m, n) => [`The leader moved "${title}" from your Package ${m} to Package ${n} (nobody has picked it yet).`],
+    fromNowhereToOwned: (title, to, n) => [`The leader moved "${title}" to `, { b: to }, `'s Package ${n}.`],
+    fromNowhereToFree: (title, n) => [`The leader moved "${title}" to Package ${n} (nobody has picked it yet).`],
   },
   resplit: {
     same: (n, pts) => [
@@ -86,6 +115,18 @@ export const notifsEn: typeof notifsZh = {
   },
   assigned: (n) => [`The leader assigned Package ${n} to you. Until you start, you can still switch to another free package.`],
   leaderTransferred: (from) => [{ b: from }, ' made you the leader. You can now manage tasks, members and project settings.'],
+  leaderTransferredLeft: (from, tag) => [
+    { b: from },
+    ` made you the leader, then left ${tag}. You can now manage tasks, members and project settings.`,
+  ],
+  projectDeleted: (leader, tag) => [
+    'The leader ',
+    { b: leader },
+    ' deleted ',
+    { b: tag },
+    ". It will be deleted for good in 7 days; if the leader restores it, it comes back to your Home. You keep your badges.",
+  ],
+  projectRestored: (leader, tag) => ['The leader ', { b: leader }, ' restored ', { b: tag }, '. It is back on your Home.'],
   memberLeft: (name, tag, unfinished) => [
     { b: name },
     unfinished > 0 ? ` left ${tag}. Their finished points stay; ${tasks(unfinished)}.` : ` left ${tag}. Their finished points stay.`,
@@ -96,4 +137,36 @@ export const notifsEn: typeof notifsZh = {
     unfinished > 0 ? ` from ${tag}. Their finished points stay; ${tasks(unfinished)}.` : ` from ${tag}. Their finished points stay.`,
   ],
   removedYou: (tag) => [`The leader removed you from ${tag}. Your finished points stay in the team report.`],
+
+  submitted: (x) => {
+    const count = pieces(x.count, x.allFiles);
+    const due = labelsEn.due.date(x.month, x.day);
+    const last = x.late ? `${count}, due ${due}, handed in late.` : x.no > 1 ? `${count}.` : `${count}, due ${due}.`;
+    return x.no > 1
+      ? [{ b: x.name }, ` resubmitted "${x.title}" (attempt ${x.no}) for your review. ${last}`]
+      : [{ b: x.name }, ` handed in "${x.title}" for your review. ${last}`];
+  },
+  graded: (g) => {
+    const word = labelsEn.grade[g.grade];
+    if (!g.counting) return [`Attempt ${g.no}: the leader graded your "${g.title}": `, { b: word }, `, ${gradeGain(g)}. The reason is on the task page.`];
+    const prefix = g.no > 1 ? `Attempt ${g.no}: the leader` : 'The leader';
+    const reason = isFull(g.grade) ? '' : ' The reason is on the task page.';
+    return [`${prefix} graded your "${g.title}": `, { b: word }, `, ${gradeGain(g)}.${reason}`];
+  },
+  gradedOutside: (g) => [
+    `The leader completed your "${g.title}" for you: `,
+    { b: labelsEn.grade[g.grade] },
+    `, ${gradeGain(g)}. ${g.note ? `The evidence was handed in outside the app: "${g.note}".` : 'The evidence was handed in outside the app.'}`,
+  ],
+  overridden: (o) => [
+    `The leader changed your "${o.title}" from "${labelsEn.grade[o.from]}" to "${labelsEn.grade[o.to]}": ${overrideGain(o)}. The reason is on the task page.`,
+  ],
+  overrideUndone: (o) => [`The leader undid the last override; your "${o.title}" is back to "${labelsEn.grade[o.to]}": ${overrideGain(o)}.`],
+  waiting: {
+    byWaiter: (waiter, prereq) => [{ b: waiter }, ` is waiting on your "${prereq}".`],
+    byLeader: (waiter, waiting, prereq) => ['The leader marked ', { b: waiter }, `'s "${waiting}" as waiting on your "${prereq}".`],
+    toLeader: (waiter, owner, prereq) => [{ b: waiter }, ' is waiting on ', { b: owner }, `'s "${prereq}".`],
+    toLeaderNoOwner: (waiter, prereq) => [{ b: waiter }, ` is waiting on "${prereq}", which nobody is responsible for yet.`],
+  },
+  prereqDone: (prereq, waiting) => [`"${prereq}" is finished. You can start "${waiting}" now.`],
 };

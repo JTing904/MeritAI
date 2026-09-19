@@ -1,6 +1,6 @@
 import type { Member, Prisma, Project } from "../generated/prisma/client";
 import { assertActive, assertDraft, isActiveMember, type ProjectAccess } from "../lib/access";
-import { forbidden, notFound } from "../lib/errors";
+import { AppError, forbidden, notFound } from "../lib/errors";
 
 export type Tx = Prisma.TransactionClient;
 
@@ -44,8 +44,8 @@ export async function lockAsMember(
 
 /**
  * The actor's membership re-read after the caller locked `project` (lockAsMember without the ACTIVE
- * check, for writes that also accept drafts or answer ended projects their own way). Not an active
- * member, or a draft's non-leader → 404; `leader` and not the leader → 403.
+ * check, for writes that also accept drafts or answer ended projects their own way). A project deleted
+ * for everyone, not an active member, or a draft's non-leader → 404; `leader` and not the leader → 403.
  */
 export async function memberUnderLock(
   tx: Tx,
@@ -53,6 +53,7 @@ export async function memberUnderLock(
   userId: string,
   opts: { leader?: boolean } = {},
 ): Promise<Member> {
+  if (project.deletedAt !== null) throw notFound("Project");
   const member = await tx.member.findUnique({ where: { projectId_userId: { projectId: project.id, userId } } });
   if (!member || !isActiveMember(member)) throw notFound("Project");
   if (project.status === "DRAFT" && member.role !== "LEADER") throw notFound("Project");
@@ -63,4 +64,21 @@ export async function memberUnderLock(
 /** Bumps updatedAt so "上次编辑" on the home card reflects task edits too. */
 export function touchProject(tx: Tx, projectId: string) {
   return tx.project.update({ where: { id: projectId }, data: { updatedAt: new Date() } });
+}
+
+/** Every task of a confirmed project together is worth exactly this (tenths: 1000 = 100 分). */
+export const TOTAL_POINTS = 1000;
+
+/**
+ * A11: the last step of every transaction that writes an active project's points (confirmPlan,
+ * addActiveTask, updateActiveTask). If the tasks no longer add up to exactly 1000 something is wrong in
+ * the code, so the whole transaction rolls back with a 500 instead of saving an unfair split.
+ */
+export async function assertPointsTotal(tx: Tx, projectId: string): Promise<void> {
+  const { _sum } = await tx.task.aggregate({ where: { projectId }, _sum: { points: true } });
+  const total = _sum.points ?? 0;
+  if (total !== TOTAL_POINTS) {
+    console.error(`points invariant: project ${projectId} would sum to ${total}, not ${TOTAL_POINTS}; rolled back`);
+    throw new AppError(500, "INTERNAL", "The points would no longer add up to 100, so nothing was saved");
+  }
 }

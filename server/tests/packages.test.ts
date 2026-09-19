@@ -46,8 +46,8 @@ describe("POST /api/projects/:id/packages/:packageId/pick", () => {
     const pkgs = await packagesOf(t.projectId);
     const [first, second] = await tasksIn(pkgs[1]!.id);
     // A task handed back unfinished (FAIL, nobody) comes along; a finished one without an owner doesn't.
-    await testDb.task.update({ where: { id: first!.id }, data: { status: "FAIL" } });
-    await testDb.task.update({ where: { id: second!.id }, data: { status: "DONE", startedAt: new Date() } });
+    await testDb.task.update({ where: { id: first!.id }, data: { status: "FAIL", grade: "FAIL" } });
+    await testDb.task.update({ where: { id: second!.id }, data: { status: "DONE", grade: "PASS", startedAt: new Date() } });
     const before = await version(t.projectId);
 
     const res = await pickAs(a!.token, t.projectId, 2);
@@ -499,6 +499,77 @@ describe("POST /api/projects/:id/tasks/:taskId/move", () => {
     expect((await move(t.leader.token, t.projectId, other!.id, "nope")).status).toBe(404);
     expect(await testDb.task.findUniqueOrThrow({ where: { id: other!.id } })).toMatchObject({ packageId: t.pkgs[2]!.id });
   });
+
+  // M4 §15 #1: 交了就不换手.
+  it("refuses a task waiting for review (TASK_UNDER_REVIEW); a HALF one under re-review is finished (TASK_FINISHED)", async () => {
+    const t = await team();
+    const [pending, half] = await tasksIn(t.pkgs[2]!.id);
+    await testDb.task.update({ where: { id: pending!.id }, data: { status: "REVIEWING", startedAt: new Date(), startedById: t.rows.b.id } });
+    await testDb.attempt.create({ data: { taskId: pending!.id, no: 1, status: "PENDING", submittedAt: new Date(), submittedById: t.rows.b.id } });
+    const refused = await move(t.leader.token, t.projectId, pending!.id, t.pkgs[1]!.id);
+    expect([refused.status, refused.error!.code]).toEqual([409, "TASK_UNDER_REVIEW"]);
+
+    await testDb.task.update({ where: { id: half!.id }, data: { status: "REVIEWING", grade: "HALF", startedAt: new Date(), startedById: t.rows.b.id } });
+    await testDb.attempt.create({ data: { taskId: half!.id, no: 1, status: "GRADED", grade: "HALF", gradedAt: new Date() } });
+    await testDb.attempt.create({ data: { taskId: half!.id, no: 2, status: "PENDING", submittedAt: new Date(), submittedById: t.rows.b.id } });
+    const finished = await move(t.leader.token, t.projectId, half!.id, t.pkgs[1]!.id);
+    expect([finished.status, finished.error!.code]).toEqual([409, "TASK_FINISHED"]);
+    expect(await tasksIn(t.pkgs[2]!.id)).toHaveLength(2);
+  });
+
+  it("moves a leaver's released task that is in no package: no 「from」 package, nobody else to tell", async () => {
+    const t = await team();
+    const [task] = await tasksIn(t.pkgs[2]!.id);
+    // What a grade leaves behind for someone who left: released, FAIL, outside every package, with evidence.
+    await testDb.task.update({ where: { id: task!.id }, data: { packageId: null, ownerId: null, status: "FAIL", grade: "FAIL" } });
+    const attempt = await testDb.attempt.create({ data: { taskId: task!.id, no: 1, status: "GRADED", grade: "FAIL", gradedAt: new Date() } });
+    await testDb.evidence.create({ data: { attemptId: attempt.id, taskId: task!.id, kind: "LINK", name: "example.com", url: "https://example.com" } });
+
+    const res = await move(t.leader.token, t.projectId, task!.id, t.pkgs[1]!.id);
+    expect(res.status).toBe(200);
+    expect(await testDb.task.findUniqueOrThrow({ where: { id: task!.id } })).toMatchObject({ packageId: t.pkgs[1]!.id, ownerId: t.rows.a.id, status: "FAIL" });
+    const [moved] = await eventsOf(t.projectId, "TASK_MOVED");
+    expect(moved!.payload).toMatchObject({ fromPackageIndex: null, toPackageIndex: 2 });
+    const [movedIn] = await notificationsOf(t.a.user.id, "TASK_MOVED_IN");
+    expect(movedIn!.payload).toMatchObject({ from: null, fromPackageIndex: null, toPackageIndex: 2, hasEvidence: true });
+    expect(await testDb.notification.count({ where: { type: "TASK_MOVED_OUT" } })).toBe(0);
+  });
+
+  it("moves a task an active member holds outside every package: that owner still hears it moved out", async () => {
+    const t = await team();
+    const [toOwned, toFree] = await tasksIn(t.pkgs[2]!.id);
+    // What a switch or swap leaves behind: B's submission stayed with B outside the package, then got 不通过.
+    for (const task of [toOwned!, toFree!]) {
+      await testDb.task.update({
+        where: { id: task.id },
+        data: { packageId: null, status: "FAIL", grade: "FAIL", startedAt: new Date(), startedById: t.rows.b.id },
+      });
+    }
+
+    expect((await move(t.leader.token, t.projectId, toOwned!.id, t.pkgs[1]!.id)).status).toBe(200);
+    expect((await move(t.leader.token, t.projectId, toFree!.id, t.pkgs[3]!.id)).status).toBe(200);
+    expect(await testDb.task.findUniqueOrThrow({ where: { id: toOwned!.id } })).toMatchObject({ packageId: t.pkgs[1]!.id, ownerId: t.rows.a.id });
+    expect(await testDb.task.findUniqueOrThrow({ where: { id: toFree!.id } })).toMatchObject({ packageId: t.pkgs[3]!.id, ownerId: null });
+
+    const out = await notificationsOf(t.b.user.id, "TASK_MOVED_OUT");
+    expect(out.map((n) => [n.audience, n.payload])).toEqual([
+      [
+        "ONLY_YOU",
+        {
+          type: "TASK_MOVED_OUT",
+          taskId: toOwned!.id,
+          title: toOwned!.title,
+          fromPackageIndex: null,
+          to: { memberId: t.rows.a.id, name: "林晓雯" },
+          toPackageIndex: 2,
+        },
+      ],
+      ["ONLY_YOU", { type: "TASK_MOVED_OUT", taskId: toFree!.id, title: toFree!.title, fromPackageIndex: null, to: null, toPackageIndex: 4 }],
+    ]);
+    const [movedIn] = await notificationsOf(t.a.user.id, "TASK_MOVED_IN");
+    expect(movedIn!.payload).toMatchObject({ from: { memberId: t.rows.b.id, name: "王子杰" }, fromPackageIndex: null, toPackageIndex: 2 });
+    expect(await notificationsOf(t.leader.user.id)).toHaveLength(0);
+  });
 });
 
 describe("POST /api/projects/:id/tasks/:taskId/start", () => {
@@ -540,6 +611,41 @@ describe("POST /api/projects/:id/tasks/:taskId/start", () => {
     expect((await startAs(a!.token, t.projectId, task!.id)).status).toBe(200);
     expect(await version(t.projectId)).toBe(before + 1);
     expect(await eventsOf(t.projectId, "TASK_STARTED")).toHaveLength(1);
+  });
+
+  it("makes a task someone else started (moved in) the new owner's start, keeping when it started (M4)", async () => {
+    const t = await activeWith(3);
+    const [a, b] = t.members;
+    await pickAs(t.leader.token, t.projectId, 1);
+    await pickAs(a!.token, t.projectId, 2);
+    await pickAs(b!.token, t.projectId, 3);
+    const [aRow, bRow] = await Promise.all([a!, b!].map((p) => memberRow(t.projectId, p.user.id)));
+    const pkgs = await packagesOf(t.projectId);
+    const [task] = await tasksIn(pkgs[2]!.id);
+    expect((await startAs(b!.token, t.projectId, task!.id)).status).toBe(200);
+    const move = await call(`/api/projects/${t.projectId}/tasks/${task!.id}/move`, {
+      method: "POST",
+      token: t.leader.token,
+      body: { packageId: pkgs[1]!.id },
+    });
+    expect(move.status).toBe(200);
+    const movedIn = await testDb.task.findUniqueOrThrow({ where: { id: task!.id } });
+    expect(movedIn).toMatchObject({ ownerId: aRow!.id, startedById: bRow!.id, status: "DOING" });
+    const swap = await pendingSwap(t.projectId, aRow!.id, bRow!.id, pkgs[1]!.id, pkgs[2]!.id);
+    // Holding it doesn't make A started; pressing 开始做 on it does.
+    expect((await viewAs(a!.token, t.projectId)).packages[1]!.started).toBe(false);
+    const before = await version(t.projectId);
+
+    expect((await startAs(a!.token, t.projectId, task!.id)).status).toBe(200);
+    expect(await testDb.task.findUniqueOrThrow({ where: { id: task!.id } })).toMatchObject({
+      startedById: aRow!.id,
+      startedAt: movedIn.startedAt,
+      status: "DOING",
+    });
+    expect((await viewAs(a!.token, t.projectId)).packages[1]!.started).toBe(true);
+    expect(await testDb.swapRequest.findUniqueOrThrow({ where: { id: swap.id } })).toMatchObject({ status: "VOID", voidReason: "STARTED" });
+    expect((await eventsOf(t.projectId, "TASK_STARTED")).map((e) => e.actorId)).toEqual([bRow!.id, aRow!.id]);
+    expect(await version(t.projectId)).toBe(before + 1);
   });
 
   it("only lets the owner start; strangers and unknown tasks get 404", async () => {

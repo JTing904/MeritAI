@@ -8,6 +8,11 @@ export const homeEn: typeof homeZh = {
   myProfile: 'My profile',
   hello: { before: 'Hi, ', after: '!' },
   subIdle: 'Nothing due this week. Take a breather ☕',
+  subOverdue: (k, n) => {
+    const past = k === 1 ? '1 task is overdue' : `${k} tasks are overdue`;
+    return n > 0 ? `${past}, and ${n} more ${n === 1 ? 'is' : 'are'} due this week` : past;
+  },
+  subWeek: (n) => (n === 1 ? '1 task due this week' : `${n} tasks due this week`),
   subWelcome: "Welcome to MeritAI. Start a project, or join a teammate's.",
   myProjects: 'My projects',
   card: {
@@ -36,6 +41,13 @@ export const homeEn: typeof homeZh = {
     deleteTitle: (name) => `Delete the draft "${name}"?`,
     deleteBody: "Everything you filled in, tasks included, is deleted. This can't be undone.",
     deleted: 'Draft deleted',
+  },
+  deleted: {
+    chip: 'Deleted',
+    date: (m, day) => `${month(m)} ${day}`,
+    line: (deleted, purge) => `You deleted this project on ${deleted}. It will be deleted for good on ${purge}; you can restore it until then.`,
+    restore: 'Restore the project',
+    restored: (tag) => `Restored ${tag}`,
   },
   when: {
     today: (time) => `today ${time}`,

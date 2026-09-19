@@ -1,12 +1,20 @@
 // Swap requests (互换, spec §2): ask, accept, decline, cancel. Pending requests expire after 3 days, lazily.
-import type { SwapVoidReason } from "../../../shared/types";
+import type { SwapVoidNoticeReason } from "../../../shared/types";
 import type { Prisma } from "../generated/prisma/client";
 import { isActiveMember } from "../lib/access";
 import type { Db } from "../lib/db";
 import { AppError, forbidden, notFound } from "../lib/errors";
-import { FINISHED_STATUSES } from "../lib/package-state";
+import { UNFINISHED_WHERE } from "../lib/package-state";
 import { bumpPackages, expireSwaps, notify, recordEvent, remindPackageless, voidSwaps } from "./notify";
-import { findPackage, isPackageStarted, ownPackageStarted, personRef, WITH_NAME } from "./packages";
+import {
+  findPackage,
+  isPackageStarted,
+  NOT_UNDER_REVIEW_WHERE,
+  ownPackageStarted,
+  personRef,
+  UNDER_REVIEW_WHERE,
+  WITH_NAME,
+} from "./packages";
 import { lockAsMember, TX_OPTIONS, type Tx } from "./tx";
 
 export const SWAP_TTL_MS = 72 * 60 * 60 * 1000;
@@ -94,7 +102,7 @@ async function openSwap(tx: Tx, projectId: string, swapId: string, userId: strin
 }
 
 /** Ends one pending request as VOID; SWAP_VOID goes to its requester unless they caused it. */
-async function voidOne(tx: Tx, swap: SwapWithPeople, reason: Exclude<SwapVoidReason, "RESPLIT">, voidedById: string, now: Date) {
+async function voidOne(tx: Tx, swap: SwapWithPeople, reason: SwapVoidNoticeReason, voidedById: string, now: Date) {
   const { count } = await tx.swapRequest.updateMany({
     where: { id: swap.id, status: "PENDING" },
     data: { status: "VOID", voidReason: reason, voidedById, respondedAt: now },
@@ -153,13 +161,17 @@ export async function acceptSwap(db: Db, swapId: string, userId: string, now = n
 
     // Package.ownerId is unique, so A is emptied first. Tasks are re-owned by package, never by owner
     // alone: a task someone holds outside their package stays where it is. Finished work never changes
-    // hands (a package whose owner finished a task counts as started, so this is a second guard).
+    // hands (a package whose owner finished a task counts as started, so this is a second guard), and
+    // neither does a submission waiting for review: it stays with its submitter, outside the package.
     await tx.package.update({ where: { id: a.id }, data: { ownerId: null } });
     await tx.package.update({ where: { id: b.id }, data: { ownerId: x.id } });
     await tx.package.update({ where: { id: a.id }, data: { ownerId: y.id } });
-    const unfinished = { status: { notIn: [...FINISHED_STATUSES] } };
-    await tx.task.updateMany({ where: { packageId: a.id, ownerId: x.id, ...unfinished }, data: { ownerId: y.id } });
-    await tx.task.updateMany({ where: { packageId: b.id, ownerId: y.id, ...unfinished }, data: { ownerId: x.id } });
+    const reviewing = [UNFINISHED_WHERE, UNDER_REVIEW_WHERE];
+    const movable = [UNFINISHED_WHERE, NOT_UNDER_REVIEW_WHERE];
+    await tx.task.updateMany({ where: { packageId: a.id, ownerId: x.id, AND: reviewing }, data: { packageId: null } });
+    await tx.task.updateMany({ where: { packageId: b.id, ownerId: y.id, AND: reviewing }, data: { packageId: null } });
+    await tx.task.updateMany({ where: { packageId: a.id, ownerId: x.id, AND: movable }, data: { ownerId: y.id } });
+    await tx.task.updateMany({ where: { packageId: b.id, ownerId: y.id, AND: movable }, data: { ownerId: x.id } });
     await voidSwaps(tx, { projectId, memberIds: [x.id, y.id], reason: "SWAPPED_ELSEWHERE", voidedById: y.id, now, notify: true });
 
     await notify(tx, {

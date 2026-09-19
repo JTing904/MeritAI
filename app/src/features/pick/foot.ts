@@ -1,4 +1,5 @@
 import type { MemberView, PackageView, ProjectView, SwapView, TaskView } from '@shared/types';
+import { isFinished } from '@/lib/status';
 
 /** What a pick card shows under its tasks, for the viewer. */
 export type PickFoot =
@@ -17,7 +18,6 @@ export type TakenAction =
   /** (6) 🔁 申请互换 */
   | { kind: 'request' };
 
-const isFinished = (t: TaskView) => t.status === 'DONE' || t.status === 'HALF';
 
 /** Swaps still waiting for an answer (the server already drops expired ones; a screen left open may not know yet). */
 export function pendingSwaps(project: ProjectView, now = Date.now()): SwapView[] {

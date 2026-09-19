@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:reset": "prisma migrate reset --force && prisma db seed",
+    "db:reset": "tsx scripts/local-db-guard.ts && prisma migrate reset --force && prisma db seed",
     "db:seed": "prisma db seed",
     "postinstall": "prisma generate"
   },

@@ -20,7 +20,8 @@ export function Chip({ children, tone = 'default', hl }: { children: ReactNode; 
       }[tone];
   return (
     <View style={{ backgroundColor: bg, borderRadius: 11.5, paddingVertical: 2, paddingHorizontal: 9 }}>
-      <Txt v="chip" color={fg}>
+      {/* A pill in a row of pills: past 1.4× it pushes rows apart and clips inside cards. */}
+      <Txt v="chip" color={fg} maxFontSizeMultiplier={1.4}>
         {children}
       </Txt>
     </View>

@@ -5,6 +5,8 @@ const people = (n: number) => (n === 1 ? '1 person' : `${n} people`);
 const subj = (w: Who) => (w.you ? 'You' : w.name);
 /** Anywhere else. */
 const obj = (w: Who) => (w.you ? 'you' : w.name);
+/** "your" / "Lin's". */
+const possessive = (w: Who) => (w.you ? 'your' : `${w.name}'s`);
 const pkgs = (n: number) => (n === 1 ? '1 package' : `${n} packages`);
 
 /** "a", "b" and "c" */
@@ -58,7 +60,56 @@ export const projectEn: typeof projectZh = {
     move: 'Move task',
     switch: { emoji: '🔁', text: 'Switch or ask to swap' },
   },
-  footer: "Everyone in the group can see each person's tasks and AI review results.",
+  footer:
+    "Everyone in the group can see each person's tasks and grades. Tasks waiting for the leader's review don't count as overdue; work handed in after the due date can still be graded, and the report marks it late.",
+
+  rank: {
+    podium: 'Podium',
+    you: 'You',
+    unit: 'pts',
+    youSuffix: ' (you)',
+    earned: (p) => `${p} pts`,
+    packageTotal: (p) => `${p} pts in package`,
+    noPackage: 'No package yet',
+    empty: 'Nobody has finished a task yet. Once someone does, the ranking shows up here.',
+    leftTitle: 'Left',
+    left: (name, p) => `${name} · ${p} pts`,
+    formula: [
+      { b: 'How it counts: ' },
+      'The whole project is worth 100 points, and each task is worth part of them. A grade of "Excellent" or "Pass" earns the full points, "Half" earns half, and "Fail" earns 0. Code, reports and meetings all count the same way.',
+    ],
+    place: (rank, name, p) => `Rank ${rank} · ${name} · ${p} points`,
+    row: (rank, name, p, pkg) => `Rank ${rank} · ${name} · ${p} points · ${pkg}`,
+  },
+
+  queue: {
+    title: (n) => `To review · ${n}`,
+    late: 'Late',
+    meta: (name, when, n, due) => `${name} · handed in ${when} · ${n === 1 ? '1 item' : `${n} items`}${due ? ` · due ${due}` : ''}`,
+    grade: 'Grade',
+    gradeLabel: (title, name) => `Grade ${name}'s "${title}"`,
+  },
+
+  briefCard: {
+    title: 'Assignment brief',
+    file: (name) => `${name} · everyone can read the full text`,
+    typed: 'Typed description · everyone can read the full text',
+  },
+
+  brief: {
+    title: 'Assignment brief',
+    sub: (tag, name) => `${tag} · ${name}`,
+    typed: 'Typed description',
+    hint: (file, mine) =>
+      `Text read from "${file}", not the original file. Everyone in the group can see it${
+        mine ? '; the yellow part is what your current task has to cover.' : '.'
+      }`,
+    hintTyped: (mine) =>
+      `The brief the leader typed in. Everyone in the group can see it${mine ? '; the yellow part is what your current task has to cover.' : '.'}`,
+    mine: (title) => `Your task: ${title}`,
+    theirs: (name, title) => `${name}'s task: ${title}`,
+    nobody: (title) => `Nobody's task yet: ${title}`,
+  },
 
   tools: {
     title: 'Leader tools',
@@ -159,6 +210,29 @@ export const projectEn: typeof projectZh = {
     TASK_STARTED: (a, title) => [{ b: subj(a) }, ` started "${title}"`],
     RESPLIT: (a, n) => [{ b: subj(a) }, ` re-split the packages; there are now ${pkgs(n)}`],
     LEADER_TRANSFERRED: (a, m) => [{ b: subj(a) }, ' handed the leader role to ', { b: obj(m) }],
+    TASK_MOVED_UNPACKAGED: (a, title, to) => [{ b: subj(a) }, ` moved "${title}" to Package ${to}`],
+    SUBMITTED: (a, title, no) =>
+      no > 1 ? [{ b: subj(a) }, ` resubmitted "${title}" (attempt ${no})`] : [{ b: subj(a) }, ` handed in "${title}" for the leader to review`],
+    WITHDRAWN: (a, title) => [{ b: subj(a) }, ` withdrew "${title}"`],
+    GRADED: (a, owner, title, grade) => [{ b: subj(a) }, ' graded ', { b: possessive(owner) }, ` "${title}": ${grade}`],
+    GRADED_SELF: (a, title) => [{ b: subj(a) }, ` handed in "${title}", counted as Pass (the leader's own task)`],
+    GRADED_OUTSIDE: (a, owner, title, grade) => [
+      { b: subj(a) },
+      ' completed ',
+      { b: possessive(owner) },
+      ` "${title}" on their behalf: ${grade}`,
+    ],
+    OVERRIDDEN: (a, owner, title, from, to) => [{ b: subj(a) }, ' changed ', { b: possessive(owner) }, ` "${title}" from ${from} to ${to}`],
+    OVERRIDE_UNDONE: (a, title, to) => [{ b: subj(a) }, ` undid the override of "${title}", back to ${to}`],
+    MEETING_DONE: (a, title, n) => [{ b: subj(a) }, ` held "${title}", ${people(n)} came`],
+    START_UNDONE: (a, title) => [{ b: subj(a) }, ` undid starting "${title}"`],
+    PREREQ_SET: (a, waiting, prereq, prereqOwner) => [
+      { b: subj(a) },
+      ` marked "${waiting}" as waiting for "${prereq}"${prereqOwner ? ` (${obj(prereqOwner)})` : ''}`,
+    ],
+    PREREQ_CLEARED: (a, waiting) => [{ b: subj(a) }, ` removed what "${waiting}" was waiting for`],
+    PROJECT_DELETED: (a) => [{ b: subj(a) }, ' deleted the project'],
+    PROJECT_RESTORED: (a) => [{ b: subj(a) }, ' restored the project'],
   },
 
   task: {

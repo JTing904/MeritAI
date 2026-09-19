@@ -67,7 +67,8 @@ export function TabBar({ state, navigation, insets, unread = 0 }: BottomTabBarPr
                 <Icon name={meta.icon} color={focused ? c.grapeText : c.muted} />
                 {showBadge && (
                   <View style={s.badge}>
-                    <Txt v="num" size={10} weight={700} color="onBad" style={{ lineHeight: 17 }}>
+                    {/* The badge is a fixed 17 px circle: a large system font would spill out of it. */}
+                    <Txt v="num" size={10} weight={700} color="onBad" style={{ lineHeight: 17 }} maxFontSizeMultiplier={1.2}>
                       {unread > 99 ? '99+' : unread}
                     </Txt>
                   </View>

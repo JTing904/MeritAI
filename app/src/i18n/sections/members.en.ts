@@ -36,6 +36,9 @@ export const membersEn: typeof membersZh = {
     endHint:
       "Once you confirm the work was handed in, everyone has 14 days to download the team contribution report. Then the whole project is deleted (badges stay). If nobody confirms within 7 days after the deadline, it ends by itself.",
     endButton: 'Handed in, end the project',
+    deleteTitle: 'Delete the project',
+    deleteHint: 'Delete this project for everyone: nobody will see it any more. You can restore it from Home within 7 days; after that it is deleted for good.',
+    deleteButton: 'Delete the project',
   },
 
   info: {
@@ -70,12 +73,38 @@ export const membersEn: typeof membersZh = {
     removedLine: (date, pts) => `Removed ${date} · the ${pts} pts they finished stay in the report`,
     invite: 'Invite members',
     leave: 'Leave the project',
-    leaderCantLeave: "You're the leader. Hand the leader role to someone else before you can leave.",
     leaveTitle: (tag) => `Leave ${tag}?`,
     leaveBody:
       "Your finished points stay. Tasks you haven't finished won't have anyone on them. You can come back later with the invite code.",
     leaveConfirm: 'Leave the project',
     left: (tag) => `You left ${tag}`,
+  },
+
+  leaderLeave: {
+    title: (tag) => `Leave ${tag}?`,
+    body: "You're the leader, so pick one first.",
+    self: 'Just me leaving',
+    selfSub: "Pick someone to be the new leader, then you leave. The project and everyone's tasks and points stay as they are.",
+    deleteAll: 'Delete the project for everyone',
+    deleteAllSub: "Nobody will see the project any more. You can restore it within 7 days; after that it's deleted for good.",
+    hint: "When you're the only one left in the group, you can only delete the project for everyone.",
+  },
+
+  pickLeader: {
+    title: 'Who will be the new leader?',
+    body: "They'll get a notification, then they manage tasks, members and project settings.",
+    pkg: (n) => `Package ${n}`,
+    noPackage: 'No package yet',
+    confirm: (name) => `Hand over to ${name} and leave`,
+    hint: "Your finished points stay. Tasks you haven't finished won't have anyone on them; the new leader can move them to someone else.",
+  },
+
+  deleteProject: {
+    title: (tag) => `Delete ${tag} for everyone?`,
+    warn: "Everyone stops seeing this project right away and gets a notification. You can restore it from Home within 7 days; after 7 days the project, its tasks and files are deleted for good. Everyone keeps their badges.",
+    label: (tag) => `Type the project's short name "${tag}" to delete it`,
+    confirm: 'Delete for everyone',
+    done: (tag) => `Deleted ${tag}. You can restore it from Home within 7 days`,
   },
 
   actions: {

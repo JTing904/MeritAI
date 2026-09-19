@@ -57,7 +57,7 @@ export function MoveTaskSheet({
   };
 
   return (
-    <Sheet visible onClose={busy ? () => {} : onClose} title={m.title}>
+    <Sheet visible onClose={onClose} title={m.title}>
       <Txt v="small" color="ink2">
         {m.question(task.title, formatPoints(task.points))}
       </Txt>

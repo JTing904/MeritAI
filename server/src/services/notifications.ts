@@ -68,6 +68,7 @@ export async function listNotifications(
           name: true,
           shortCode: true,
           color: true,
+          deletedAt: true,
           members: { where: { userId }, select: { leftAt: true, removed: true } },
         },
       },
@@ -95,7 +96,8 @@ export async function listNotifications(
           voidedByRequester: n.swap.voidedById !== null && n.swap.voidedById === n.swap.requesterId,
         }
       : null,
-    projectOpen: n.project?.members.some(isActiveMember) ?? false,
+    // A project deleted for everyone can't be opened (its notifications stay until it is purged).
+    projectOpen: n.project !== null && n.project.deletedAt === null && n.project.members.some(isActiveMember),
   }));
 
   return {

@@ -92,7 +92,7 @@ describe("POST /api/projects/:id/tasks on an ACTIVE project", () => {
   it("rescales the finished work of people who left (no package) too", async () => {
     const t = await activeWith(2, { tasks: plan(400, 300, 300) });
     const tasks = await tasksOf(t.projectId);
-    await testDb.task.update({ where: { id: tasks[0]!.id }, data: { packageId: null, status: "DONE", startedAt: new Date() } });
+    await testDb.task.update({ where: { id: tasks[0]!.id }, data: { packageId: null, status: "DONE", grade: "PASS", startedAt: new Date() } });
 
     expect((await add(t.leader.token, t.projectId, { points: 100 })).status).toBe(201);
     const after = await tasksOf(t.projectId);

@@ -9,6 +9,7 @@ import { useToast } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
 import { useI18n } from '@/i18n';
 import { errorCode } from '@/lib/api';
+import { useIdempotencyKey } from '@/lib/idempotency';
 import { useSession } from '@/lib/session';
 import { useDates } from './dates';
 import { DateTimeField } from './DateTimeField';
@@ -85,6 +86,7 @@ export function BasicsStep({ draft }: { draft?: DraftView }) {
   const { t } = useI18n();
   const w = t.wizard.basics;
   const { request } = useSession();
+  const idem = useIdempotencyKey();
   const { show } = useToast();
   const initial = useMemo(() => initialForm(draft), [draft]);
   const [form, setForm] = useState<Form>(initial);
@@ -125,7 +127,13 @@ export function BasicsStep({ draft }: { draft?: DraftView }) {
   const save = async (draftStep: number): Promise<string | null> => {
     try {
       if (!draft) {
-        const created = await request<DraftView>('/projects', { method: 'POST', body: body() });
+        const input = body();
+        const created = await request<DraftView>('/projects', {
+          method: 'POST',
+          body: input,
+          idempotencyKey: idem.keyFor(JSON.stringify(input)),
+        });
+        idem.done();
         return created.basics.id;
       }
       if (dirty || draft.basics.draftStep !== draftStep) {

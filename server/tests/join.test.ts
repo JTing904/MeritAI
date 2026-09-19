@@ -23,7 +23,7 @@ describe("invite codes", () => {
     for (const none of [null, undefined, "", "软工", "--"]) {
       expect(codePrefix(none)).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/);
     }
-    expect(makeInviteCode("CS302")).toMatch(/^CS302-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/);
+    expect(makeInviteCode("CS302")).toMatch(/^CS302-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/);
   });
 
   it("matches what people type: any case, spaces, full-width characters", () => {

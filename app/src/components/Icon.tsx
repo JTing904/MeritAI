@@ -17,7 +17,15 @@ export type IconName =
   | 'chevron'
   | 'sparkle'
   | 'shuffle'
-  | 'check';
+  | 'check'
+  | 'link'
+  | 'external'
+  | 'undo'
+  | 'play'
+  | 'image'
+  | 'table'
+  | 'door'
+  | 'trash';
 
 const HIDDEN =
   Platform.OS === 'web'
@@ -104,4 +112,53 @@ const GLYPHS: Record<IconName, React.ReactNode> = {
     </>
   ),
   check: <Path d="m5 12 5 5L20 7" />,
+  // M4 (mockups batch 3).
+  link: (
+    <>
+      <Path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.5 1.5" />
+      <Path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19" />
+    </>
+  ),
+  external: (
+    <>
+      <Path d="M14 4h6v6" />
+      <Path d="M20 4 10 14" />
+      <Path d="M20 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h5" />
+    </>
+  ),
+  undo: (
+    <>
+      <Path d="M9 14 4 9l5-5" />
+      <Path d="M4 9h11a5 5 0 0 1 0 10h-3" />
+    </>
+  ),
+  play: <Path d="m6 4 14 8-14 8z" />,
+  image: (
+    <>
+      <Rect x={3} y={3} width={18} height={18} rx={3} />
+      <Circle cx={8.5} cy={8.5} r={1.5} />
+      <Path d="m21 15-5-5L5 21" />
+    </>
+  ),
+  table: (
+    <>
+      <Rect x={3} y={3} width={18} height={18} rx={3} />
+      <Path d="M3 9h18M3 15h18M9 3v18" />
+    </>
+  ),
+  // Leader leaves / deletes the project (LeaderLeave mockup).
+  door: (
+    <>
+      <Path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" />
+      <Path d="M9 16l-4-4 4-4" />
+      <Path d="M5 12h11" />
+    </>
+  ),
+  trash: (
+    <>
+      <Path d="M4 7h16" />
+      <Path d="M9 7V4h6v3" />
+      <Path d="M6 7l1 13h10l1-13" />
+    </>
+  ),
 };

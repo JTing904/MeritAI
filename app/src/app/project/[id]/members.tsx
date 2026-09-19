@@ -12,12 +12,14 @@ import { ConfirmSheet } from '@/components/ConfirmSheet';
 import { AppBar, Screen } from '@/components/Screen';
 import { useToast } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
+import { DeleteProjectSheet } from '@/features/members/DeleteProjectSheet';
 import { activeMembers, dayLabel, joinedRecently, memberPackage, peopleLabel } from '@/features/members/format';
 import { InviteSheet } from '@/features/members/InviteSheet';
+import { LeaderLeaveSheet } from '@/features/members/LeaderLeaveSheet';
 import { LoadState } from '@/features/members/LoadState';
 import { MemberActions } from '@/features/members/MemberActions';
+import { PickNewLeaderSheet } from '@/features/members/PickNewLeaderSheet';
 import { useProject } from '@/features/project/useProject';
-import { Hint } from '@/features/wizard/Field';
 import { useI18n } from '@/i18n';
 import { useSession } from '@/lib/session';
 import { makeStyles } from '@/theme';
@@ -32,7 +34,10 @@ const useStyles = makeStyles((c) =>
   }),
 );
 
-/** 成员 (Members + MemberActions mockups): who is in, who left, invite, leave; the leader's ⋯ per member. */
+/**
+ * 成员 (Members + MemberActions mockups): who is in, who left, invite, leave; the leader's ⋯ per member.
+ * The leader's 「退出项目」 asks first (LeaderLeave mockup): hand over and leave, or delete for everyone.
+ */
 export default function MembersScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t } = useI18n();
@@ -68,6 +73,8 @@ function Members({
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  // The leader's way out: the choice, then picking the next leader or deleting for everyone.
+  const [leaderStep, setLeaderStep] = useState<'choose' | 'pick' | 'delete' | null>(null);
   const leader = project.viewerRole === 'LEADER';
   const tag = projectTag(project.basics.name, project.basics.shortCode);
 
@@ -113,8 +120,7 @@ function Members({
       <Button title={p.invite} kind="soft" block onPress={() => setInviting(true)} />
 
       <Card style={{ gap: 10 }}>
-        <Button title={p.leave} kind="danger" block disabled={leader} onPress={() => setLeaving(true)} />
-        {leader ? <Hint>{p.leaderCantLeave}</Hint> : null}
+        <Button title={p.leave} kind="danger" block onPress={() => (leader ? setLeaderStep('choose') : setLeaving(true))} />
       </Card>
 
       <InviteSheet
@@ -128,6 +134,27 @@ function Members({
         memberId={leader ? actionsFor : null}
         onClose={() => setActionsFor(null)}
         onChange={setProject}
+        onError={onError}
+      />
+      <LeaderLeaveSheet
+        visible={leader && leaderStep === 'choose'}
+        tag={tag}
+        canHandOver={active.length > 1}
+        onClose={() => setLeaderStep(null)}
+        onLeave={() => setLeaderStep('pick')}
+        onDelete={() => setLeaderStep('delete')}
+      />
+      <PickNewLeaderSheet
+        visible={leader && leaderStep === 'pick'}
+        project={project}
+        onClose={() => setLeaderStep(null)}
+        onError={onError}
+      />
+      <DeleteProjectSheet
+        visible={leader && leaderStep === 'delete'}
+        projectId={project.basics.id}
+        tag={tag}
+        onClose={() => setLeaderStep(null)}
         onError={onError}
       />
       <ConfirmSheet

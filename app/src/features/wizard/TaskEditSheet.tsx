@@ -9,6 +9,7 @@ import { useToast } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
 import { useI18n } from '@/i18n';
 import { errorCode } from '@/lib/api';
+import { useIdempotencyKey } from '@/lib/idempotency';
 import { useSession } from '@/lib/session';
 import { makeStyles, useTheme } from '@/theme';
 import { useDates } from './dates';
@@ -65,6 +66,7 @@ export function TaskEditSheet({
   const { t } = useI18n();
   const w = t.wizard.task;
   const { request } = useSession();
+  const idem = useIdempotencyKey();
   const { show } = useToast();
   const { deadline, timezone: tz, id } = draft.basics;
   const dates = useDates(tz);
@@ -116,7 +118,12 @@ export function TaskEditSheet({
     try {
       const next = task
         ? await request<DraftView>(`/projects/${id}/tasks/${task.id}`, { method: 'PATCH', body: patch })
-        : await request<DraftView>(`/projects/${id}/tasks`, { method: 'POST', body: input });
+        : await request<DraftView>(`/projects/${id}/tasks`, {
+            method: 'POST',
+            body: input,
+            idempotencyKey: idem.keyFor(JSON.stringify(input)),
+          });
+      idem.done();
       onSaved(next);
       onClose();
     } catch (err) {
@@ -142,7 +149,7 @@ export function TaskEditSheet({
   };
 
   return (
-    <Sheet visible onClose={busy ? () => {} : onClose} title={task ? w.editTitle : w.addTitle}>
+    <Sheet visible onClose={onClose} title={task ? w.editTitle : w.addTitle}>
       <Field label={w.name} error={titleError}>
         <Input label={w.name} value={form.title} onChangeText={(v) => set('title', v)} maxLength={120} invalid={!!titleError} />
       </Field>

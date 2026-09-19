@@ -7,6 +7,8 @@ import { invitesFor, joinProject } from "./join";
 import { lockAsMember, TX_OPTIONS } from "./tx";
 
 export const MAX_INVITES_PER_REQUEST = 20;
+/** Invites waiting for an answer in one project (A6): an invite list is not a mailing list. */
+export const MAX_PENDING_INVITES = 30;
 
 export type InviteTarget =
   | { target: string; email: string; githubUsername: null }
@@ -50,6 +52,7 @@ export async function createInvites(db: Db, projectId: string, inviter: User, ra
     // The lock keeps two people inviting the same address at once from creating two invites; the
     // inviter is re-read under it (they may have left or been removed since the route checked).
     await lockAsMember(tx, projectId, inviter.id);
+    let pendingCount = await tx.invite.count({ where: { projectId, status: "PENDING" } });
     const outcomes: InviteOutcome[] = [];
     for (const token of tokens) {
       const t = parseTarget(token);
@@ -79,6 +82,10 @@ export async function createInvites(db: Db, projectId: string, inviter: User, ra
         outcomes.push({ target: token, result: "ALREADY_INVITED" });
         continue;
       }
+      if (pendingCount >= MAX_PENDING_INVITES) {
+        throw new AppError(409, "INVITE_LIMIT", `At most ${MAX_PENDING_INVITES} invites can wait for an answer`);
+      }
+      pendingCount++;
       await tx.invite.create({
         data: { projectId, invitedById: inviter.id, email: t.email, githubUsername: t.githubUsername },
       });

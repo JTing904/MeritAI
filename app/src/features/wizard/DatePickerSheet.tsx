@@ -265,7 +265,7 @@ function Picker({ value, onPick, onClose, tz, mode, min, max, presets, clearable
         <View style={s.week} aria-hidden>
           {p.weekdays.map((w, i) => (
             <View key={i} style={[s.cell, s.weekday]}>
-              <Txt v="meta" size={12} weight={700} center>
+              <Txt v="meta" size={12} weight={700} center maxFontSizeMultiplier={1.3}>
                 {w}
               </Txt>
             </View>
@@ -304,17 +304,19 @@ function Picker({ value, onPick, onClose, tz, mode, min, max, presets, clearable
                     size={15}
                     weight={on ? 800 : 600}
                     tabular
+                    // Day cells are 42 px high: larger text would clip the number and the 今天 tag.
+                    maxFontSizeMultiplier={1.3}
                     color={on ? (dark ? c.ink : c.onHl) : off ? 'muted' : 'ink'}
                     style={isToday ? s.todayNum : undefined}>
                     {d.d}
                   </Txt>
                   {isToday ? (
-                    <Txt v="meta" size={9} weight={700} style={s.todayTag}>
+                    <Txt v="meta" size={9} weight={700} style={s.todayTag} maxFontSizeMultiplier={1.2}>
                       {p.today}
                     </Txt>
                   ) : null}
                   {isMax ? (
-                    <Txt v="meta" size={11} style={s.flag}>
+                    <Txt v="meta" size={11} style={s.flag} maxFontSizeMultiplier={1.2}>
                       🏁
                     </Txt>
                   ) : null}

@@ -94,13 +94,16 @@ enum SwapVoidReason {
   SWAPPED_ELSEWHERE
   LEFT
   RESPLIT
+  /// The leader deleted the project for everyone.
+  PROJECT_DELETED
 }
 
-/// Who a notification went to, shown in its meta line (全组都收到 / 只有你收到 / 只有组长收到).
+/// Who a notification went to, shown in its meta line (全组都收到 / 只有你收到 / 只有组长收到 / 只有你和组长收到).
 enum NotificationAudience {
   GROUP
   ONLY_YOU
   ONLY_LEADER
+  YOU_AND_LEADER
 }
 
 enum NotificationType {
@@ -119,6 +122,14 @@ enum NotificationType {
   RESPLIT
   PACKAGE_ASSIGNED
   LEADER_TRANSFERRED
+  SUBMITTED
+  GRADED
+  GRADED_OUTSIDE
+  OVERRIDDEN
+  WAITING_ON_YOU
+  PREREQ_DONE
+  PROJECT_DELETED
+  PROJECT_RESTORED
 }
 
 /// Entries of the project feed (动态).
@@ -136,6 +147,37 @@ enum ActivityType {
   TASK_STARTED
   RESPLIT
   LEADER_TRANSFERRED
+  SUBMITTED
+  WITHDRAWN
+  GRADED
+  OVERRIDDEN
+  MEETING_DONE
+  START_UNDONE
+  PREREQ_SET
+  PROJECT_DELETED
+  PROJECT_RESTORED
+}
+
+/// The leader's grade of an attempt (M4). SELF: a meeting task its owner marked done.
+/// EXCELLENT, PASS and SELF earn the task's points; HALF half (rounded); FAIL none.
+enum Grade {
+  EXCELLENT
+  PASS
+  HALF
+  FAIL
+  SELF
+}
+
+/// DRAFT: evidence being collected; PENDING: 等组长审核; GRADED.
+enum AttemptStatus {
+  DRAFT
+  PENDING
+  GRADED
+}
+
+enum EvidenceKind {
+  FILE
+  LINK
 }
 
 model User {
@@ -157,6 +199,7 @@ model User {
   createdProjects Project[]      @relation("ProjectCreator")
   sentInvites     Invite[]       @relation("InviteSender")
   notifications   Notification[]
+  idempotencyKeys IdempotencyKey[]
 }
 
 /// A signed-in device. Only the SHA-256 hash of the bearer token is stored.
@@ -171,6 +214,7 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([expiresAt])
 }
 
 /// A GitHub or Google login linked to a user (at most one of each per user).
@@ -214,7 +258,11 @@ model Project {
   draftStep       Int           @default(1)
   planSource      PlanSource?
   /// Text of the brief (typed, or extracted from the uploaded file); kept for re-parsing and AI later.
+  /// Omitted from every query unless selected (lib/db.ts OMIT): only the brief endpoints read it. At most
+  /// MAX_BRIEF_TEXT_BYTES (services/brief.ts cuts a longer text at a line and adds a note).
   briefText       String?
+  /// UTF-8 bytes of briefText; null when there is none. Lists use it instead of loading the text.
+  briefBytes      Int?
   briefFileName   String?
   inviteCode      String?       @unique
   /// "owner/name" when a GitHub repo is connected (M8).
@@ -226,8 +274,14 @@ model Project {
   /// Bumped on every change to packages, owners, members, or a task's package/owner/status/start/points,
   /// so a re-split preview can tell it went stale (STALE_PREVIEW).
   packagesVersion Int           @default(0)
+  /// 为所有人删除项目: hidden from everyone at once; the leader who did it (deletedById) can restore it
+  /// until purgeAfter (deletedAt + 7 days), after which purgeDeletedProjects removes it for good.
+  deletedAt       DateTime?
+  deletedById     String?
+  purgeAfter      DateTime?
 
   createdBy          User                @relation("ProjectCreator", fields: [createdById], references: [id])
+  deletedBy          Member?             @relation("ProjectDeleter", fields: [deletedById], references: [id], onDelete: SetNull)
   members            Member[]
   packages           Package[]
   tasks              Task[]
@@ -240,6 +294,8 @@ model Project {
   activity           ActivityEvent[]
 
   @@index([createdById])
+  @@index([purgeAfter])
+  @@index([deletedById])
 }
 
 model Member {
@@ -257,14 +313,19 @@ model Member {
   /// Sent once; cleared when the member gets a package.
   packageReminderAt DateTime?
 
-  project       Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  package       Package?
-  tasks         Task[]          @relation("TaskOwner")
-  startedTasks  Task[]          @relation("TaskStarter")
-  swapsSent     SwapRequest[]   @relation("SwapRequester")
-  swapsReceived SwapRequest[]   @relation("SwapTarget")
-  activity      ActivityEvent[]
+  project           Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  package           Package?
+  tasks             Task[]          @relation("TaskOwner")
+  startedTasks      Task[]          @relation("TaskStarter")
+  swapsSent         SwapRequest[]   @relation("SwapRequester")
+  swapsReceived     SwapRequest[]   @relation("SwapTarget")
+  activity          ActivityEvent[]
+  submittedAttempts Attempt[]       @relation("AttemptSubmitter")
+  gradedAttempts    Attempt[]       @relation("AttemptGrader")
+  addedEvidence     Evidence[]      @relation("EvidenceAdder")
+  gradeChanges      GradeChange[]   @relation("GradeChanger")
+  deletedProjects   Project[]       @relation("ProjectDeleter")
 
   @@unique([projectId, userId])
   @@index([userId])
@@ -338,7 +399,22 @@ model Task {
   packageId      String?
   /// Member doing the task (the package owner; a started task stays with whoever started it).
   ownerId        String?
+  /// Derived from the attempts (lib/grading.ts statusFor): REVIEWING while one is PENDING, else by `grade`.
   status         TaskStatus @default(TODO)
+  /// The counting attempt's current grade (best rank; the latest on a tie); null without a graded attempt.
+  grade          Grade?
+  /// When the counting grade was earned (M4 spec §2); null while not finished. Sorts 已完成.
+  finishedAt     DateTime?
+  /// 前置任务: the task this one waits for (one at a time; a hint, never a block).
+  prereqTaskId   String?
+  /// 作业要求（原文）: the brief item's lines (markers stripped) and its line range [briefFrom, briefTo)
+  /// in Project.briefText. Null for typed descriptions and tasks added by hand. Omitted from every query
+  /// unless selected (lib/db.ts OMIT): only the task page shows it.
+  briefExcerpt   String?
+  briefFrom      Int?
+  briefTo        Int?
+  /// A part made by splitLargeTasks (shows 「这一项拆成了 N 个任务」).
+  briefSplit     Boolean    @default(false)
   startedAt      DateTime?
   /// Who started it (开始做; later also evidence, commits, marking done). Kept when the task changes
   /// hands, cleared when it is released. A package counts as started only through its owner's own start.
@@ -348,17 +424,130 @@ model Task {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
-  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  feature   Feature?   @relation(fields: [featureId], references: [id], onDelete: SetNull)
-  milestone Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
-  package   Package?   @relation(fields: [packageId], references: [id], onDelete: SetNull)
-  owner     Member?    @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
-  startedBy Member?    @relation("TaskStarter", fields: [startedById], references: [id], onDelete: SetNull)
+  project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  feature      Feature?        @relation(fields: [featureId], references: [id], onDelete: SetNull)
+  milestone    Milestone?      @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  package      Package?        @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  owner        Member?         @relation("TaskOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  startedBy    Member?         @relation("TaskStarter", fields: [startedById], references: [id], onDelete: SetNull)
+  prereqTask   Task?           @relation("TaskPrereq", fields: [prereqTaskId], references: [id], onDelete: SetNull)
+  waitingTasks Task[]          @relation("TaskPrereq")
+  attempts     Attempt[]
+  checklist    ChecklistItem[]
+  evidence     Evidence[]
 
   @@unique([projectId, number])
   @@index([projectId])
   @@index([packageId])
   @@index([ownerId])
+  @@index([prereqTaskId])
+  @@index([startedById])
+  @@index([featureId])
+  @@index([milestoneId])
+}
+
+/// One submission round of a task (第 N 次). At most one attempt per task is not GRADED; the services
+/// guarantee it under the project row lock (a partial unique index can't be expressed in this schema,
+/// so a later migrate dev would drop one added by hand). Old attempts, their evidence, grades and
+/// notes are kept while the project exists.
+model Attempt {
+  id             String        @id @default(cuid())
+  taskId         String
+  /// 第 N 次, 1-based.
+  no             Int
+  status         AttemptStatus @default(DRAFT)
+  submittedById  String?
+  submittedAt    DateTime?
+  /// submittedAt after the effective due (报告里记「迟交」).
+  late           Boolean       @default(false)
+  grade          Grade?
+  /// The leader's 理由 (HALF/FAIL) or 评语 (optional otherwise).
+  gradeNote      String?
+  gradedById     String?
+  gradedAt       DateTime?
+  /// 合格（组长自评）: the leader submitted their own task.
+  selfGraded     Boolean       @default(false)
+  /// 组长代为完成 · 证据在 App 外交了.
+  outsideApp     Boolean       @default(false)
+  outsideNote    String?
+  /// Meeting tasks: 开了什么、决定了什么 + who came (member ids, the owner included) + who didn't
+  /// (snapshot of the members active at completion who weren't ticked; never the owner).
+  meetingSummary String?
+  attendeeIds    String[]      @default([])
+  absentIds      String[]      @default([])
+  createdAt      DateTime      @default(now())
+
+  task        Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  submittedBy Member?       @relation("AttemptSubmitter", fields: [submittedById], references: [id], onDelete: SetNull)
+  gradedBy    Member?       @relation("AttemptGrader", fields: [gradedById], references: [id], onDelete: SetNull)
+  evidence    Evidence[]
+  changes     GradeChange[]
+
+  @@unique([taskId, no])
+  @@index([taskId, status])
+  @@index([submittedById])
+  @@index([gradedById])
+}
+
+/// A file or link handed in with an attempt.
+model Evidence {
+  id         String       @id @default(cuid())
+  attemptId  String
+  /// Denormalised from the attempt: evidence counts and the project's storage sum.
+  taskId     String
+  kind       EvidenceKind
+  /// File name as shown (sanitised) or the link's display text.
+  name       String
+  /// LINK only.
+  url        String?
+  /// FILE only: "<projectId>/<taskId>/<24 hex chars>.<ext>" (lib/storage.ts).
+  storageKey String?      @unique
+  sizeBytes  Int?
+  /// FILE only: the canonical type of the sniffed content (never the client's).
+  mimeType   String?
+  addedById  String?
+  createdAt  DateTime     @default(now())
+
+  attempt Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  task    Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  addedBy Member? @relation("EvidenceAdder", fields: [addedById], references: [id], onDelete: SetNull)
+
+  @@index([taskId])
+  @@index([attemptId])
+  @@index([addedById])
+}
+
+/// 做到这些才算完成: the task's checklist, ordered.
+model ChecklistItem {
+  id        String   @id @default(cuid())
+  taskId    String
+  text      String
+  done      Boolean  @default(false)
+  order     Int
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, order])
+}
+
+/// 推翻评级: the leader changed an attempt's grade. Undoing sets undoneAt and restores fromGrade.
+model GradeChange {
+  id         String    @id @default(cuid())
+  attemptId  String
+  fromGrade  Grade
+  toGrade    Grade
+  reason     String
+  byId       String?
+  createdAt  DateTime  @default(now())
+  undoneAt   DateTime?
+  undoneById String?
+
+  attempt Attempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  by      Member? @relation("GradeChanger", fields: [byId], references: [id], onDelete: SetNull)
+
+  @@index([attemptId, createdAt])
+  @@index([byId])
 }
 
 /// Invitation by email or GitHub username; shown on the invitee's home screen.
@@ -380,6 +569,7 @@ model Invite {
   @@index([email])
   @@index([githubUsername])
   @@index([projectId])
+  @@index([invitedById])
 }
 
 /// Codes replaced by "重新生成", so joining with one says it expired rather than "not found".
@@ -389,6 +579,8 @@ model RetiredInviteCode {
   retiredAt DateTime @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
 }
 
 /// 互换请求: a member with a not-started package asks the owner of another not-started package.
@@ -420,6 +612,8 @@ model SwapRequest {
   @@index([projectId, status])
   @@index([requesterId, status])
   @@index([targetId, status])
+  @@index([requesterPackageId])
+  @@index([targetPackageId])
 }
 
 /// One row per recipient. `payload` is a NotificationPayload (shared/types.ts), names and indexes snapshotted.
@@ -442,6 +636,8 @@ model Notification {
 
   @@index([userId, createdAt, id])
   @@index([userId, readAt])
+  @@index([projectId])
+  @@index([swapId])
 }
 
 /// The project feed (动态). `payload` is an ActivityPayload (shared/types.ts).
@@ -457,4 +653,32 @@ model ActivityEvent {
   actor   Member? @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([projectId, createdAt, id])
+  @@index([actorId])
+}
+
+/// A fixed-window rate-limit counter (lib/rate-limit.ts). `key` names the limit and the caller,
+/// e.g. "join:<userId>"; blockedUntil is set while a lockout runs.
+model RateLimitBucket {
+  key          String    @id
+  count        Int
+  windowStart  DateTime
+  blockedUntil DateTime?
+}
+
+/// The first result of a create request sent with an Idempotency-Key header (lib/idempotency.ts).
+/// A retry with the same key from the same user within 24 h gets this result back instead of
+/// creating the thing again. `status` is null while the first request is still running.
+model IdempotencyKey {
+  userId    String
+  key       String
+  /// "POST /api/…" route pattern of the first request; the same key on another route is refused.
+  route     String
+  status    Int?
+  body      Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, key])
+  @@index([createdAt])
 }

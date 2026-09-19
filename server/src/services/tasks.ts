@@ -126,14 +126,20 @@ export async function updateTask(db: Db, projectId: string, taskId: string, inpu
 /**
  * 「把太大的任务拆开」 (step 5, when the packages would come out uneven): splits the biggest tasks into
  * equal parts that take the original's place in the plan and copy its kind, feature, milestone, due
- * dates (the leader's own too) and description. Part labels are in `locale`, the language the leader
+ * dates (the leader's own too), description and brief excerpt (every part is marked briefSplit, for
+ * 「这一项拆成了 N 个任务」). Part labels are in `locale`, the language the leader
  * reads now. Does nothing when the packages are already even or nothing can be split further; the app
  * tells these apart by the task count.
  */
 export async function splitLargeTasks(db: Db, projectId: string, locale: Locale): Promise<void> {
   await db.$transaction(async (tx) => {
     const project = await lockDraft(tx, projectId);
-    const tasks = await tx.task.findMany({ where: { projectId }, orderBy: [{ order: "asc" }, { number: "asc" }] });
+    // The parts copy the quoted brief lines, which queries leave out unless asked (lib/db.ts OMIT).
+    const tasks = await tx.task.findMany({
+      where: { projectId },
+      orderBy: [{ order: "asc" }, { number: "asc" }],
+      omit: { briefExcerpt: false },
+    });
     const parts = planSplit(
       tasks.map((t) => ({ points: t.points, group: t.featureId, splittable: !isLocked(t) })),
       packageCount(project.teamSize, project.leaderManages),
@@ -147,10 +153,11 @@ export async function splitLargeTasks(db: Db, projectId: string, locale: Locale)
     for (const [i, row] of rows.entries()) {
       const source = tasks[row.source]!;
       const estimateHours = source.estimateHours === null ? null : source.estimateHours / row.parts;
+      const briefSplit = row.parts > 1 || source.briefSplit;
       if (row.first) {
         await tx.task.update({
           where: { id: source.id },
-          data: { title: row.title, points: row.points, number: i + 1, order: i, estimateHours },
+          data: { title: row.title, points: row.points, number: i + 1, order: i, estimateHours, briefSplit },
         });
         continue;
       }
@@ -168,6 +175,10 @@ export async function splitLargeTasks(db: Db, projectId: string, locale: Locale)
         estimateHours,
         featureId: source.featureId,
         milestoneId: source.milestoneId,
+        briefExcerpt: source.briefExcerpt,
+        briefFrom: source.briefFrom,
+        briefTo: source.briefTo,
+        briefSplit,
       });
     }
     await tx.task.createMany({ data: created });

@@ -14,7 +14,10 @@ const useStyles = makeStyles((c) =>
     tile: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
     opt: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, backgroundColor: c.card2 },
     optPressed: { opacity: 0.85 },
+    // The chosen option (PrereqSheet): grape ring on the grape-soft ground, as the mockup's aria-pressed row.
+    optSelected: { backgroundColor: c.grapeSoft, borderWidth: 2, borderColor: c.grape, padding: 10 },
     optGrow: { flex: 1, minWidth: 0, gap: 1 },
+    optSub: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 },
     notice: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
     noticeBody: { flex: 1, minWidth: 0, gap: 2 },
     more: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
@@ -34,7 +37,7 @@ export const ownerOf = (project: ProjectView, pkg: PackageView): MemberView | nu
 export const packageById = (project: ProjectView, id: string | null): PackageView | null =>
   (id && project.packages.find((p) => p.id === id)) || null;
 
-export const isFinished = (status: string) => status === 'DONE' || status === 'HALF';
+export { isFinished } from '@/lib/status';
 
 /** The prototype's `.pkg-num`: the package number on the owner's colour, or the waiting grey when free. */
 export function PackageTile({ index, owner }: { index: number; owner: MemberView | null }) {
@@ -50,21 +53,28 @@ export function PackageTile({ index, owner }: { index: number; owner: MemberView
   );
 }
 
-/** Sheet option (`.opt-row`): a leading tile or avatar, a bold title and a muted line. */
+/**
+ * Sheet option (`.opt-row`): a leading tile or avatar, a bold title and a muted line. `selected`: the
+ * current choice in a pick-one list (aria-pressed, grape ring). `subExtra`: shown after `sub` (a chip).
+ */
 export function OptRow({
   leading,
   title,
   sub,
+  subExtra,
   onPress,
   disabled,
   busy,
+  selected,
 }: {
   leading: ReactNode;
   title: string;
   sub?: string;
+  subExtra?: ReactNode;
   onPress: () => void;
   disabled?: boolean;
   busy?: boolean;
+  selected?: boolean;
 }) {
   const s = useStyles();
   const inactive = !!(disabled || busy);
@@ -75,13 +85,19 @@ export function OptRow({
       role="button"
       aria-disabled={inactive}
       aria-busy={!!busy}
-      style={({ pressed }) => [s.opt, pressed && !inactive && s.optPressed, disabled && { opacity: 0.55 }]}>
+      {...(selected === undefined ? {} : { 'aria-pressed': selected })}
+      style={({ pressed }) => [s.opt, selected && s.optSelected, pressed && !inactive && s.optPressed, disabled && { opacity: 0.55 }]}>
       {leading}
       <View style={s.optGrow}>
-        <Txt v="body" weight={700}>
+        <Txt v="body" weight={700} color={selected ? 'grapeText' : undefined}>
           {title}
         </Txt>
-        {sub ? <Txt v="meta">{sub}</Txt> : null}
+        {sub || subExtra ? (
+          <View style={s.optSub}>
+            {sub ? <Txt v="meta">{sub}</Txt> : null}
+            {subExtra}
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );

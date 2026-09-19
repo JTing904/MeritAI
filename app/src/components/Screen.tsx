@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useRef, type ReactNode } from 'react';
+import { useRef, type ReactNode, type RefObject } from 'react';
 import {
   Platform,
   Pressable,
@@ -89,6 +89,7 @@ export function Screen({
   refreshControl,
   bottomInset = true,
   onEndReached,
+  scrollRef,
 }: {
   children: ReactNode;
   /** Pushed screens pass an <AppBar>; root tabs put their title inside children. */
@@ -98,6 +99,8 @@ export function Screen({
   bottomInset?: boolean;
   /** Load more: called once near the bottom (200 px), again only after the content grew. */
   onEndReached?: () => void;
+  /** The page's ScrollView (e.g. to scroll to a block: the brief page's current task). */
+  scrollRef?: RefObject<ScrollView | null>;
 }) {
   const s = useStyles();
   const insets = useSafeAreaInsets();
@@ -106,6 +109,7 @@ export function Screen({
     <View style={[s.root, { paddingTop: insets.top }]}>
       {header}
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={[s.content, { paddingTop: header ? 18 : 4, paddingBottom: 28 + (bottomInset ? insets.bottom : 0) }]}
         refreshControl={refreshControl}
         keyboardShouldPersistTaps="handled"

@@ -1,3 +1,4 @@
+import { gradeEn } from './sections/grade.en';
 import { homeEn } from './sections/home.en';
 import { joinEn } from './sections/join.en';
 import { labelsEn } from './sections/labels.en';
@@ -6,6 +7,8 @@ import { notifsEn } from './sections/notifs.en';
 import { pickEn } from './sections/pick.en';
 import { pickerEn } from './sections/picker.en';
 import { projectEn } from './sections/project.en';
+import { taskEn } from './sections/task.en';
+import { tasksEn } from './sections/tasks.en';
 import { wizardEn } from './sections/wizard.en';
 import type { Messages } from './zh';
 
@@ -39,7 +42,9 @@ export const en: Messages = {
   picker: pickerEn,
   members: membersEn,
   notifs: notifsEn,
-  tasks: { title: 'My tasks' },
+  tasks: tasksEn,
+  task: taskEn,
+  grade: gradeEn,
   me: {
     title: 'Me',
     appearance: 'Appearance',
@@ -68,8 +73,14 @@ export const en: Messages = {
     buildingHint: (milestone) => `It arrives in ${milestone}. For now, check the look and the switches.`,
     galleryTitle: 'Component styles',
   },
+  update: {
+    title: 'Please update the app',
+    body: "This version is too old for the server. Download and install the latest one to keep going: your projects and data are all still there.",
+    button: 'Get the new version',
+  },
   errors: {
     NETWORK: "Can't reach the server. Check your connection.",
+    TIMEOUT: 'The network is too slow. Try again.',
     BAD_RESPONSE: "The server's reply didn't make sense. Try again later.",
     BAD_REQUEST: 'Something was wrong with that request. Try again.',
     VALIDATION: "Some fields aren't right. Check them and try again.",
@@ -79,6 +90,14 @@ export const en: Messages = {
     CONFLICT: 'Someone just changed this. Refresh and try again.',
     RATE_LIMITED: 'Too many tries. Wait a moment and try again.',
     INTERNAL: 'The server hit an error. Try again later.',
+    RETRY: 'The server is busy. Try again.',
+    UPDATE_REQUIRED: 'Please update the app to the latest version.',
+    STORAGE_FULL: "The server's file space is full, so files can't be uploaded for now. Paste a link instead (e.g. a Google Doc)",
+    BODY_TOO_LARGE: 'That is too long. Shorten it and try again.',
+    DRAFT_LIMIT: 'You already have 20 unfinished projects. Delete one before starting another.',
+    INVITE_LIMIT: 'This project already has 30 invites waiting for an answer. Wait for answers, or share the invite code instead.',
+    SELF_GRADE_NOT_ALLOWED: "As leader, your own tasks automatically count as Pass (leader self-graded). You can't give them another grade",
+    LINK_CREDENTIALS: "Links can't contain a username or password",
     INVITE_CODE_INVALID: "We can't find that invite code. Check it for typos.",
     INVITE_CODE_EXPIRED: 'That invite code has expired: the leader made a new one.',
     REMOVED_FROM_PROJECT: 'The leader removed you from this project, so the invite code no longer works for you.',
@@ -88,6 +107,7 @@ export const en: Messages = {
     DEADLINE_IN_PAST: 'The deadline has to be in the future.',
     DUE_AFTER_DEADLINE: "A task can't be due after the project deadline.",
     TASK_LOCKED: "This task has started or finished, so it can't be deleted and its points can't change.",
+    ONLY_TASK_POINTS: "This is the project's only task, so it's always worth 100 points",
     PACKAGE_TAKEN: 'Someone just took this package',
     PACKAGE_STARTED: "You've started, so you can't switch packages",
     TARGET_STARTED: "They've started, so you can't swap",
@@ -100,5 +120,30 @@ export const en: Messages = {
     TASK_FINISHED: "This task is finished, so it can't be moved",
     STALE_PREVIEW: 'Something changed. Check the preview again',
     TEAM_FULL: 'This project already has 8 people',
+    EVIDENCE_LIMIT: 'Up to 5 pieces of evidence. Remove one first',
+    FILE_TOO_LARGE: 'Each file can be at most 10 MB. Compress it and try again',
+    FILE_TYPE_UNSUPPORTED: 'Only Word, PDF, PowerPoint, image, Excel and CSV files',
+    PROJECT_STORAGE_FULL: "This project's file space is full (20 MB in total). Compress the file, or delete an old one first",
+    INVALID_LINK: 'The link must start with http:// or https://',
+    NO_EVIDENCE: 'Add at least one piece of evidence first',
+    ALREADY_REVIEWING: 'Already submitted and waiting for review. Withdraw it to make changes',
+    NOT_REVIEWING: "This task isn't waiting for review right now",
+    TASK_DONE: 'This task already has full points',
+    GRADE_REASON_REQUIRED: 'A reason is required for "Half" or "Fail"',
+    REASON_REQUIRED: 'A reason is required',
+    NOT_GRADED: "Not graded yet, so there's nothing to override",
+    NOTHING_TO_UNDO: "There's no override to undo",
+    UNDO_START_EXPIRED: "More than 24 hours have passed, so the start can't be undone",
+    HAS_EVIDENCE: "Evidence was added, so the start can't be undone",
+    NOT_A_MEETING: 'Only meeting tasks can be marked done this way',
+    SUMMARY_REQUIRED: 'Write a line about what was discussed and decided',
+    TASK_NO_OWNER: 'Nobody is responsible for this task yet',
+    PREREQ_FINISHED: 'That task is already finished',
+    PREREQ_SELF: "A task can't wait for itself",
+    PREREQ_CYCLE: 'That would make the tasks wait for each other',
+    NO_BRIEF: 'This project has no assignment brief text',
+    TASK_UNDER_REVIEW: "They've already submitted this. Grade it first, then move it",
+    NO_ONE_TO_TRANSFER: "You're the only one left in the group, so there's nobody to hand over to",
+    DELETE_CONFIRM_MISMATCH: "That isn't the project's short name. Check it and try again",
   },
 };

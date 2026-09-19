@@ -37,7 +37,8 @@ function spaceActivates(action: () => void) {
   };
 }
 
-type SegOption<T extends string> = { value: T; label: string };
+/** `sub`: a second, smaller line (e.g. 第 1 次 over 拿一半). */
+export type SegOption<T extends string> = { value: T; label: string; sub?: string };
 
 /** Segmented control (prototype `.seg`). */
 export function Seg<T extends string>({
@@ -74,6 +75,11 @@ export function Seg<T extends string>({
             <Txt v="small" weight={700} color={on ? 'ink' : 'muted'}>
               {o.label}
             </Txt>
+            {o.sub ? (
+              <Txt v="meta" size={11} color={on ? 'ink2' : 'muted'}>
+                {o.sub}
+              </Txt>
+            ) : null}
           </Pressable>
         );
       })}

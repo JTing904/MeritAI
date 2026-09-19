@@ -1,12 +1,13 @@
-// Leader adds a task to an ACTIVE project (spec §2): into the lightest package, everything else rescaled.
+// Tasks of an ACTIVE project: the leader adds one (M3 spec §2: into the lightest package, everything else
+// rescaled) or edits one (M4 spec §2; the owner may change the description only).
 import { apportion } from "../../../shared/planning";
 import type { Db } from "../lib/db";
-import { AppError } from "../lib/errors";
-import { lightestPackage } from "../lib/package-state";
+import { AppError, forbidden, notFound } from "../lib/errors";
+import { isLocked, lightestPackage } from "../lib/package-state";
 import { bumpPackages, notify, recordEvent } from "./notify";
-import { MAX_TASKS, type TaskBody } from "./schemas";
+import { MAX_TASKS, type ActiveTaskPatchBody, type TaskBody } from "./schemas";
 import { resolveDueAt } from "./tasks";
-import { lockAsMember, TX_OPTIONS, type Tx } from "./tx";
+import { assertPointsTotal, lockAsMember, TOTAL_POINTS, touchProject, TX_OPTIONS, type Tx } from "./tx";
 
 /** Feature and milestone ids must belong to this project. */
 async function assertRefs(tx: Tx, projectId: string, input: Pick<TaskBody, "featureId" | "milestoneId">) {
@@ -16,6 +17,23 @@ async function assertRefs(tx: Tx, projectId: string, input: Pick<TaskBody, "feat
   if (input.milestoneId && !(await tx.milestone.count({ where: { projectId, id: input.milestoneId } }))) {
     throw new AppError(400, "VALIDATION", "Unknown milestone");
   }
+}
+
+/** Rescales `tasks` to `total` tenths in proportion (one updateMany per new value); returns the new points. */
+async function rescale(tx: Tx, tasks: { id: string; points: number }[], total: number): Promise<number[]> {
+  const scaled = apportion(
+    tasks.map((t) => t.points),
+    total,
+  );
+  const byPoints = new Map<number, string[]>();
+  tasks.forEach((t, i) => {
+    if (scaled[i] === t.points) return;
+    byPoints.set(scaled[i]!, [...(byPoints.get(scaled[i]!) ?? []), t.id]);
+  });
+  for (const [points, ids] of byPoints) {
+    await tx.task.updateMany({ where: { id: { in: ids } }, data: { points } });
+  }
+  return scaled;
 }
 
 /**
@@ -43,18 +61,7 @@ export async function addActiveTask(db: Db, projectId: string, userId: string, i
     const target = lightestPackage(packages, tasks);
     if (!target) throw new AppError(409, "CONFLICT", "The project has no packages");
 
-    const scaled = apportion(
-      tasks.map((t) => t.points),
-      1000 - input.points,
-    );
-    const byPoints = new Map<number, string[]>();
-    tasks.forEach((t, i) => {
-      if (scaled[i] === t.points) return;
-      byPoints.set(scaled[i]!, [...(byPoints.get(scaled[i]!) ?? []), t.id]);
-    });
-    for (const [points, ids] of byPoints) {
-      await tx.task.updateMany({ where: { id: { in: ids } }, data: { points } });
-    }
+    const scaled = await rescale(tx, tasks, TOTAL_POINTS - input.points);
 
     const created = await tx.task.create({
       data: {
@@ -93,5 +100,84 @@ export async function addActiveTask(db: Db, projectId: string, userId: string, i
       now,
     });
     await bumpPackages(tx, projectId);
+    await assertPointsTotal(tx, projectId);
+  }, TX_OPTIONS);
+}
+
+/**
+ * PATCH /api/projects/:id/tasks/:taskId of an ACTIVE project (M4 spec §2). The leader may change title,
+ * kind (TASK_LOCKED once an attempt is graded or holds evidence; an empty draft attempt is deleted
+ * instead), description, featureId, milestoneId, dueAt (sets leaderDueAt; null clears both) and points
+ * (unlocked tasks only; every other task rescales so the total stays 1000). The owner may change
+ * `description` only (any other key → 403).
+ */
+export async function updateActiveTask(
+  db: Db,
+  projectId: string,
+  taskId: string,
+  userId: string,
+  input: ActiveTaskPatchBody,
+  _now = new Date(),
+): Promise<void> {
+  await db.$transaction(async (tx) => {
+    const { project, member } = await lockAsMember(tx, projectId, userId);
+    const task = await tx.task.findFirst({ where: { id: taskId, projectId } });
+    if (!task) throw notFound("Task");
+    const keys = Object.entries(input)
+      .filter(([, v]) => v !== undefined)
+      .map(([k]) => k);
+    if (member.role !== "LEADER") {
+      if (task.ownerId !== member.id) throw forbidden("Only the leader or the task's owner can edit it");
+      if (keys.some((k) => k !== "description")) throw forbidden("The owner can only change the description");
+    }
+    if (keys.length === 0) return;
+
+    if (input.kind !== undefined && input.kind !== task.kind) {
+      const attempts = await tx.attempt.findMany({
+        where: { taskId },
+        select: { id: true, status: true, _count: { select: { evidence: true } } },
+      });
+      if (attempts.some((a) => a.status !== "DRAFT" || a._count.evidence > 0)) {
+        throw new AppError(409, "TASK_LOCKED", "Evidence was handed in for this task, so its kind can't change");
+      }
+      // An empty draft attempt holds nothing; it would otherwise outlive the kind it was opened for.
+      if (attempts.length > 0) await tx.attempt.deleteMany({ where: { id: { in: attempts.map((a) => a.id) } } });
+    }
+
+    const points = input.points !== undefined && input.points !== task.points ? input.points : null;
+    if (points !== null && isLocked(task)) throw new AppError(409, "TASK_LOCKED", "This task has already started");
+    await assertRefs(tx, projectId, input);
+    // Setting a date makes it the leader's; clearing it clears both.
+    const dueAt = input.dueAt === undefined ? undefined : input.dueAt === null ? null : resolveDueAt(input.dueAt, project);
+
+    if (points !== null) {
+      const others = await tx.task.findMany({
+        where: { projectId, id: { not: task.id } },
+        orderBy: [{ order: "asc" }, { number: "asc" }],
+        select: { id: true, points: true },
+      });
+      // Nothing else could take up the difference: the only task is always worth all 100 分.
+      if (others.length === 0) {
+        throw new AppError(409, "ONLY_TASK_POINTS", "The project's only task is worth all 100 points");
+      }
+      await rescale(tx, others, TOTAL_POINTS - points);
+    }
+    await tx.task.update({
+      where: { id: task.id },
+      data: {
+        title: input.title,
+        kind: input.kind,
+        points: input.points,
+        dueAt,
+        leaderDueAt: dueAt,
+        description: input.description,
+        featureId: input.featureId,
+        milestoneId: input.milestoneId,
+      },
+    });
+    await touchProject(tx, projectId);
+    // Points and due dates change the package rows (totals, overdue).
+    if (points !== null || dueAt !== undefined) await bumpPackages(tx, projectId);
+    if (points !== null) await assertPointsTotal(tx, projectId);
   }, TX_OPTIONS);
 }

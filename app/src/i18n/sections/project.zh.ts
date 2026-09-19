@@ -59,7 +59,62 @@ export const projectZh = {
     move: '移动任务',
     switch: { emoji: '🔁', text: '换包或申请互换' },
   },
-  footer: '全组都能看到每个人的任务和 AI 审核结果。',
+  footer: '全组都能看到每个人的任务和评级结果。「等组长审核」的任务在过期名单里不算；过期后交的照样能评，报告里记「迟交」。',
+
+  /** 排行 tab (proto §4.5, REQUIREMENTS §13 排行榜). Points come formatted. */
+  rank: {
+    podium: '颁奖台',
+    /** On the podium, instead of the viewer's short name. */
+    you: '你',
+    /** Under the number in a podium block. */
+    unit: '分',
+    youSuffix: '（你）',
+    earned: (p: string) => `${p} 分`,
+    packageTotal: (p: string) => `包内共 ${p} 分`,
+    noPackage: '还没有任务包',
+    empty: '还没有人完成任务，完成后这里会排名次。',
+    leftTitle: '已退出',
+    left: (name: string, p: string) => `${name} · ${p} 分`,
+    formula: [
+      { b: '怎么算：' },
+      '整个项目 100 分，每个任务值几分。评级「优秀」「合格」拿满，「拿一半」拿一半，「不通过」是 0。写代码、写报告、开会都一样算。',
+    ] as Inline[],
+    /** Screen readers: a podium place and a ranked row. */
+    place: (rank: number, name: string, p: string) => `第 ${rank} 名 · ${name} · ${p} 分`,
+    row: (rank: number, name: string, p: string, pkg: string) => `第 ${rank} 名 · ${name} · ${p} 分 · ${pkg}`,
+  },
+
+  /** 待我审核 (leader, board 12): the PENDING submissions, oldest first. */
+  queue: {
+    title: (n: number) => `待我审核 · ${n}`,
+    late: '迟交',
+    /** `due`: only when handed in late. */
+    meta: (name: string, when: string, n: number, due: string | null) =>
+      `${name} · 交于 ${when} · ${n} 份${due ? ` · 截止 ${due}` : ''}`,
+    grade: '评级',
+    gradeLabel: (title: string, name: string) => `评级：${name}的「${title}」`,
+  },
+
+  /** 📄 作业要求 card (everyone, when the project keeps the brief's text). */
+  briefCard: {
+    title: '作业要求',
+    file: (name: string) => `${name} · 全组都能看全文`,
+    typed: '打字描述 · 全组都能看全文',
+  },
+
+  /** The full brief page (board 15). */
+  brief: {
+    title: '作业要求',
+    sub: (tag: string, name: string) => `${tag} · ${name}`,
+    typed: '打字描述',
+    /** `mine`: opened from a task (the yellow block is that task's item). */
+    hint: (file: string, mine: boolean) =>
+      `从「${file}」读出来的文字，不是原文件。全组都能看${mine ? '；黄色那段是你现在这个任务对应的要求。' : '。'}`,
+    hintTyped: (mine: boolean) => `组长打字输入的作业要求。全组都能看${mine ? '；黄色那段是你现在这个任务对应的要求。' : '。'}`,
+    mine: (title: string) => `你的任务：${title}`,
+    theirs: (name: string, title: string) => `${/[A-Za-z0-9.)]$/.test(name) ? `${name} ` : name}的任务：${title}`,
+    nobody: (title: string) => `没人负责：${title}`,
+  },
 
   tools: {
     title: '组长工具',
@@ -166,6 +221,41 @@ export const projectZh = {
     TASK_STARTED: (a: Who, title: string): Inline[] => [{ b: who(a) }, ` 开始做「${title}」`],
     RESPLIT: (a: Who, n: number): Inline[] => [{ b: who(a) }, ` 重新分了包，现在有 ${n} 个任务包`],
     LEADER_TRANSFERRED: (a: Who, m: Who): Inline[] => [{ b: who(a) }, ' 把组长转给了 ', { b: who(m) }],
+    // M4 (Step 0 wrote these from spec §9; app-leader owns them). `grade` words come from t.labels.grade.
+    /** A task that was in no package before the move (a leaver's, or a submission that stayed with its owner). */
+    TASK_MOVED_UNPACKAGED: (a: Who, title: string, to: number): Inline[] => [{ b: who(a) }, ` 把「${title}」移到了「任务包 ${to}」`],
+    SUBMITTED: (a: Who, title: string, no: number): Inline[] =>
+      no > 1 ? [{ b: who(a) }, ` 重交了「${title}」（第 ${no} 次）`] : [{ b: who(a) }, ` 交了「${title}」，等组长审核`],
+    WITHDRAWN: (a: Who, title: string): Inline[] => [{ b: who(a) }, ` 撤回了「${title}」的提交`],
+    GRADED: (a: Who, owner: Who, title: string, grade: string): Inline[] => [
+      { b: who(a) },
+      ' 评了 ',
+      { b: who(owner) },
+      ` 的「${title}」：${grade}`,
+    ],
+    GRADED_SELF: (a: Who, title: string): Inline[] => [{ b: who(a) }, ` 交了「${title}」，算合格（组长自评）`],
+    GRADED_OUTSIDE: (a: Who, owner: Who, title: string, grade: string): Inline[] => [
+      { b: who(a) },
+      ' 代为完成了 ',
+      { b: who(owner) },
+      ` 的「${title}」：${grade}`,
+    ],
+    OVERRIDDEN: (a: Who, owner: Who, title: string, from: string, to: string): Inline[] => [
+      { b: who(a) },
+      ' 把 ',
+      { b: who(owner) },
+      ` 的「${title}」从「${from}」改成了「${to}」`,
+    ],
+    OVERRIDE_UNDONE: (a: Who, title: string, to: string): Inline[] => [{ b: who(a) }, ` 撤销了「${title}」的推翻，回到「${to}」`],
+    MEETING_DONE: (a: Who, title: string, n: number): Inline[] => [{ b: who(a) }, ` 开完了「${title}」，${n} 人参加`],
+    START_UNDONE: (a: Who, title: string): Inline[] => [{ b: who(a) }, ` 撤销了「${title}」的开始`],
+    PREREQ_SET: (a: Who, waiting: string, prereq: string, prereqOwner: Who | null): Inline[] => [
+      { b: who(a) },
+      ` 标了「${waiting}」要先等「${prereq}」${prereqOwner ? `（${who(prereqOwner)}）` : ''}`,
+    ],
+    PREREQ_CLEARED: (a: Who, waiting: string): Inline[] => [{ b: who(a) }, ` 去掉了「${waiting}」的前置任务`],
+    PROJECT_DELETED: (a: Who): Inline[] => [{ b: who(a) }, ' 删除了项目'],
+    PROJECT_RESTORED: (a: Who): Inline[] => [{ b: who(a) }, ' 恢复了项目'],
   },
 
   task: {

@@ -33,6 +33,8 @@ const remove = (token: string, projectId: string, memberId: string) =>
   call<ProjectView>(`/api/projects/${projectId}/members/${memberId}/remove`, { method: "POST", token });
 const transfer = (token: string, projectId: string, memberId: string) =>
   call<ProjectView>(`/api/projects/${projectId}/members/${memberId}/transfer`, { method: "POST", token });
+const leaveAsLeader = (token: string, projectId: string, newLeaderMemberId: string) =>
+  call<null>(`/api/projects/${projectId}/leave-as-leader`, { method: "POST", token, body: { newLeaderMemberId } });
 
 const notes = (userId: string, type?: NotificationPayload["type"]) =>
   testDb.notification.findMany({ where: { userId, ...(type ? { type } : {}) }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
@@ -66,11 +68,11 @@ describe("POST /api/projects/:id/leave", () => {
     // A's package holds a task in every state.
     const started = new Date(Date.now() - DAY);
     const states = [
-      { status: "DONE", startedAt: started, startedById: aId },
-      { status: "REVIEWING", startedAt: started, startedById: aId },
-      { status: "DOING", startedAt: started, startedById: aId },
-      { status: "TODO", startedAt: null, startedById: null },
-      { status: "FAIL", startedAt: started, startedById: aId },
+      { status: "DONE", grade: "PASS", startedAt: started, startedById: aId },
+      { status: "REVIEWING", grade: null, startedAt: started, startedById: aId },
+      { status: "DOING", grade: null, startedAt: started, startedById: aId },
+      { status: "TODO", grade: null, startedAt: null, startedById: null },
+      { status: "FAIL", grade: "FAIL", startedAt: started, startedById: aId },
     ] as const;
     for (const [i, state] of states.entries()) {
       await testDb.task.update({ where: { id: tasks[i]!.id }, data: { ...state, packageId: p1!.id, ownerId: aId } });
@@ -126,7 +128,7 @@ describe("POST /api/projects/:id/leave", () => {
     const t = await team(3);
     const [aId] = t.memberIds as [string];
     await own(t.packages[0]!.id, aId);
-    await testDb.task.updateMany({ where: { packageId: t.packages[0]!.id }, data: { status: "DONE", startedById: aId } });
+    await testDb.task.updateMany({ where: { packageId: t.packages[0]!.id }, data: { status: "DONE", grade: "PASS", startedById: aId } });
     await leave(t.members[0]!.token, t.projectId);
     const sent = await notes(t.leader.user.id, "MEMBER_LEFT");
     expect(sent[0]!.payload).toMatchObject({ unfinishedCount: 0 });
@@ -140,7 +142,7 @@ describe("POST /api/projects/:id/leave", () => {
     const [aId] = t.memberIds as [string];
     await own(t.packages[0]!.id, aId);
     const done = (await testDb.task.findFirstOrThrow({ where: { packageId: t.packages[0]!.id } })).id;
-    await testDb.task.update({ where: { id: done }, data: { status: "DONE", startedById: aId } });
+    await testDb.task.update({ where: { id: done }, data: { status: "DONE", grade: "PASS", startedById: aId } });
     const before = await testDb.member.findUniqueOrThrow({ where: { id: aId } });
     await leave(t.members[0]!.token, t.projectId);
 
@@ -205,7 +207,7 @@ describe("POST /api/projects/:id/members/:memberId/remove", () => {
     const [aId, bId] = t.memberIds as [string, string];
     await own(t.packages[1]!.id, bId);
     const [done, todo] = await testDb.task.findMany({ where: { packageId: t.packages[1]!.id }, orderBy: { number: "asc" } });
-    await testDb.task.update({ where: { id: done!.id }, data: { status: "DONE", startedAt: new Date(), startedById: bId } });
+    await testDb.task.update({ where: { id: done!.id }, data: { status: "DONE", grade: "PASS", startedAt: new Date(), startedById: bId } });
 
     const res = await remove(t.leader.token, t.projectId, bId);
     expect(res.status).toBe(200);
@@ -344,7 +346,134 @@ describe("POST /api/projects/:id/members/:memberId/transfer", () => {
   });
 });
 
+describe("POST /api/projects/:id/leave-as-leader", () => {
+  it("hands the role over and leaves in one step, turning 「只管理」 off", async () => {
+    const t = await team(3, { leaderManages: true });
+    const [aId, bId] = t.memberIds as [string, string];
+    await own(t.packages[0]!.id, aId);
+    const version = await versionOf(t.projectId);
+
+    const res = await leaveAsLeader(t.leader.token, t.projectId, aId);
+    expect(res).toMatchObject({ status: 200, data: null });
+
+    const view = await viewAs(t.members[0]!.token, t.projectId);
+    expect(view.viewerRole).toBe("LEADER");
+    expect(view.basics.leaderManages).toBe(false);
+    expect(view.members.find((m) => m.id === t.leaderId)).toMatchObject({ role: "MEMBER", active: false, removed: false });
+    expect(view.members.find((m) => m.id === aId)).toMatchObject({ role: "LEADER", active: true, packageId: t.packages[0]!.id });
+    expect(view.members.find((m) => m.id === bId)).toMatchObject({ role: "MEMBER", active: true });
+    expect(view.packagesVersion).toBeGreaterThan(version);
+    expect(await testDb.member.count({ where: { projectId: t.projectId, role: "LEADER" } })).toBe(1);
+
+    // The new leader: LEADER_TRANSFERRED (left after) and the group's MEMBER_LEFT; never a reminder about the
+    // old leader, who is gone. B: MEMBER_LEFT. The old leader: nothing.
+    const forA = await notes(t.members[0]!.user.id);
+    expect(forA.map((n) => [n.type, n.audience, n.payload])).toEqual([
+      ["LEADER_TRANSFERRED", "ONLY_YOU", { type: "LEADER_TRANSFERRED", from: { memberId: t.leaderId, name: "陈思远" }, leftAfter: true }],
+      ["MEMBER_LEFT", "GROUP", { type: "MEMBER_LEFT", member: { memberId: t.leaderId, name: "陈思远" }, unfinishedCount: 0 }],
+    ]);
+    const forB = await notes(t.members[1]!.user.id);
+    expect(forB.map((n) => n.type)).toEqual(["MEMBER_LEFT"]);
+    expect(await notes(t.leader.user.id)).toHaveLength(0);
+    expect((await events(t.projectId, "LEADER_TRANSFERRED")).map((e) => [e.actorId, e.payload])).toEqual([
+      [t.leaderId, { type: "LEADER_TRANSFERRED", member: { memberId: aId, name: "林晓雯" } }],
+    ]);
+    expect((await events(t.projectId, "LEFT")).map((e) => e.actorId)).toEqual([t.leaderId]);
+
+    // Gone for the old leader.
+    expect((await call(`/api/projects/${t.projectId}`, { token: t.leader.token })).status).toBe(404);
+    expect((await call<HomeData>("/api/home", { token: t.leader.token })).data.projects).toEqual([]);
+  });
+
+  it("releases the old leader's unfinished work and frees their package, like leaving", async () => {
+    const t = await team(3);
+    const [aId, bId] = t.memberIds as [string, string];
+    const [p1, p2, p3] = t.packages;
+    await own(p1!.id, t.leaderId);
+    await own(p2!.id, aId);
+    await own(p3!.id, bId);
+    const [done] = await testDb.task.findMany({ where: { packageId: p1!.id }, orderBy: { number: "asc" } });
+    await testDb.task.update({ where: { id: done!.id }, data: { status: "DONE", grade: "PASS", startedAt: new Date(), startedById: t.leaderId } });
+    // A swap the leader asked for ends with them.
+    const swap = await pendingSwap(t.projectId, { id: t.leaderId, packageId: p1!.id }, { id: bId, packageId: p3!.id });
+
+    expect((await leaveAsLeader(t.leader.token, t.projectId, bId)).status).toBe(200);
+    const view = await viewAs(t.members[1]!.token, t.projectId);
+    expect(view.packages.find((p) => p.id === p1!.id)).toMatchObject({ ownerMemberId: null });
+    expect(view.tasks.find((task) => task.id === done!.id)).toMatchObject({ ownerMemberId: t.leaderId, packageId: null });
+    expect(view.members.find((m) => m.id === t.leaderId)).toMatchObject({ active: false, earnedPoints: done!.points });
+    expect(await testDb.swapRequest.findUniqueOrThrow({ where: { id: swap.id } })).toMatchObject({ status: "VOID", voidReason: "LEFT" });
+    const left = await notes(t.members[0]!.user.id, "MEMBER_LEFT");
+    expect(left[0]!.payload).toMatchObject({ unfinishedCount: 1 });
+    // A package is free now, so nobody is reminded to re-split.
+    expect(await testDb.notification.count({ where: { projectId: t.projectId, type: "MEMBER_NEEDS_PACKAGE" } })).toBe(0);
+  });
+
+  it("tells the new leader about someone still waiting for a package", async () => {
+    // With a leader who only manages (no package to free), someone who joined late still has none.
+    const t = await team(3, { leaderManages: true });
+    const [aId, bId] = t.memberIds as [string, string];
+    await own(t.packages[0]!.id, aId);
+    await own(t.packages[1]!.id, bId);
+    const late = await person(3);
+    const lateId = (await joinCode(late.token, t.view.inviteCode!)).data.viewerMemberId;
+    expect(await notes(t.leader.user.id, "MEMBER_NEEDS_PACKAGE")).toHaveLength(1);
+
+    await leaveAsLeader(t.leader.token, t.projectId, aId);
+    const forA = await notes(t.members[0]!.user.id, "MEMBER_NEEDS_PACKAGE");
+    expect(forA.map((n) => n.payload)).toEqual([{ type: "MEMBER_NEEDS_PACKAGE", member: { memberId: lateId, name: "张博文" }, joined: false }]);
+  });
+
+  it("is the leader's, to another active member; alone, there is no one to hand it to", async () => {
+    const t = await team(3);
+    const [aId, bId] = t.memberIds as [string, string];
+    const other = await team(2);
+    expect((await leaveAsLeader(t.members[0]!.token, t.projectId, bId)).error?.code).toBe("FORBIDDEN");
+    expect((await leaveAsLeader(t.leader.token, t.projectId, t.leaderId)).error?.code).toBe("VALIDATION");
+    expect((await leaveAsLeader(t.leader.token, t.projectId, "nobody")).status).toBe(404);
+    expect((await leaveAsLeader(t.leader.token, t.projectId, other.memberIds[0]!)).status).toBe(404);
+    await leave(t.members[0]!.token, t.projectId);
+    expect((await leaveAsLeader(t.leader.token, t.projectId, aId)).status).toBe(404);
+    expect((await call(`/api/projects/${t.projectId}/leave-as-leader`, { method: "POST", token: t.leader.token, body: {} })).status).toBe(400);
+    expect((await leaveAsLeader("", t.projectId, bId)).status).toBe(401);
+    // Nothing changed.
+    expect(await testDb.member.findUniqueOrThrow({ where: { id: t.leaderId } })).toMatchObject({ role: "LEADER", leftAt: null });
+
+    // B leaves too: the leader is alone.
+    await leave(t.members[1]!.token, t.projectId);
+    expect(await leaveAsLeader(t.leader.token, t.projectId, bId)).toMatchObject({ status: 409, error: { code: "NO_ONE_TO_TRANSFER" } });
+    expect(await testDb.member.findUniqueOrThrow({ where: { id: t.leaderId } })).toMatchObject({ role: "LEADER", leftAt: null });
+  });
+
+  it("needs a running project", async () => {
+    const t = await team(2);
+    await testDb.project.update({ where: { id: t.projectId }, data: { status: "ENDED" } });
+    expect((await leaveAsLeader(t.leader.token, t.projectId, t.memberIds[0]!)).error?.code).toBe("PROJECT_ENDED");
+  });
+});
+
 describe("races between people acting at once", () => {
+  it("leaving as leader and a transfer at the same time: one wins, exactly one active leader", async () => {
+    const t = await team(3);
+    const [aId, bId] = t.memberIds as [string, string];
+    const [left, moved] = await Promise.all([leaveAsLeader(t.leader.token, t.projectId, aId), transfer(t.leader.token, t.projectId, bId)]);
+    // The loser gets 403 under the lock, or 404 when the leave already committed before its access check.
+    const statuses = [left.status, moved.status].sort();
+    expect(statuses[0]).toBe(200);
+    expect([403, 404]).toContain(statuses[1]);
+    const leaders = await testDb.member.findMany({ where: { projectId: t.projectId, role: "LEADER", leftAt: null, removed: false } });
+    expect(leaders).toHaveLength(1);
+    const old = await testDb.member.findUniqueOrThrow({ where: { id: t.leaderId } });
+    if (left.status === 200) {
+      expect(leaders[0]!.id).toBe(aId);
+      expect(old.leftAt).not.toBeNull();
+    } else {
+      expect(leaders[0]!.id).toBe(bId);
+      expect(old).toMatchObject({ role: "MEMBER", leftAt: null });
+    }
+    expect(await testDb.notification.count({ where: { type: "LEADER_TRANSFERRED" } })).toBe(1);
+  });
+
   it("two transfers at the same time leave exactly one leader", async () => {
     const t = await team(3);
     const [aId, bId] = t.memberIds as [string, string];

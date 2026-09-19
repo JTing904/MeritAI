@@ -10,6 +10,7 @@ import { inviteLink } from '@/features/wizard/DoneStep';
 import { Field, Hint, Input } from '@/features/wizard/Field';
 import { useI18n } from '@/i18n';
 import { errorCode } from '@/lib/api';
+import { useIdempotencyKey } from '@/lib/idempotency';
 import { useSession } from '@/lib/session';
 import { makeStyles, useTheme } from '@/theme';
 
@@ -77,6 +78,7 @@ export function InvitePanel({ projectId, inviteCode }: { projectId: string; invi
   // State updates aren't synchronous: the keyboard's send key right after 邀请 must not post twice.
   const sending = useRef(false);
   const [outcomes, setOutcomes] = useState<InviteOutcome[]>([]);
+  const idem = useIdempotencyKey();
 
   const invite = async () => {
     if (sending.current || !targets.trim()) return;
@@ -86,7 +88,9 @@ export function InvitePanel({ projectId, inviteCode }: { projectId: string; invi
       const res = await request<InviteOutcome[]>(`/projects/${encodeURIComponent(projectId)}/invites`, {
         method: 'POST',
         body: { targets },
+        idempotencyKey: idem.keyFor(targets),
       });
+      idem.done();
       setOutcomes(res);
       const sent = res.filter((o) => o.result === 'INVITED').length;
       if (sent) show(copy.invited(sent));

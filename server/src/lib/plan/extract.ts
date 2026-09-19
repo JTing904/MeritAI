@@ -1,7 +1,9 @@
 // Extracts plain text from an uploaded brief. PDF (unpdf), Word .docx (mammoth), plain text.
 // Images and scanned PDFs can't be read without AI: they return UNREADABLE.
 
+import { Worker } from "node:worker_threads";
 import { MAX_BRIEF_BYTES } from "../../../../shared/constants";
+import { zipWithinLimits } from "./zip-limits";
 
 // Largest brief file accepted through the API (Vercel functions cap request bodies at 4.5 MB in production; M7 revisits).
 export { MAX_BRIEF_BYTES };
@@ -77,12 +79,71 @@ function tidy(text: string): string {
   return text
     .replace(/\r\n?/g, "\n")
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
-    .replace(/[ \t]+$/gm, "")
+    // The lookbehind starts one match per run: `[ \t]+$` alone rescans a long inner run from every position.
+    .replace(/(?<![ \t])[ \t]+$/gm, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
 const nonSpaceChars = (s: string) => s.replace(/\s/g, "").length;
+
+// ─── Worker ───────────────────────────────────────────────────────────────────
+
+type WorkerResult =
+  | { kind: "pdf"; pages: PdfItem[][] }
+  | { kind: "html"; html: string }
+  | { kind: "raw"; text: string };
+
+/** Heap and time one extraction may use; a file that needs more is reported UNREADABLE. */
+export const EXTRACT_LIMITS = { heapMb: 256, timeoutMs: 20_000 };
+/** Extractions running at once; the rest wait, so a burst of uploads can't hold N × 256 MB. */
+const MAX_RUNNING = 2;
+let running = 0;
+const waiting: (() => void)[] = [];
+
+const WORKER_URL = new URL("./extract-worker.mjs", import.meta.url);
+
+/** Parses a PDF or .docx in a worker thread (extract-worker.mjs); rejects on a crash, the heap limit or the timeout. */
+async function inWorker(kind: "pdf" | "docx", bytes: Uint8Array): Promise<WorkerResult> {
+  if (running >= MAX_RUNNING) await new Promise<void>((resolve) => waiting.push(resolve));
+  running++;
+  try {
+    return await runWorker(kind, bytes);
+  } finally {
+    running--;
+    waiting.shift()?.();
+  }
+}
+
+function runWorker(kind: "pdf" | "docx", bytes: Uint8Array): Promise<WorkerResult> {
+  // A copy the worker owns (moved, not cloned); the caller keeps its own bytes.
+  const copy = new Uint8Array(bytes);
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(WORKER_URL, {
+      workerData: { kind, bytes: copy },
+      transferList: [copy.buffer],
+      resourceLimits: { maxOldGenerationSizeMb: EXTRACT_LIMITS.heapMb, maxYoungGenerationSizeMb: 32 },
+      // Keep the parent's loaders (tsx) out: the worker is plain JavaScript.
+      execArgv: [],
+    });
+    let settled = false;
+    const finish = (err: Error | null, result?: WorkerResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      void worker.terminate();
+      if (err) reject(err);
+      else resolve(result!);
+    };
+    const timer = setTimeout(() => finish(new Error("extraction timed out")), EXTRACT_LIMITS.timeoutMs);
+    worker.on("message", (msg: { ok: boolean; result?: WorkerResult }) => {
+      if (msg.ok && msg.result) finish(null, msg.result);
+      else finish(new Error("extraction failed"));
+    });
+    worker.on("error", (err) => finish(err));
+    worker.on("exit", (code) => finish(new Error(`extraction worker exited (${code})`)));
+  });
+}
 
 // ─── Plain text ───────────────────────────────────────────────────────────────
 
@@ -121,18 +182,12 @@ const CJK_END = /[\u3000-\u303F\u3400-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF]$/;
 const CJK_START = /^[\u3000-\u303F\u3400-\u9FFF\uF900-\uFAFF\uFF00-\uFFEF]/;
 
 async function readPdf(bytes: Uint8Array): Promise<Extracted> {
-  const { extractTextItems, getDocumentProxy } = await import("unpdf");
-  // pdf.js may take ownership of the buffer it is given, so hand it a copy.
-  const pdf = await getDocumentProxy(new Uint8Array(bytes));
-  try {
-    const { items } = await extractTextItems(pdf);
-    const pages = items.map((page) => pageText(page.filter((it) => it.str.trim() !== "")));
-    const text = tidy(pages.filter((p) => p).join("\n\n"));
-    if (nonSpaceChars(text) < MIN_PDF_CHARS) return { ok: false, reason: "UNREADABLE" };
-    return { ok: true, text };
-  } finally {
-    await pdf.loadingTask.destroy().catch(() => undefined);
-  }
+  const result = await inWorker("pdf", bytes);
+  if (result.kind !== "pdf") throw new Error("unexpected worker result");
+  const pages = result.pages.map((page) => pageText(page.filter((it) => it.str.trim() !== "")));
+  const text = tidy(pages.filter((p) => p).join("\n\n"));
+  if (nonSpaceChars(text) < MIN_PDF_CHARS) return { ok: false, reason: "UNREADABLE" };
+  return { ok: true, text };
 }
 
 /**
@@ -183,21 +238,15 @@ function pageText(items: PdfItem[]): string {
 // ─── Word ─────────────────────────────────────────────────────────────────────
 
 async function readDocx(bytes: Uint8Array): Promise<Extracted> {
-  const mammoth = (await import("mammoth")).default;
-  const buffer = Buffer.from(bytes);
+  if (!zipWithinLimits(bytes)) return { ok: false, reason: "UNREADABLE" };
+  const result = await inWorker("docx", bytes);
   let text: string;
   let hasImages = false;
-  try {
-    // HTML keeps Word's automatic list numbering and table rows, which plain raw text loses.
-    const { value } = await mammoth.convertToHtml(
-      { buffer },
-      { convertImage: mammoth.images.imgElement(async () => ({ src: "" })) },
-    );
-    hasImages = /<img\b/i.test(value);
-    text = htmlToText(value);
-  } catch {
-    text = (await mammoth.extractRawText({ buffer })).value;
-  }
+  if (result.kind === "html") {
+    hasImages = /<img\b/i.test(result.html);
+    text = htmlToText(result.html);
+  } else if (result.kind === "raw") text = result.text;
+  else throw new Error("unexpected worker result");
   text = tidy(text);
   if (!text) return { ok: false, reason: hasImages ? "UNREADABLE" : "EMPTY" };
   if (hasImages && nonSpaceChars(text) < MIN_PDF_CHARS) return { ok: false, reason: "UNREADABLE" };

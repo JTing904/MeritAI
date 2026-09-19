@@ -1,0 +1,19 @@
+# Leader leave / delete-for-everyone (approved 2026-09-19)
+
+Rules: REQUIREMENTS.md §13 「组长退出 / 删除项目」. Mockups: `scratchpad/leavemock/project/*.dc.html` (copy in `scratchpad/leavemock/gen7.py`). Follow the M3/M4 conventions (lockAsMember under the project lock, notify, recordEvent, bumpPackages, zh + en i18n, no gendered pronouns).
+
+## Server
+- Schema (migration `project_soft_delete`): `Project.deletedAt DateTime?`, `Project.deletedById String?` (Member, SetNull), `Project.purgeAfter DateTime?`. New notification types `PROJECT_DELETED` (all active members except the leader, GROUP), `PROJECT_RESTORED` (same audience), `LEADER_LEFT` → reuse `LEADER_TRANSFERRED` with payload flag `leftAfter: true`. New activity types `PROJECT_DELETED`, `PROJECT_RESTORED`.
+- `POST /api/projects/:id/leave-as-leader { newLeaderMemberId }` (leader): one transaction = transfer (M3 transferLeader rules incl. leaderManages off) + leave (M3 leave rules). Errors: self / inactive target → 400/404; only one active member → 409 `NO_ONE_TO_TRANSFER` (zh 「组里只剩你一个人，没有人可以接手」). Notify the new leader `LEADER_TRANSFERRED` with `leftAfter: true` (text 「<b>{from}</b> 把组长转给了你，然后退出了 {tag}。现在你可以管理任务、成员和项目设置。」); group gets the normal `MEMBER_LEFT`.
+- `POST /api/projects/:id/delete { confirm }` (leader, ACTIVE or AWAITING_CONFIRM): `confirm` must equal the project tag (shortCode, else projectTag(name, null)) case-insensitively ignoring spaces → else 400 `DELETE_CONFIRM_MISMATCH`. Sets `deletedAt = now`, `purgeAfter = now + 7 days`, `deletedById`; voids pending swaps (reason RESPLIT-like: add `PROJECT_DELETED` void reason or reuse `LEFT`); notifies members `PROJECT_DELETED` (text 「组长 <b>{leader}</b> 删除了 <b>{tag}</b>。7 天后会彻底删除；如果组长恢复了，项目会回到你的首页。你的徽章会保留。」). Drafts keep the existing `DELETE /projects/:id`.
+- `POST /api/projects/:id/restore` (the leader who deleted it, before purgeAfter): clears the fields, notifies `PROJECT_RESTORED` (「组长 <b>{leader}</b> 恢复了 <b>{tag}</b>，项目回到了你的首页。」).
+- Soft-deleted projects: invisible everywhere for members (home, GET project, join by code → `INVITE_CODE_INVALID`, invites, my-tasks, notifications keep existing rows but `projectOpen = false`); every mutation → 404. The leader sees it only on home as a deleted card (`HomeData.deletedProjects: { id, name, shortCode, color, deletedAt, purgeAfter }[]`) and can call restore.
+- Purge: `purgeDeletedProjects(db, now)` deletes projects with `purgeAfter <= now` (cascade) and their storage prefix (`getStorage().deletePrefix(projectId)`). Run it lazily at the start of `GET /api/home` for the caller's projects (no cron yet) and export it for the M5 scheduler. Tests move time with `now`.
+- Tests: leave-as-leader (roles, leaderManages off, notifications, single-member refusal, concurrency with a transfer), delete (confirm mismatch, visibility for members/leader, join refused, swaps voided, notifications), restore (only the deleting leader, only before purgeAfter), purge (rows + files gone).
+
+## App
+- Members page: the leader's 「退出项目」 button becomes active and opens `LeaderLeaveSheet` (two opt-rows per mockup 1; only the delete row when the leader is the only active member). 「我自己退出」 → `PickNewLeaderSheet` (radio list of active members, button 「转让给{name}并退出」, hint verbatim) → call leave-as-leader → home + toast 「已退出 {tag}」. 「为所有人删除项目」 → `DeleteProjectSheet` (warn box, input 「打一遍项目简称「{tag}」才能删除」, danger button enabled only when the text matches, 取消) → call delete → home + toast 「已删除 {tag}，7 天内可以在首页恢复」.
+- Settings page: a danger card at the bottom for the leader, 「删除项目」, opening the same `DeleteProjectSheet`.
+- Home: deleted cards for the leader (mockup 4): tag, name, chip 「已删除」, line 「你在 {M月D日} 删除了这个项目。{M月D日} 会彻底删除，在那之前可以恢复。」, soft button 「恢复项目」 → toast 「已恢复 {tag}」.
+- Notifications: PROJECT_DELETED 🗑️, PROJECT_RESTORED ♻️, LEADER_TRANSFERRED leftAfter variant.
+- i18n zh + en for everything; confirm matching ignores case and spaces.

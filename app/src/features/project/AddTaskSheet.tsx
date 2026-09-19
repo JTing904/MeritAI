@@ -11,6 +11,7 @@ import { ErrorText, Field, Input } from '@/features/wizard/Field';
 import { KindPills } from '@/features/wizard/KindPicker';
 import { useI18n } from '@/i18n';
 import { errorCode } from '@/lib/api';
+import { useIdempotencyKey } from '@/lib/idempotency';
 import { useSession } from '@/lib/session';
 import { makeStyles } from '@/theme';
 import { InlineText, packageById } from './parts';
@@ -63,6 +64,7 @@ export function AddTaskSheet({
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dueError, setDueError] = useState<string | null>(null);
+  const idem = useIdempotencyKey();
 
   const points = parseActivePoints(pointsText);
   const nameError = tried && !title.trim() ? a.nameMissing : null;
@@ -75,7 +77,12 @@ export function AddTaskSheet({
     const input: TaskInput = { title: title.trim(), kind, points, dueAt };
     setBusy(true);
     try {
-      const view = await request<ProjectView>(`/projects/${id}/tasks`, { method: 'POST', body: input });
+      const view = await request<ProjectView>(`/projects/${id}/tasks`, {
+        method: 'POST',
+        body: input,
+        idempotencyKey: idem.keyFor(JSON.stringify(input)),
+      });
+      idem.done();
       onChange(view);
       show(a.added);
       onClose();
@@ -88,7 +95,7 @@ export function AddTaskSheet({
   };
 
   return (
-    <Sheet visible onClose={busy ? () => {} : onClose} title={a.title}>
+    <Sheet visible onClose={onClose} title={a.title}>
       <Field label={a.name} error={nameError}>
         <Input label={a.name} value={title} onChangeText={setTitle} maxLength={120} invalid={!!nameError} />
       </Field>

@@ -43,7 +43,7 @@ function Inline({ parts }: { parts: InlinePart[] }) {
 
 /**
  * One notification (prototype `.notif`): tinted emoji tile, text with names in bold, meta line, grape dot
- * when unread, buttons. Tapping the text opens the project; the buttons sit outside that pressable.
+ * when unread, buttons. Tapping the text opens the project (M4: the task); the buttons sit outside that pressable.
  */
 export function NotifCard({
   look,
@@ -109,7 +109,7 @@ export function NotifCard({
               <Button
                 key={action}
                 title={copy[action]}
-                kind={action === 'decline' ? 'soft' : 'primary'}
+                kind={action === 'decline' || action === 'openTask' ? 'soft' : 'primary'}
                 small
                 loading={busy === action}
                 disabled={busy !== null && busy !== action}

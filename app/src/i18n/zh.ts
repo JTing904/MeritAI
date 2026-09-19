@@ -1,6 +1,7 @@
 // Chinese copy (primary; taken verbatim from the approved prototype where it exists).
 // en.ts must have exactly the same shape; a missing English string is a type error.
 // Feature copy lives in ./sections/<feature>.zh.ts so features can grow independently.
+import { gradeZh } from './sections/grade.zh';
 import { homeZh } from './sections/home.zh';
 import { joinZh } from './sections/join.zh';
 import { labelsZh } from './sections/labels.zh';
@@ -9,6 +10,8 @@ import { notifsZh } from './sections/notifs.zh';
 import { pickZh } from './sections/pick.zh';
 import { pickerZh } from './sections/picker.zh';
 import { projectZh } from './sections/project.zh';
+import { taskZh } from './sections/task.zh';
+import { tasksZh } from './sections/tasks.zh';
 import { wizardZh } from './sections/wizard.zh';
 
 export const zh = {
@@ -40,7 +43,9 @@ export const zh = {
   picker: pickerZh,
   members: membersZh,
   notifs: notifsZh,
-  tasks: { title: '我的任务' },
+  tasks: tasksZh,
+  task: taskZh,
+  grade: gradeZh,
   me: {
     title: '我',
     appearance: '外观',
@@ -69,8 +74,14 @@ export const zh = {
     buildingHint: (milestone: string) => `会在 ${milestone} 做好。现在先检查外观和切换。`,
     galleryTitle: '组件样式',
   },
+  update: {
+    title: '请更新 App',
+    body: '这个版本太旧了，服务器已经不支持。下载安装最新版就能继续用，你的项目和数据都还在。',
+    button: '去下载新版',
+  },
   errors: {
     NETWORK: '连不上服务器，请检查网络。',
+    TIMEOUT: '网络太慢，请再试一次。',
     BAD_RESPONSE: '服务器回复看不懂，请稍后再试。',
     BAD_REQUEST: '请求有问题，请再试一次。',
     VALIDATION: '有些内容填得不对，请检查一下。',
@@ -80,6 +91,14 @@ export const zh = {
     CONFLICT: '刚刚有人改过，请刷新后再试。',
     RATE_LIMITED: '操作太频繁了，请稍后再试。',
     INTERNAL: '服务器出错了，请稍后再试。',
+    RETRY: '服务器有点忙，请再试一次。',
+    UPDATE_REQUIRED: '请更新 App 到最新版本。',
+    STORAGE_FULL: '服务器的文件空间满了，暂时不能上传文件。可以先贴链接（例如 Google 文档）',
+    BODY_TOO_LARGE: '内容太长了，删掉一些再试。',
+    DRAFT_LIMIT: '你已经有 20 个没建完的项目了，先删掉一个再新建。',
+    INVITE_LIMIT: '这个项目已经有 30 个邀请在等回复了，等他们回复，或者直接把邀请码发给其他人。',
+    SELF_GRADE_NOT_ALLOWED: '组长自己的任务会自动算「合格（组长自评）」，不能自己评别的等级',
+    LINK_CREDENTIALS: '网址里不能带用户名或密码',
     INVITE_CODE_INVALID: '找不到这个邀请码，请检查一下有没有打错。',
     INVITE_CODE_EXPIRED: '这个邀请码已经失效了，组长换了新的邀请码。',
     REMOVED_FROM_PROJECT: '你已经被组长移出这个项目，不能再用邀请码加入。',
@@ -89,6 +108,7 @@ export const zh = {
     DEADLINE_IN_PAST: '截止日期要在现在之后。',
     DUE_AFTER_DEADLINE: '任务的截止日期不能晚于项目截止日期。',
     TASK_LOCKED: '这个任务已经开始或完成了，不能删除或改分数。',
+    ONLY_TASK_POINTS: '项目只有这一个任务，分数固定是 100',
     PACKAGE_TAKEN: '这个任务包刚被别人选走了',
     PACKAGE_STARTED: '你已开工，不能换包',
     TARGET_STARTED: '对方已开工，不能互换',
@@ -101,6 +121,31 @@ export const zh = {
     TASK_FINISHED: '这个任务已经完成，不能移动',
     STALE_PREVIEW: '情况有变，请重新看一下预览',
     TEAM_FULL: '这个项目已经 8 个人了，不能再加入',
+    EVIDENCE_LIMIT: '最多 5 份证据，先删掉一份再传',
+    FILE_TOO_LARGE: '单份文件最大 10MB，压缩一下再传',
+    FILE_TYPE_UNSUPPORTED: '只能传 Word、PDF、PPT、图片、Excel、CSV',
+    PROJECT_STORAGE_FULL: '这个项目的文件空间满了（合计 20MB）。压缩一下文件，或删掉旧的再传',
+    INVALID_LINK: '网址要以 http:// 或 https:// 开头',
+    NO_EVIDENCE: '先传至少 1 份，再按「我做完了」',
+    ALREADY_REVIEWING: '已经交上去了，等组长审核；要改就先撤回',
+    NOT_REVIEWING: '这个任务现在不在等审核',
+    TASK_DONE: '这个任务已经拿满分了',
+    GRADE_REASON_REQUIRED: '评「拿一半」或「不通过」必须写理由',
+    REASON_REQUIRED: '要写理由',
+    NOT_GRADED: '这个任务还没评过级，不能推翻',
+    NOTHING_TO_UNDO: '没有可以撤销的推翻',
+    UNDO_START_EXPIRED: '超过 24 小时了，不能撤销「开始做」',
+    HAS_EVIDENCE: '交了证据就不能撤销「开始做」了',
+    NOT_A_MEETING: '只有开会类任务才能这样标记完成',
+    SUMMARY_REQUIRED: '写一句开了什么、决定了什么',
+    TASK_NO_OWNER: '这个任务还没有负责人',
+    PREREQ_FINISHED: '那个任务已经做完了，不用等',
+    PREREQ_SELF: '不能等自己',
+    PREREQ_CYCLE: '这样会互相等，谁都做不了',
+    NO_BRIEF: '这个项目没有作业要求的原文',
+    TASK_UNDER_REVIEW: 'TA 已经交了，先评级再移',
+    NO_ONE_TO_TRANSFER: '组里只剩你一个人，没有人可以接手',
+    DELETE_CONFIRM_MISMATCH: '项目简称打得不对，再看一下',
   },
 };
 

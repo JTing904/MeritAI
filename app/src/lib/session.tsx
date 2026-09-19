@@ -1,7 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { LoginResult, MeData, MeUpdate } from '@shared/types';
+import { useToast } from '@/components/Toast';
+import { forgetTypedBriefs } from '@/features/wizard/typedBrief';
+import { useI18n } from '@/i18n';
 import { api, ApiClientError } from './api';
-import { readPref, writePref } from './prefs';
+import { clearUserPrefs, readPref, writePref } from './prefs';
 import { loadToken, saveToken } from './token';
 
 /** unreachable: a token is saved but the server can't be reached and nothing is cached yet. */
@@ -12,7 +15,10 @@ type SessionValue = {
   user: MeData | null;
   /** The last signed-in user (stays set during the sign-out transition). */
   lastUser: MeData | null;
-  /** Authenticated API call. An UNAUTHENTICATED answer signs the device out. */
+  /**
+   * Authenticated API call. An UNAUTHENTICATED answer signs the device out (with a 登录已过期 toast), but only
+   * when it answered the token in use now: a late 401 for an old token never signs out a newer session.
+   */
   request: <T>(path: string, init?: Parameters<typeof api>[1]) => Promise<T>;
   devSignIn: (userId: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -25,11 +31,28 @@ type SessionValue = {
 const SessionContext = createContext<SessionValue | null>(null);
 const USER_CACHE = 'meritai.me';
 const STARTUP_TIMEOUT_MS = 8000;
+/** Sign-out tells the server, but clears this device after this long even if the server doesn't answer. */
+const SIGN_OUT_WAIT_MS = 3000;
+
+function parseCachedUser(raw: string | null): MeData | null {
+  if (!raw) return null;
+  try {
+    const me = JSON.parse(raw) as MeData;
+    return me && typeof me === 'object' && typeof me.id === 'string' ? me : null;
+  } catch {
+    return null; // A corrupt cache must not keep the splash screen up.
+  }
+}
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<Status>('loading');
   const [user, setUser] = useState<MeData | null>(null);
   const token = useRef<string | null>(null);
+  const { t } = useI18n();
+  // show is stable; the object useToast returns is not.
+  const { show: showToast } = useToast();
+  const expiredText = useRef(t.errors.UNAUTHENTICATED);
+  expiredText.current = t.errors.UNAUTHENTICATED;
   // Screens behind the signed-in guard can render once more while signing out; they keep the last user.
   const lastUser = useRef<MeData | null>(null);
   if (user) lastUser.current = user;
@@ -40,23 +63,36 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     void writePref(USER_CACHE, JSON.stringify(me));
   }, []);
 
+  /** Signed out (by choice or because the session expired): forget the token and everything kept for the user. */
   const clear = useCallback(async () => {
     token.current = null;
-    await Promise.all([saveToken(null), writePref(USER_CACHE, null)]);
+    forgetTypedBriefs();
+    await Promise.all([saveToken(null), clearUserPrefs()]);
     setUser(null);
     setStatus('signedOut');
   }, []);
 
+  /** A 401 for `sent`: sign out only if that is still the session in use, and say why once. */
+  const expired = useCallback(
+    async (sent: string | null) => {
+      if (!sent || token.current !== sent) return;
+      showToast(expiredText.current);
+      await clear();
+    },
+    [clear, showToast],
+  );
+
   const request = useCallback(
     async <T,>(path: string, init: Parameters<typeof api>[1] = {}) => {
+      const sent = token.current;
       try {
-        return await api<T>(path, { ...init, token: token.current });
+        return await api<T>(path, { ...init, token: sent });
       } catch (err) {
-        if (err instanceof ApiClientError && err.code === 'UNAUTHENTICATED') await clear();
+        if (err instanceof ApiClientError && err.code === 'UNAUTHENTICATED') await expired(sent);
         throw err;
       }
     },
-    [clear],
+    [expired],
   );
 
   // Startup: restore the saved token. Only an UNAUTHENTICATED answer signs the device out; if the server
@@ -75,11 +111,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (!cancelled) setSignedIn(me);
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof ApiClientError && err.code === 'UNAUTHENTICATED') return void (await clear());
-        const cached = await readPref(USER_CACHE);
+        if (err instanceof ApiClientError && err.code === 'UNAUTHENTICATED') return void (await expired(saved));
+        const cached = parseCachedUser(await readPref(USER_CACHE));
         if (cancelled) return;
         if (cached) {
-          setUser(JSON.parse(cached) as MeData);
+          setUser(cached);
           setStatus('signedIn');
         } else setStatus('unreachable');
       } finally {
@@ -91,7 +127,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       clearTimeout(timer);
       ctrl.abort();
     };
-  }, [attempt, clear, setSignedIn]);
+  }, [attempt, expired, setSignedIn]);
 
   const retry = useCallback(() => {
     setStatus('loading');
@@ -110,9 +146,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     try {
-      await api('/auth/session', { method: 'DELETE', token: token.current });
+      await api('/auth/session', { method: 'DELETE', token: token.current, timeoutMs: SIGN_OUT_WAIT_MS });
     } catch {
-      // Offline: still sign out locally; the server session expires on its own.
+      // Offline or too slow: still sign out locally; the server session expires on its own.
     }
     await clear();
   }, [clear]);

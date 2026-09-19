@@ -242,7 +242,7 @@ describe("POST /api/swaps/:id/accept", () => {
     const first = await askFor(projectId, x!, pkgs[2]!.id);
     await testDb.task.update({
       where: { id: aDone!.id },
-      data: { status: "DONE", startedAt: new Date(), startedById: other!.memberId },
+      data: { status: "DONE", grade: "PASS", startedAt: new Date(), startedById: other!.memberId },
     });
     const refused = await answer(y!.token, first.id, "accept");
     expect([refused.status, refused.error!.code]).toEqual([409, "SWAP_NOT_PENDING"]);
@@ -254,7 +254,7 @@ describe("POST /api/swaps/:id/accept", () => {
     await testDb.task.update({ where: { id: aDone!.id }, data: { ownerId: other!.memberId } });
     await testDb.task.update({
       where: { id: bHalf!.id },
-      data: { status: "HALF", ownerId: other!.memberId, startedAt: new Date(), startedById: other!.memberId },
+      data: { status: "HALF", grade: "HALF", ownerId: other!.memberId, startedAt: new Date(), startedById: other!.memberId },
     });
     const second = await askFor(projectId, x!, pkgs[2]!.id);
     expect((await answer(y!.token, second.id, "accept")).status).toBe(200);

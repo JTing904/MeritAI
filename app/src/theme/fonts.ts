@@ -9,12 +9,17 @@ export type Weight = 400 | 500 | 600 | 700 | 800 | 900;
 
 const CJK = /[⺀-鿿豈-﫿︰-﹏＀-￯]/;
 
+/**
+ * Only two Noto Sans SC weights ship (each file is ~10.5 MB): 400/500 → Regular, 600–900 → Bold.
+ * Keep in sync with the expo-font list in app.config.ts and GOOGLE_FONTS below.
+ */
+function notoWeight(weight: Weight): 400 | 700 {
+  return weight >= 600 ? 700 : 400;
+}
+
 /** Native font files are embedded by the expo-font config plugin; the family is the file name. */
 function nativeNoto(weight: Weight): string {
-  if (weight >= 800) return 'NotoSansSC_900Black';
-  if (weight >= 600) return 'NotoSansSC_700Bold';
-  if (weight === 500) return 'NotoSansSC_500Medium';
-  return 'NotoSansSC_400Regular';
+  return notoWeight(weight) === 700 ? 'NotoSansSC_700Bold' : 'NotoSansSC_400Regular';
 }
 
 function nativeBricolage(weight: Weight): string {
@@ -33,8 +38,9 @@ const WEB_STACK: Record<Face, string> = {
  */
 export function fontStyle(face: Face, weight: Weight, text?: string): TextStyle {
   if (Platform.OS === 'web') {
-    // Noto 600 is not loaded in the prototype either; browsers render it as 700.
-    const w = face === 'mono' ? 500 : weight === 600 ? 700 : weight;
+    // Body text uses the same two Noto weights as Android. Display keeps its weight for Bricolage
+    // (700/800 loaded); its CJK fallback to Noto picks the nearest loaded weight (400/700).
+    const w = face === 'mono' ? 500 : face === 'body' ? notoWeight(weight) : weight === 600 ? 700 : weight;
     return { fontFamily: WEB_STACK[face], fontWeight: String(w) as TextStyle['fontWeight'] };
   }
   if (face === 'mono') return { fontFamily: 'DMMono_500Medium' };
@@ -44,7 +50,7 @@ export function fontStyle(face: Face, weight: Weight, text?: string): TextStyle 
 
 const GOOGLE_FONTS =
   'https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800' +
-  '&family=DM+Mono:wght@500&family=Noto+Sans+SC:wght@400;500;700;900&display=swap';
+  '&family=DM+Mono:wght@500&family=Noto+Sans+SC:wght@400;700&display=swap';
 
 /** Web only: load the prototype's fonts from Google Fonts (sliced by unicode range, so pages stay light). */
 export function loadWebFonts() {

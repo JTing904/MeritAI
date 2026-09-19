@@ -24,3 +24,17 @@ export const PREF = {
   theme: 'meritai.theme',
   locale: 'meritai.locale',
 } as const;
+
+/** Per-device settings that stay when someone signs out; every other `meritai.*` key belongs to the user. */
+const DEVICE_KEYS = new Set<string>(Object.values(PREF));
+
+/** Sign-out: removes everything this app stored for the user (profile cache, typed-brief drafts, …). */
+export async function clearUserPrefs(): Promise<void> {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const mine = keys.filter((k) => k.startsWith('meritai.') && !DEVICE_KEYS.has(k));
+    if (mine.length) await AsyncStorage.multiRemove(mine);
+  } catch {
+    // Storage unavailable: nothing was kept there either.
+  }
+}

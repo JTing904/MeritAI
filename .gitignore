@@ -15,6 +15,15 @@ coverage/
 *.p12
 google-services.json
 service-account*.json
+credentials*.json
+
+# Built Android packages (published through GitHub Releases, never committed)
+*.apk
+*.aab
+
+# Evidence files (local storage driver) and the test suites' copies
+server/uploads/
+server/.uploads-test*/
 
 # Generated code
 server/src/generated/

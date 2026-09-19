@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { formatPoints } from '@shared/planning';
-import type { ProjectCard as ProjectCardData } from '@shared/types';
+import type { DeletedProjectCard, ProjectCard as ProjectCardData } from '@shared/types';
 import { AvatarStack } from '@/components/Avatar';
 import { Button } from '@/components/Button';
 import { Chip } from '@/components/Chip';
@@ -173,6 +173,40 @@ export function DraftCard({
         </View>
       </View>
     </ProjectCardFrame>
+  );
+}
+
+/**
+ * A project the viewer deleted for everyone (DeletedHome mockup; only its leader sees it): faded, with
+ * when it goes for good and 恢复项目.
+ */
+export function DeletedCard({ project: p, busy, onRestore }: { project: DeletedProjectCard; busy: boolean; onRestore: () => void }) {
+  const s = useStyles();
+  const { c } = useTheme();
+  const { t } = useI18n();
+  const d = t.home.deleted;
+  const day = (iso: string) => {
+    const date = new Date(iso);
+    return d.date(date.getMonth() + 1, date.getDate());
+  };
+  return (
+    <View style={{ opacity: 0.75 }}>
+      <ProjectCardFrame>
+        <View style={[s.head, { alignItems: 'center' }]}>
+          <View style={[s.tag, { backgroundColor: c.hl[p.color].base }]}>
+            <Txt v="num" size={13} color="onHl" numberOfLines={1} style={{ lineHeight: 18 }}>
+              {projectTag(p.name, p.shortCode)}
+            </Txt>
+          </View>
+          <View style={s.grow}>
+            <Txt v="cardName">{p.name}</Txt>
+          </View>
+          <Chip tone="bad">{d.chip}</Chip>
+        </View>
+        <Txt v="meta">{d.line(day(p.deletedAt), day(p.purgeAfter))}</Txt>
+        <Button title={d.restore} kind="soft" block loading={busy} onPress={onRestore} />
+      </ProjectCardFrame>
+    </View>
   );
 }
 

@@ -338,7 +338,7 @@ describe("re-split", () => {
     const pkgs = await packagesOf(t.projectId);
     // Package 4 holds work someone handed back (FAIL, nobody's): it must stay.
     const [kept] = await tasksIn(pkgs[3]!.id);
-    await testDb.task.update({ where: { id: kept!.id }, data: { status: "FAIL" } });
+    await testDb.task.update({ where: { id: kept!.id }, data: { status: "FAIL", grade: "FAIL" } });
 
     const tooFew = await preview(t.leader.token, t.projectId, 3);
     expect([tooFew.status, tooFew.error!.code]).toEqual([400, "VALIDATION"]);

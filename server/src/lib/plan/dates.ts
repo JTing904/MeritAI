@@ -89,10 +89,13 @@ export function localDate(instant: Date, tz: string): string {
 
 export const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
-/** "2026-10-01" → 23:59 that day in `tz` (what a date-only due date means). */
+/**
+ * "2026-10-01" → 23:59:59.999 that day in `tz` (what a date-only due date means; shown as 23:59). The
+ * whole last minute counts, so work handed in at 23:59:30 isn't late (A19).
+ */
 export function endOfLocalDay(ymd: string, tz: string): Date {
   const [year, month, day] = ymd.split("-").map(Number) as [number, number, number];
-  return zonedTime(year, month, day, 23, 59, tz);
+  return new Date(zonedTime(year, month, day, 23, 59, tz).getTime() + 59_999);
 }
 
 /** A due-date input ("YYYY-MM-DD" or an ISO date-time) as an instant; date-only means 23:59 in `tz`. */

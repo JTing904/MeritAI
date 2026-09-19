@@ -1,13 +1,18 @@
 // Shared setup for the project tests (M2: projects, join, invites, home; M3: packages, swaps, members…).
+import { rm } from "node:fs/promises";
+import path from "node:path";
 import { packageCount } from "../../shared/planning";
 import type {
   DevPerson,
   DevTaskStatusInput,
   DraftView,
+  Grade,
   LoginResult,
   ProjectBasicsInput,
   ProjectView,
+  TaskDetail,
   TaskInput,
+  TaskView,
 } from "../../shared/types";
 import { DEV_EMAIL_DOMAIN } from "../src/routes/dev";
 import { DEV_PEOPLE, seed } from "../prisma/seed";
@@ -19,6 +24,18 @@ export const KL = "Asia/Kuala_Lumpur";
 export async function freshDb() {
   await resetDb();
   await seed(testDb);
+  await emptyUploads();
+}
+
+/** The evidence files the tests wrote (UPLOAD_DIR, set by vitest.config.ts). Only a test folder is ever wiped. */
+export function uploadDir(): string {
+  return path.resolve(process.env.UPLOAD_DIR ?? ".uploads-test");
+}
+
+async function emptyUploads() {
+  const dir = uploadDir();
+  if (!path.basename(dir).startsWith(".uploads-test")) throw new Error(`UPLOAD_DIR must be a .uploads-test* folder in tests, not ${dir}`);
+  await rm(dir, { recursive: true, force: true });
 }
 
 /** Signs in one of the seeded people (0 = 陈思远, 1 = 林晓雯, 2 = 王子杰, 3 = 张博文, 4 = 李嘉欣, 5 = Ahmad). */
@@ -164,4 +181,126 @@ export async function startAs(token: string, projectId: string, taskId: string) 
 /** The development status endpoint as this person (a member of the task's project; dev login is on in tests). */
 export async function devStatus(token: string, taskId: string, status: DevTaskStatusInput["status"]) {
   return call<null>(`/api/dev/tasks/${taskId}/status`, { method: "POST", token, body: { status } });
+}
+
+// ─── M4: tasks and evidence ───────────────────────────────────────────────────
+
+/**
+ * The `n`-th task (0-based) in plan order, or of 「任务包 {packageIndex}」 when given. Throws when
+ * there is none.
+ */
+export function taskOf(view: ProjectView, n: number, packageIndex?: number): TaskView {
+  let tasks = view.tasks;
+  if (packageIndex !== undefined) {
+    const pkg = view.packages.find((p) => p.index === packageIndex);
+    if (!pkg) throw new Error(`No package ${packageIndex}`);
+    tasks = tasks.filter((t) => t.packageId === pkg.id);
+  }
+  const task = tasks[n];
+  if (!task) throw new Error(`No task ${n}${packageIndex === undefined ? "" : ` in package ${packageIndex}`}`);
+  return task;
+}
+
+/**
+ * An ACTIVE project with `n` people where everyone picked a package in order: the leader 「任务包 1」,
+ * members[0] 「任务包 2」, … (so leaderManages is off). `view` is the leader's view afterwards.
+ */
+export async function withPackages(n: number, over: Partial<ProjectBasicsInput> & { tasks?: TaskInput[] } = {}): Promise<ActiveTeam> {
+  const team = await activeWith(n, { ...over, leaderManages: false });
+  const people = [team.leader, ...team.members];
+  for (const [i, p] of people.entries()) {
+    const res = await pickAs(p.token, team.projectId, i + 1);
+    if (res.status !== 200) throw new Error(`pick failed: ${res.status} ${JSON.stringify(res.error)}`);
+  }
+  return { ...team, view: await viewAs(team.leader.token, team.projectId) };
+}
+
+const taskPath = (projectId: string, taskId: string) => `/api/projects/${projectId}/tasks/${taskId}`;
+
+/** GET the task page's data as this person. Returns the raw response. */
+export async function detailAs(token: string, projectId: string, taskId: string) {
+  return call<TaskDetail>(taskPath(projectId, taskId), { token });
+}
+
+/** Uploads one evidence file (multipart field "file", as the app sends it). Returns the raw response. */
+export async function uploadEvidence(token: string, projectId: string, taskId: string, file: File) {
+  return upload(`${taskPath(projectId, taskId)}/evidence/file`, token, file);
+}
+
+/** Adds a link as evidence. Returns the raw response. */
+export async function linkEvidence(token: string, projectId: string, taskId: string, url: string) {
+  return call<TaskDetail>(`${taskPath(projectId, taskId)}/evidence/link`, { method: "POST", token, body: { url } });
+}
+
+/** 我做完了，请组长看. Returns the raw response. */
+export async function submitAs(token: string, projectId: string, taskId: string) {
+  return call<TaskDetail>(`${taskPath(projectId, taskId)}/submit`, { method: "POST", token });
+}
+
+type LeaderGrade = Exclude<Grade, "SELF">;
+
+/** 评级 (the leader). Returns the raw response. */
+export async function gradeAs(token: string, projectId: string, taskId: string, grade: LeaderGrade, note?: string) {
+  return call<TaskDetail>(`${taskPath(projectId, taskId)}/grade`, { method: "POST", token, body: { grade, note } });
+}
+
+/** 组长代为完成并评级. Returns the raw response. */
+export async function outsideAs(token: string, projectId: string, taskId: string, grade: LeaderGrade, note?: string, outsideNote?: string) {
+  return call<TaskDetail>(`${taskPath(projectId, taskId)}/grade-outside`, { method: "POST", token, body: { grade, note, outsideNote } });
+}
+
+/** 推翻评级 (default: the counting attempt). Returns the raw response. */
+export async function overrideAs(token: string, projectId: string, taskId: string, grade: LeaderGrade, reason: string, attemptId?: string) {
+  return call<TaskDetail>(`${taskPath(projectId, taskId)}/override`, { method: "POST", token, body: { grade, reason, attemptId } });
+}
+
+/** 我开完了，标记完成. Returns the raw response. */
+export async function meetingDoneAs(token: string, projectId: string, taskId: string, summary: string, attendeeMemberIds: string[]) {
+  return call<TaskDetail>(`${taskPath(projectId, taskId)}/meeting-done`, { method: "POST", token, body: { summary, attendeeMemberIds } });
+}
+
+export type FakeKind = "pdf" | "png" | "docx" | "csv" | "exe";
+
+const MAGIC: Record<FakeKind, number[]> = {
+  pdf: [...Buffer.from("%PDF-1.7\n")],
+  png: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+  // A zip's local file header: what .docx / .pptx / .xlsx start with.
+  docx: [0x50, 0x4b, 0x03, 0x04],
+  csv: [...Buffer.from("name,score\n王子杰,90\n")],
+  // A Windows program ("MZ").
+  exe: [0x4d, 0x5a, 0x90, 0x00],
+};
+
+/**
+ * A File named `name` whose content starts like `content` (one of the kinds' magic bytes, or the given
+ * bytes), padded to `size` bytes (spaces for csv, zero bytes otherwise). Only the start matters: the
+ * server sniffs the first bytes.
+ */
+export function fakeFile(name: string, content: Uint8Array | FakeKind, size?: number): File {
+  const head = typeof content === "string" ? Uint8Array.from(MAGIC[content]) : content;
+  const bytes = new Uint8Array(Math.max(size ?? head.length, head.length));
+  if (content === "csv") bytes.fill(0x20);
+  bytes.set(head);
+  return new File([bytes], name);
+}
+
+const STATUS_FOR: Record<"PASS" | "HALF" | "FAIL", "DONE" | "HALF" | "FAIL"> = { PASS: "DONE", HALF: "HALF", FAIL: "FAIL" };
+
+/**
+ * Makes a task graded without going through evidence and grading (for tests that don't care how it got
+ * there): status + grade + finishedAt (null for FAIL), started by its owner when it wasn't started yet.
+ * Writes no attempt.
+ */
+export async function finishTask(taskId: string, grade: "PASS" | "HALF" | "FAIL", now = new Date()) {
+  const task = await testDb.task.findUniqueOrThrow({ where: { id: taskId } });
+  return testDb.task.update({
+    where: { id: taskId },
+    data: {
+      status: STATUS_FOR[grade],
+      grade,
+      finishedAt: grade === "FAIL" ? null : now,
+      startedAt: task.startedAt ?? now,
+      startedById: task.startedById ?? task.ownerId,
+    },
+  });
 }

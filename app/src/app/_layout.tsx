@@ -2,8 +2,8 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider as NavThemeProvider } fro
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
-import { useEffect, useMemo, useRef } from 'react';
-import { View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Linking, Platform, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Button } from '@/components/Button';
@@ -12,7 +12,7 @@ import { ToastProvider } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
 import { UnreadProvider } from '@/features/notifs/useUnread';
 import { I18nProvider, useI18n } from '@/i18n';
-import { API_URL } from '@/lib/api';
+import { API_URL, isUpdateRequired, onUpdateRequired } from '@/lib/api';
 import { SessionProvider, useSession } from '@/lib/session';
 import { ThemeProvider, useTheme } from '@/theme';
 import { loadWebFonts } from '@/theme/fonts';
@@ -40,10 +40,47 @@ function Unreachable() {
   );
 }
 
+/** Where new APKs are published (the 「请更新 App」 button). */
+const RELEASES_URL = 'https://github.com/JTing904/MeritAI/releases';
+
+/** True once the server answered 426 UPDATE_REQUIRED to any request. */
+function useUpdateRequired(): boolean {
+  const [required, setRequired] = useState(isUpdateRequired);
+  useEffect(() => {
+    setRequired(isUpdateRequired());
+    return onUpdateRequired(() => setRequired(true));
+  }, []);
+  return required;
+}
+
+/** Full screen, no way around it: this build is older than the server accepts. */
+function UpdateRequired() {
+  const { c } = useTheme();
+  const { t } = useI18n();
+  const open = () => {
+    if (Platform.OS === 'web') window.open(RELEASES_URL, '_blank', 'noopener,noreferrer');
+    else void Linking.openURL(RELEASES_URL).catch(() => {});
+  };
+  return (
+    <View style={{ flex: 1, backgroundColor: c.paper, alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <View style={{ width: '100%', maxWidth: 420, gap: 12 }}>
+        <Txt v="title" role="heading" {...headingLevel(1)}>
+          {t.update.title}
+        </Txt>
+        <Txt v="text" color="ink2">
+          {t.update.body}
+        </Txt>
+        <Button title={t.update.button} block onPress={open} />
+      </View>
+    </View>
+  );
+}
+
 function ThemedApp() {
   const { c, dark } = useTheme();
   const { locale } = useI18n();
   const { status, user, updateMe } = useSession();
+  const updateRequired = useUpdateRequired();
 
   const navTheme = useMemo(() => {
     const base = dark ? DarkTheme : DefaultTheme;
@@ -57,8 +94,8 @@ function ThemedApp() {
 
   // Keep the splash screen up until we know whether someone is signed in (no login-screen flash).
   useEffect(() => {
-    if (status !== 'loading') void SplashScreen.hideAsync().catch(() => {});
-  }, [status]);
+    if (status !== 'loading' || updateRequired) void SplashScreen.hideAsync().catch(() => {});
+  }, [status, updateRequired]);
 
   // Push notifications use the language chosen on this device. Try once per (user, language);
   // a failure is retried on the next sign-in or language change, never in a loop.
@@ -71,6 +108,7 @@ function ThemedApp() {
     void updateMe({ locale }).catch(() => {});
   }, [status, user, locale, updateMe]);
 
+  if (updateRequired) return <UpdateRequired />;
   if (status === 'loading') return <View style={{ flex: 1, backgroundColor: c.paper }} />;
   if (status === 'unreachable') return <Unreachable />;
 
@@ -94,6 +132,10 @@ function ThemedApp() {
           <Stack.Screen name="project/[id]/settings" />
           <Stack.Screen name="project/[id]/members" />
           <Stack.Screen name="project/[id]/task/[taskId]" />
+          <Stack.Screen name="project/[id]/brief" />
+        </Stack.Protected>
+        {/* Developer pages exist only in development builds. */}
+        <Stack.Protected guard={__DEV__ && status === 'signedIn'}>
           <Stack.Screen name="dev/gallery" />
         </Stack.Protected>
         <Stack.Protected guard={status === 'signedOut'}>

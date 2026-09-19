@@ -8,7 +8,16 @@ export type RuleTask = {
   kind: TaskKind;
   /** Raw weight: the number found (SCORES) or 1 (LIST). The caller apportions to 1000 tenths. */
   weight: number;
+  /** 作业要求（原文）: where the item is in the brief (null for a typed description). */
+  excerpt: RuleExcerpt | null;
 };
+
+/**
+ * The brief's item a task came from: lines [from, to) of `normalizeBrief(text).split("\n")` (the item's
+ * own line, its wrapped lines and everything nested under it), and those lines without their list
+ * markers. Items an inline list ("1. 做网站 2. 写报告") put on one line share that line's range.
+ */
+export type RuleExcerpt = { from: number; to: number; lines: string[] };
 
 export type RulesResult =
   | { ok: true; method: "SCORES" | "LIST"; tasks: RuleTask[] }
@@ -47,16 +56,30 @@ export function parseBriefWithRules(text: string, opts: ParseOptions = {}): Rule
     if (lines.every((l) => l.blank)) return { ok: false, reason: "EMPTY" };
     const scored = findScoredItems(lines);
     const listed = findListItems(lines);
+    // A typed description has no original to quote (M4 spec §2): its tasks carry no excerpt.
+    const excerpt = (at: number) => (opts.typed ? null : excerptOf(lines, at));
     if (scored && !(listed && listBeatsScores(listed, scored))) {
-      return { ok: true, method: "SCORES", tasks: scored.items.map((c) => ({ title: c.title, kind: guessKind(c.title), weight: c.weight })) };
+      return {
+        ok: true,
+        method: "SCORES",
+        tasks: scored.items.map((c) => ({ title: c.title, kind: guessKind(c.title), weight: c.weight, excerpt: excerpt(c.line) })),
+      };
     }
     // Before the list reader, which would merge a line into the item above it or keep only one list of
     // several. A single typed line ("要做的事：1. 做网站 2. 写报告") still goes to the list reader.
     if (opts.typed) {
       const titles = typedLineTitles(text);
-      if (titles.length >= 2) return { ok: true, method: "LIST", tasks: titles.map((title) => ({ title, kind: guessKind(title), weight: 1 })) };
+      if (titles.length >= 2) {
+        return { ok: true, method: "LIST", tasks: titles.map((title) => ({ title, kind: guessKind(title), weight: 1, excerpt: null })) };
+      }
     }
-    if (listed) return { ok: true, method: "LIST", tasks: listed.titles.map((title) => ({ title, kind: guessKind(title), weight: 1 })) };
+    if (listed) {
+      return {
+        ok: true,
+        method: "LIST",
+        tasks: listed.titles.map((title, k) => ({ title, kind: guessKind(title), weight: 1, excerpt: excerpt(listed.titleLines[k]!.i) })),
+      };
+    }
   } catch {
     // Unexpected input shapes fall through to "can't split it" rather than a server error.
   }
@@ -74,7 +97,7 @@ const HAS_NAME_RE = /[^\d\p{P}\p{S}\s]/u;
  */
 function typedLineTitles(text: string): string[] {
   const titles: string[] = [];
-  for (const raw of normalize(text).split("\n")) {
+  for (const raw of normalizeBrief(text).split("\n")) {
     const line = raw.trim();
     if (!line || line.length > TYPED_PARAGRAPH_CHARS || LEAD_IN_LINE_RE.test(line)) continue;
     const title = cleanTitle(firstSentence(line)) || cleanTitle(line);
@@ -109,7 +132,7 @@ const KIND_EN: [KindHit, string][] = [
 
 const KIND_EN_RE = KIND_EN.map(([kind, src]) => [kind, new RegExp(String.raw`\b(?:${src})\b`, "gi")] as const);
 // "20-minute", "10 分钟": durations are not meeting minutes.
-const DURATION_RE = /\d+\s*-?\s*(?:minutes?|mins?|分钟|分鐘|hours?|hrs?|小时|小時)/gi;
+const DURATION_RE = /\d+\s*(?:-\s*)?(?:minutes?|mins?|分钟|分鐘|hours?|hrs?|小时|小時)/gi;
 const DESIGN_WORD_RE = /^(?:design\w*|设计|設計)$/i;
 // After the first keyword, a preposition or clause break starts a modifier ("report on the survey").
 const CUT_RE =
@@ -177,6 +200,8 @@ type Marker = { style: string; ordinal: number | null; label: string };
 
 type Line = {
   i: number;
+  /** Index of the line in normalizeBrief(text) it came from (inline lists split one source line into several). */
+  src: number;
   text: string;
   indent: number;
   blank: boolean;
@@ -192,7 +217,8 @@ type Line = {
   absorbed: boolean;
 };
 
-function normalize(text: string): string {
+/** The brief text as the rules read it (and as Project.briefText stores it, so excerpt ranges index into it). */
+export function normalizeBrief(text: string): string {
   return text
     .slice(0, MAX_INPUT_CHARS)
     .replace(/\r\n?|\u2028|\u2029/g, "\n")
@@ -209,17 +235,40 @@ function normalize(text: string): string {
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
 }
 
+/**
+ * Longest gap (spaces/tabs) kept inside a line. Wider gaps only align table columns and still read as a
+ * cell break; capping them bounds the backtracking of every `\s*` pattern on hostile input.
+ */
+const MAX_GAP_CHARS = 8;
+const GAP_RE = /(?<=\S)[ \t]{9,}/g;
+
 function readLines(text: string): Line[] {
-  const raw = expandInlineLists(normalize(text).split("\n").map((l) => (l.length > MAX_LINE_CHARS ? l.slice(0, MAX_LINE_CHARS) : l)));
+  const expanded = expandInlineLists(
+    normalizeBrief(text)
+      .split("\n")
+      .map((l) => (l.length > MAX_LINE_CHARS ? l.slice(0, MAX_LINE_CHARS) : l).replace(GAP_RE, (gap) => gap.slice(0, MAX_GAP_CHARS))),
+  );
   const lines: Line[] = [];
   const letters = new Map<string, number>();
-  for (const r of raw) {
+  for (const [k, r] of expanded.lines.entries()) {
     const lead = /^[ \t]*/.exec(r)![0];
     const indent = [...lead].reduce((n, ch) => n + (ch === "\t" ? 4 : 1), 0);
     const t = r.trim();
     const marker = t ? detectMarker(t, letters) : null;
     const body = marker ? t.slice(marker.label.length).trim() : t;
-    const line: Line = { i: lines.length, text: t, indent, blank: !t, marker, body, heading: 0, parents: [], continuation: [], absorbed: false };
+    const line: Line = {
+      i: lines.length,
+      src: expanded.source[k]!,
+      text: t,
+      indent,
+      blank: !t,
+      marker,
+      body,
+      heading: 0,
+      parents: [],
+      continuation: [],
+      absorbed: false,
+    };
     line.heading = headingLevel(line);
     lines.push(line);
   }
@@ -280,7 +329,7 @@ function letterMarker(token: string, form: string, state: Map<string, number>): 
 }
 
 const WORD_MARKER_RE =
-  /^(part|section|task|question|deliverable|component|stage|phase|step|milestone|activity|chapter|criterion|criteria|item|q)\s*([A-Z]|\d{1,2}|[ivxIVX]{1,4})(?!\w|\.\d)\s*(?:[:.)\-–—]\s*|(?=\s+[A-Z\u3400-\u9FFF(（“"'‘])|$)/i;
+  /^(part|section|task|question|deliverable|component|stage|phase|step|milestone|activity|chapter|criterion|criteria|item|q)\s*([A-Z]|\d{1,2}|[ivxIVX]{1,4})(?!\w|\.\d)(?:\s*[:.)\-–—]\s*|\s*(?=\s[A-Z\u3400-\u9FFF(（“"'‘])|\s*$)/i;
 
 function detectMarker(t: string, letters: Map<string, number>): Marker | null {
   let m: RegExpExecArray | null;
@@ -326,18 +375,24 @@ function detectMarker(t: string, letters: Map<string, number>): Marker | null {
   return null;
 }
 
-/** "要做的事：1. 做网站 2. 写报告" (typed on one line) → one line per numbered item. */
-function expandInlineLists(lines: string[]): string[] {
+/**
+ * "要做的事：1. 做网站 2. 写报告" (typed on one line) → one line per numbered item. `source[k]`: the input
+ * line that output line k came from.
+ */
+function expandInlineLists(lines: string[]): { lines: string[]; source: number[] } {
   const out: string[] = [];
+  const source: number[] = [];
   const patterns: { re: RegExp; ord: (m: RegExpExecArray) => number }[] = [
     { re: /(?<=^|[\s，,；;。:：])(\d{1,2})[.)、．）](?![\d.])(?=\s*\S)/g, ord: (m) => Number(m[1]) },
     { re: /(?<=^|[\s，,；;。:：])[（(](\d{1,2})[）)](?=\s*\S)/g, ord: (m) => Number(m[1]) },
     { re: /([\u2460-\u2473])(?=\s*\S)/g, ord: (m) => m[1]!.charCodeAt(0) - 0x245f },
     { re: /(?<=^|[\s，,；;:：])[（(]?([a-h])[）)](?=\s*\S)/g, ord: (m) => m[1]!.charCodeAt(0) - 96 },
   ];
-  for (const line of lines) {
+  for (const [src, line] of lines.entries()) {
     let split: number[] | null = null;
-    for (const { re, ord } of patterns) {
+    // Every pattern needs a digit, a circled number or a closing bracket.
+    const candidate = /[\d①-⑳)）]/.test(line);
+    for (const { re, ord } of candidate ? patterns : []) {
       const found = [...line.matchAll(re)].map((m) => ({ at: m.index, n: ord(m as RegExpExecArray) }));
       // Longest run of consecutive numbers starting at 1 (or continuing the first marker).
       const run: number[] = [];
@@ -361,14 +416,21 @@ function expandInlineLists(lines: string[]): string[] {
     }
     if (!split) {
       out.push(line);
+      source.push(src);
       continue;
     }
     const indent = /^[ \t]*/.exec(line)![0];
     const head = line.slice(0, split[0]).trim();
-    if (head) out.push(indent + head);
-    split.forEach((at, k) => out.push(indent + line.slice(at, split![k + 1] ?? line.length).trim()));
+    if (head) {
+      out.push(indent + head);
+      source.push(src);
+    }
+    split.forEach((at, k) => {
+      out.push(indent + line.slice(at, split![k + 1] ?? line.length).trim());
+      source.push(src);
+    });
   }
-  return out;
+  return { lines: out, source };
 }
 
 const SECTION_EN =
@@ -464,6 +526,30 @@ function logicalBody(line: Line): string {
   return line.continuation.reduce(joinText, line.body);
 }
 
+/**
+ * The item at `at` as a quote: its own line (with wrapped continuation lines) and every following line
+ * until the first non-blank line that is neither nested under it nor a wrapped line; blank lines inside
+ * the nested block don't end it, trailing blank lines are dropped. Wrapped lines are part of their
+ * item's text (logicalBody), so they are not listed again.
+ */
+function excerptOf(lines: Line[], at: number): RuleExcerpt {
+  const item = lines[at]!;
+  let last = at;
+  for (let j = at + 1; j < lines.length; j++) {
+    const l = lines[j]!;
+    if (l.blank) continue;
+    // A wrapped line directly follows its item (or another wrapped line), so it belongs to what came before.
+    if (!l.absorbed && !l.parents.includes(at)) break;
+    last = j;
+  }
+  const text: string[] = [];
+  for (let j = at; j <= last; j++) {
+    const l = lines[j]!;
+    if (!l.blank && !l.absorbed) text.push(logicalBody(l));
+  }
+  return { from: item.src, to: lines[last]!.src + 1, lines: text.filter((t) => t !== "") };
+}
+
 // ─── Weights ──────────────────────────────────────────────────────────────────
 
 type Weight = { value: number; start: number; end: number; unit: "%" | "marks" | "points" | "fen" };
@@ -472,7 +558,7 @@ type Weight = { value: number; start: number; end: number; unit: "%" | "marks" |
 const WEIGHT_RE =
   /(?<![\d.,])(\d{1,4}(?:\.\d{1,2})?)\s*(%|percent\b|marks?\b|pts?\b|points?\b|分(?![钟鐘之组組工配析别別享类類成为為开開布支段解担擔摊攤拆秒期册冊批队隊页頁数數辨手散发發送给給出]))/gi;
 const RANGE_RE =
-  /(\d{1,4}(?:\.\d+)?)\s*(%|分|marks?)?\s*(?:-|–|—|~|～|〜|至|到|to)\s*(\d{1,4}(?:\.\d+)?)\s*(%|分|marks?)/gi;
+  /(\d{1,4}(?:\.\d+)?)\s*(?:(%|分|marks?)\s*)?(?:-|–|—|~|～|〜|至|到|to)\s*(\d{1,4}(?:\.\d+)?)\s*(%|分|marks?)/gi;
 const RANGE_TEST_RE = new RegExp(RANGE_RE.source, "i");
 const QUALIFIER_BEFORE_RE =
   /(?:≥|≤|>=?|<=?|=<|=>|\b(?:above|below|over|under|at\s+least|at\s+most|less\s+than|more\s+than|minimum(?:\s+of)?|maximum(?:\s+of)?|min\.?|max\.?|up\s+to|exceed(?:s|ing)?|within|about|around|approx(?:imately|\.)?|by|only|nearly|almost|reach(?:es|ing)?)|不少于|不低于|不超过|不高于|不得高于|不得低于|不得超过|不可超过|低于|高于|超过|超過|达到|達到|至少|最多|最少|约|約|大约|大約|增长了?|增加了?|减少了?|下降了?|提高了?|降低了?)\s*$/i;
@@ -537,7 +623,7 @@ const COURSE_WEIGHT_RES = [
   /总评|總評/,
 ];
 const TOTAL_RE =
-  /^[\s\d.、)）(（|:：\-–—•*#]*(?:(?:grand|sub)[\s-]?)?(?:total|overall\s+total|合计|合計|总计|總計|总分|總分|满分|滿分|共计|共計|小计|小計|总和|總和|总共|總共|共)(?:\s*(?:weightage|weight|marks?|score|points?|percentage|分数|分數|分值))?\s*(?:[:：=]|为|為|是)?\s*[(（]?\s*(\d{1,4}(?:\.\d+)?)\s*(?:%|分|marks?|points?|pts?)?\s*[)）]?\s*[.。]?$/i;
+  /^[\s\d.、)）(（|:：\-–—•*#]*(?:(?:grand|sub)[\s-]?)?(?:total|overall\s+total|合计|合計|总计|總計|总分|總分|满分|滿分|共计|共計|小计|小計|总和|總和|总共|總共|共)(?:\s*(?:weightage|weight|marks?|score|points?|percentage|分数|分數|分值))?\s*(?:(?:[:：=]|为|為|是)\s*)?(?:[(（]\s*)?(\d{1,4}(?:\.\d+)?)\s*(?:(?:%|分|marks?|points?|pts?)\s*)?(?:[)）]\s*)?[.。]?$/i;
 
 function totalValue(t: string): number | null {
   const cells = splitCells(t);
@@ -564,9 +650,12 @@ const DUE_TAIL_RES = [
 ];
 const LABEL_WORDS =
   /(?:weightage|weighting|weight|worth|carr(?:y|ies|ying)|mark\s+allocation|allocation|marks?|score|points?|percentage|分值|分数|分數|占总成绩的|占总分的|占总分|占比|佔比|比重|权重|權重|占|佔)/i;
-// Only words that introduce a weight are cut from the end ("Credit score" keeps its "score").
-const LABEL_TAIL_RE =
-  /(?:\s*[:：=]?\s*(?:(?:is|are|will\s+be)\s+)?(?:weightage|weighting|weighted|weight|worth|carr(?:y|ies|ying)|(?:mark\s+)?allocation|占总成绩的|占总分的|占总分|占比|佔比|占|佔|分值|比重|权重|權重)\s*[:：=]?\s*)+$/i;
+// Only words that introduce a weight are cut from the end ("Credit score" keeps its "score"). stripLabelTail
+// takes them off one at a time: a single `(?:\s*[:=]?\s*word\s*[:=]?\s*)+$` backtracked exponentially.
+const LABEL_TAIL_WORD_RE =
+  /(?:weightage|weighting|weighted|weight|worth|carr(?:y|ies|ying)|(?:mark\s+)?allocation|占总成绩的|占总分的|占总分|占比|佔比|占|佔|分值|比重|权重|權重)$/i;
+const LABEL_TAIL_VERB_RE = /(?:is|are|will\s+be)\s+$/i;
+const LABEL_SEP_RE = /[\s:：=]/;
 const LABEL_HEAD_RE = new RegExp(String.raw`^\s*(?:${LABEL_WORDS.source})\s*[:：=]\s*`, "i");
 const GENERIC_PREFIX_RE =
   /^(?:(?:part|section|task|question|deliverable|component|stage|step|item|criteria|criterion|q)\s*(?:[A-Z]|\d{1,2}|[ivx]{1,4})\s*[:.\-–—)]\s*|第\s*[一二三四五六七八九十\d]{1,3}\s*(?:部分|项|項|题|題)\s*[:：、.\-–—]\s*|(?:任务|任務|部分)\s*[一二三四五六七八九十\dA-Z]{1,3}\s*[:：、.\-–—]\s*)(?=\S)/i;
@@ -588,10 +677,43 @@ const SCHEDULE_PREFIX_RE = new RegExp(
   "i",
 );
 const LEAD_PUNCT_RE = /^[\s:：\-–—=|,，、;；.。)）\]】>»·]+/;
-const TRAIL_PUNCT_RE = /[\s:：\-–—=|,，、;；.。(（\[【<«]+$/;
+const TRAIL_PUNCT_RE = /[\s:：\-–—=|,，、;；.。(（\[【<«]/;
 
 function stripLead(s: string): string {
   return s.replace(LABEL_HEAD_RE, "").replace(LEAD_PUNCT_RE, "").trim();
+}
+
+/** `s` without its trailing characters that match `charRe` (a loop: a `[…]+$` regex rescans a long run from every position in it). */
+function trimEndWhile(s: string, charRe: RegExp): string {
+  let end = s.length;
+  while (end > 0 && charRe.test(s[end - 1]!)) end--;
+  return s.slice(0, end);
+}
+
+const endsInWordChar = (s: string) => /[a-z0-9]$/i.test(s);
+
+/** "Report weightage:", "Proposal is worth", "报告占比" → the name without the words that introduce its weight. */
+function stripLabelTail(s: string): string {
+  let rest = s;
+  let cut = false;
+  for (;;) {
+    const head = trimEndWhile(rest, LABEL_SEP_RE);
+    // A label word is at most "mark allocation" plus a little spacing: only the end needs a look.
+    const tail = head.slice(-32);
+    const word = LABEL_TAIL_WORD_RE.exec(tail);
+    if (!word) break;
+    let before = head.slice(0, head.length - tail.length + word.index);
+    // "Lightweight" and "Networth" are names, not labels.
+    if (/^[a-z]/i.test(word[0]) && endsInWordChar(before)) break;
+    const verb = LABEL_TAIL_VERB_RE.exec(before.slice(-16));
+    if (verb) {
+      const withoutVerb = before.slice(0, before.length - verb[0].length);
+      if (!endsInWordChar(withoutVerb)) before = withoutVerb;
+    }
+    rest = before;
+    cut = true;
+  }
+  return cut ? trimEndWhile(rest, LABEL_SEP_RE) : s;
 }
 
 function truncate(s: string): string {
@@ -614,7 +736,9 @@ export function cleanTitle(input: string): string {
     .replace(/\*\*|__|`/g, "")
     .replace(/^#{1,6}\s*/, "")
     .replace(/[.·…_]{3,}|…+/g, " ")
-    .replace(/\s*(?:\||\t)\s*/g, " ");
+    .replace(/[|\t]/g, " ")
+    // One space per gap before anything else: the `\s*` in the patterns below then never backtracks far.
+    .replace(/\s+/g, " ");
   for (let k = 0; k < 3; k++) {
     const trimmed = t.trim();
     const marker = detectMarker(trimmed, new Map());
@@ -626,9 +750,9 @@ export function cleanTitle(input: string): string {
   t = removeWeightTokens(t);
   for (const re of DUE_TAIL_RES) t = t.replace(re, "");
   t = t.replace(/[(（\[【]\s*[)）\]】]/g, "");
-  t = t.replace(LABEL_HEAD_RE, "").replace(LABEL_TAIL_RE, "");
+  t = stripLabelTail(t.replace(LABEL_HEAD_RE, ""));
   t = t.replace(/[(（\[【]\s*[)）\]】]/g, "");
-  t = t.replace(LEAD_PUNCT_RE, "").replace(TRAIL_PUNCT_RE, "");
+  t = trimEndWhile(t.replace(LEAD_PUNCT_RE, ""), TRAIL_PUNCT_RE);
   t = t.replace(/\s+/g, " ").trim();
   // Unbalanced leftovers: "Report (3000 words" → keep, but drop a lone trailing opener or leading closer.
   t = t.replace(/^[)）\]】]\s*/, "").replace(/\s*[(（\[【]$/, "");
@@ -667,7 +791,7 @@ function isLabelLine(t: string): boolean {
   return rest === "";
 }
 
-const BARE_LABEL_RE = /^[\s(（]*(?:weightage|weighting|weight|marks?|score|points?|分值|分数|分數|占比|佔比|比重|权重|權重)\s*[:：=]\s*(\d{1,3}(?:\.\d{1,2})?)\s*[)）]?\s*$/i;
+const BARE_LABEL_RE = /^[\s(（]*(?:weightage|weighting|weight|marks?|score|points?|分值|分数|分數|占比|佔比|比重|权重|權重)\s*[:：=]\s*(\d{1,3}(?:\.\d{1,2})?)\s*(?:[)）]\s*)?$/i;
 
 // ─── SCORES ───────────────────────────────────────────────────────────────────
 
@@ -676,7 +800,7 @@ type Candidate = { line: number; title: string; weight: number; parents: number[
 type Scored = { items: Candidate[]; exact: boolean };
 
 const META_LINE_RE =
-  /^(?:due|deadline|date|submission|submit|length|word\s+count|words|format|duration|time|venue|mode|type|clo|plo|截止|提交|日期|字数|字數|格式|时长|時長|时间|時間|地点|地點|形式|方式)\s*(?:date)?\s*[:：]/i;
+  /^(?:due|deadline|date|submission|submit|length|word\s+count|words|format|duration|time|venue|mode|type|clo|plo|截止|提交|日期|字数|字數|格式|时长|時長|时间|時間|地点|地點|形式|方式)\s*(?:date\s*)?[:：]/i;
 const WEIGHT_HEADER_RE =
   /\b(?:weight(?:age|ing)?|marks?|score|points?|percentage)\b|^%$|^(?:分值|分数|分數|比例|占比|佔比|权重|權重|比重|得分)|[(（]\s*(?:%|marks?|分)\s*[)）]/i;
 const GRADE_HEADER_RE = /\b(?:grade|gred|band|result|range|level)\b|等级|等級|成绩等级/i;
@@ -689,7 +813,7 @@ const GRADE_SECTION_RE =
   /^(?:(?:final|overall|course)\s+)?(?:grad(?:e|es|ing)\s+(?:scales?|system|boundar(?:y|ies)|bands?|table|distribution|ranges?|descriptors?|equivalents?|points?|policy)|marks?\s+(?:to|and)\s+grades?|成绩等级|成績等級|评分等级|評分等級|等级划分|等級劃分|等级标准|等級標準|等级|等級|等第|评级|評級)$/i;
 
 function gradeHeading(line: Line): boolean {
-  const head = (line.marker ? line.body : line.text).replace(/^#{1,6}\s*/, "").replace(/[\s:：]+$/, "");
+  const head = trimEndWhile((line.marker ? line.body : line.text).replace(/^#{1,6}\s*/, ""), /[\s:：]/);
   return head.length <= 40 && GRADE_SECTION_RE.test(head);
 }
 
@@ -808,7 +932,8 @@ function markerTitle(line: Line, lines?: Line[]): string {
   if (!line.marker || !(style.startsWith("word-") || style.startsWith("cn-"))) return "";
   const name = cleanTitle(line.marker.label);
   // "Question 1 (20 marks)" followed by what the question asks: "Question 1: Explain the 4Ps".
-  const next = lines?.slice(line.i + 1).find((l) => !l.blank);
+  let next: Line | undefined;
+  for (let j = line.i + 1; lines && j < lines.length && !next; j++) if (!lines[j]!.blank) next = lines[j];
   if (!next || next.marker || next.heading || findWeights(next.text).length || isLabelLine(next.text) || META_LINE_RE.test(next.text)) return name;
   const what = cleanTitle(firstSentence(next.text));
   if (!what) return name;
@@ -979,8 +1104,11 @@ const TASK_VERB_RE =
   /^(?:to\s+)?(?:conduct|carry\s+out|perform|develop|design|build|create|make|write|draft|prepare|produce|compile|record|film|shoot|edit|present|deliver|analy[sz]e|evaluate|assess|compare|investigate|identify|propose|plan|organi[sz]e|hold|attend|collect|gather|interview|survey|research|review|implement|code|program|test|deploy|document|draw|sketch|model|construct|set\s+up|install|configure|integrate|launch|run|visit|observe|summari[sz]e|translate|keep|maintain|submit|study|explore|examine|discuss|describe|explain|justify|recommend|calculate|estimate|simulate|apply)\b|^(?:进行|進行|开展|開展|完成|制作|製作|撰写|撰寫|编写|編寫|写|寫|做|设计|設計|开发|開發|搭建|建立|实现|實現|测试|測試|收集|整理|分析|调查|調查|访谈|訪談|采访|採訪|拍摄|拍攝|剪辑|剪輯|录制|錄製|准备|準備|组织|組織|召开|召開|举办|舉辦|参加|參加|绘制|繪製|画|畫|比较|比較|评估|評估|提出|规划|規劃|策划|策劃|翻译|翻譯|总结|總結|汇报|匯報|展示|演示|上台|提交|记录|記錄|访问|訪問|观察|觀察|研究|讨论|討論|介绍|介紹|说明|說明)/i;
 
 type Block = { items: Line[]; parent: number; style: string; depth: number; ctxStart: number };
-/** The chosen list: its titles, the item lines they came from, and how task-like it reads (> 0 = work to do). */
-type Listed = { titles: string[]; items: Line[]; score: number; depth: number };
+/**
+ * The chosen list: its titles and the line each came from (`titleLines`), its work items (`items`, admin
+ * lines dropped), and how task-like it reads (> 0 = work to do).
+ */
+type Listed = { titles: string[]; titleLines: Line[]; items: Line[]; score: number; depth: number };
 
 function hasKindKeyword(title: string): boolean {
   if (KIND_ZH.some(([, words]) => words.some((w) => title.includes(w)))) return true;
@@ -1068,7 +1196,8 @@ function findListItems(lines: Line[]): Listed | null {
   let best: Listed | null = null;
   for (const block of blocks) {
     const tasks = block.items.filter((l) => !isAdminItem(l));
-    const titles = tasks.map(itemTitle).filter((t) => t !== "");
+    const named = tasks.map((line) => ({ line, title: itemTitle(line) })).filter((x) => x.title !== "");
+    const titles = named.map((x) => x.title);
     if (titles.length < 2) continue;
     const n = titles.length;
     const taskLike = titles.filter((t) => TASK_VERB_RE.test(t) || hasKindKeyword(t)).length;
@@ -1079,9 +1208,9 @@ function findListItems(lines: Line[]): Listed | null {
       !best ||
       score > best.score + EPS ||
       (Math.abs(score - best.score) < EPS && (titles.length > best.titles.length || (titles.length === best.titles.length && block.depth < best.depth)));
-    if (better) best = { titles, items: tasks, score, depth: block.depth };
+    if (better) best = { titles, titleLines: named.map((x) => x.line), items: tasks, score, depth: block.depth };
   }
-  return best ? { ...best, titles: best.titles.slice(0, MAX_LIST_TASKS) } : null;
+  return best ? { ...best, titles: best.titles.slice(0, MAX_LIST_TASKS), titleLines: best.titleLines.slice(0, MAX_LIST_TASKS) } : null;
 }
 
 /**

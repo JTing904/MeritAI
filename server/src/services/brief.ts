@@ -1,12 +1,49 @@
 // Step 2 of the wizard: turn a brief (typed or extracted from a file) into draft tasks with the free rules.
+import type { Locale } from "../../../shared/constants";
 import { apportion } from "../../../shared/planning";
 import type { BriefFailure, BriefResult } from "../../../shared/types";
 import type { Db } from "../lib/db";
 import { spreadDueDates } from "../lib/plan/dates";
 import { MAX_BRIEF_BYTES } from "../lib/plan/extract";
-import { parseBriefWithRules } from "../lib/plan/rules";
+import { normalizeBrief, parseBriefWithRules } from "../lib/plan/rules";
 import { lockDraft, TX_OPTIONS } from "./tx";
 import { loadDraftView } from "./views";
+
+/**
+ * Most of a brief kept in Project.briefText (A12): about 100 pages of text. A longer one is still parsed
+ * whole (every task is found), but only its first lines up to this size are stored, followed by a note.
+ * Refusing it instead would leave the leader stuck on a legitimate file, and only the 作业要求 page reads it.
+ */
+export const MAX_BRIEF_TEXT_BYTES = 200 * 1024;
+/** Longest quoted excerpt kept on one task (its brief item's lines). */
+export const MAX_EXCERPT_CHARS = 4000;
+
+const CUT_NOTE: Record<Locale, string> = {
+  zh: "（原文太长，这里只保存了前面的部分。完整内容请看原来的文件。）",
+  en: "(The brief is too long, so only its first part is kept here. See the original file for the rest.)",
+};
+
+const utf8Bytes = (s: string) => Buffer.byteLength(s, "utf8");
+
+/**
+ * The normalized brief as stored: whole lines up to MAX_BRIEF_TEXT_BYTES, then a blank line and a note
+ * when it was cut. `keptLines`: how many of the text's lines survive (all of them when it wasn't cut).
+ */
+export function capBriefText(text: string, locale: Locale): { text: string; keptLines: number; cut: boolean } {
+  const lines = text.split("\n");
+  if (utf8Bytes(text) <= MAX_BRIEF_TEXT_BYTES) return { text, keptLines: lines.length, cut: false };
+  const note = CUT_NOTE[locale];
+  const budget = MAX_BRIEF_TEXT_BYTES - utf8Bytes(note) - 2;
+  let used = 0;
+  let kept = 0;
+  while (kept < lines.length && used + utf8Bytes(lines[kept]!) + 1 <= budget) used += utf8Bytes(lines[kept++]!) + 1;
+  return { text: [...lines.slice(0, kept), "", note].join("\n"), keptLines: kept, cut: true };
+}
+
+function excerptText(lines: string[]): string {
+  const text = lines.join("\n");
+  return text.length > MAX_EXCERPT_CHARS ? `${text.slice(0, MAX_EXCERPT_CHARS - 1)}…` : text;
+}
 
 export function briefFailure(reason: BriefFailure, fileName: string | null, sizeBytes: number | null): BriefResult {
   return { ok: false, reason, fileName, sizeBytes, maxBytes: MAX_BRIEF_BYTES };
@@ -30,6 +67,10 @@ export async function applyBrief(
 
   await db.$transaction(async (tx) => {
     const project = await lockDraft(tx, projectId);
+    // Normalized, so the tasks' briefFrom / briefTo index its lines; cut when very long.
+    const stored = capBriefText(normalizeBrief(brief.text), project.locale);
+    // A range past the cut can't be shown on the 作业要求 page (the task still quotes its own lines).
+    const shown = (to: number) => to <= stored.keptLines;
     const points = apportion(parsed.tasks.map((t) => t.weight));
     const dues = spreadDueDates(parsed.tasks.length, now, project.deadline, project.timezone);
     await tx.task.deleteMany({ where: { projectId } });
@@ -45,13 +86,18 @@ export async function applyBrief(
         points: points[i]!,
         dueAt: dues[i]!,
         suggestedDueAt: dues[i]!,
+        // 作业要求（原文）: the item's lines, and where they are in briefText.
+        briefExcerpt: t.excerpt ? excerptText(t.excerpt.lines) : null,
+        briefFrom: t.excerpt && shown(t.excerpt.to) ? t.excerpt.from : null,
+        briefTo: t.excerpt && shown(t.excerpt.to) ? t.excerpt.to : null,
       })),
     });
     await tx.project.update({
       where: { id: projectId },
       data: {
         planSource: "RULES",
-        briefText: brief.text,
+        briefText: stored.text,
+        briefBytes: utf8Bytes(stored.text),
         briefFileName: brief.fileName,
         draftStep: Math.max(project.draftStep, 5),
       },

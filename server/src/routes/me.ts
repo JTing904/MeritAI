@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import type { MeData } from "../../../shared/types";
 import type { AppEnv } from "../app";
-import { destroySession, requireUser, toMe } from "../lib/auth";
+import { destroyAllSessions, destroySession, requireUser, toMe } from "../lib/auth";
 import { readBody } from "../lib/body";
 import { ok } from "../lib/http";
 
@@ -32,4 +32,12 @@ export const sessionRoutes = new Hono<AppEnv>();
 sessionRoutes.delete("/", async (c) => {
   await destroySession(c);
   return ok(c, null);
+});
+
+export const allSessionRoutes = new Hono<AppEnv>();
+
+/** 「在所有设备上退出」: ends every session of the user, this one included. */
+allSessionRoutes.delete("/", async (c) => {
+  const user = await requireUser(c);
+  return ok<{ signedOut: number }>(c, { signedOut: await destroyAllSessions(c.var.db, user.id) });
 });
