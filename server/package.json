@@ -1,6 +1,7 @@
 {
   "name": "meritai-server",
   "private": true,
+  "license": "UNLICENSED",
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/dev.ts",

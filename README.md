@@ -11,8 +11,8 @@
   <img src="docs/screenshots/04-leaderboard.png" width="200" alt="排行榜 Leaderboard">
 </p>
 
-> **项目状态 / Status** — 需求和 UI 设计已确认，正在开发中，源代码完成后上传。
-> Requirements and UI design are approved; the app is in development and the source code will be published when it is ready.
+> **项目状态 / Status** — 开发中，还没正式发布。建项目、分包、交证据和评级已经能在 Android 上用；提醒、AI 审核、登录和上线还在做。
+> In development, not released yet. Creating projects, picking packages, handing in evidence and grading already work on Android; reminders, AI review, sign-in and launch are in progress.
 
 [中文](#中文) · [English](#english)
 
@@ -81,15 +81,23 @@
 - [docs/prototype/index.html](docs/prototype/index.html)：可以点的 UI 样稿。下载后用浏览器打开，里面的数据都是例子；虚线框是演示开关，正式 App 里没有。
 
 ### 技术
-Next.js（网页、API、PWA）· PostgreSQL（Supabase）+ Prisma · Expo / React Native（Android App）· GitHub Webhook · Gemini / Claude / OpenAI · 部署在 Vercel。
+Expo / React Native（一套界面出 Android App、网页版和 iPhone PWA）· Hono API · PostgreSQL（Supabase）+ Prisma · Gemini / Claude / OpenAI · GitHub Webhook · 部署在 Vercel。
 
 ### 开发进度
 - [x] 需求规格
 - [x] UI 设计（手机版样稿）
-- [ ] 后端：计分、证据与 AI 审核、提醒、项目结束流程、徽章
-- [ ] Android App
-- [ ] 网页版与 iPhone PWA
+- [x] 建项目、规则拆任务、分包、换包、成员与通知
+- [x] 任务、交证据、组长评级、排行榜
+- [x] 安全加固（第一阶段）
+- [ ] 省请求与缓存
+- [ ] 提醒与项目结束流程
+- [ ] AI 拆任务与 AI 审核、Google Docs、GitHub 提交
+- [ ] 正式登录、贡献报告、徽章
 - [ ] 部署上线
+
+### 版权
+版权所有 © 2026 陈敬霆（TAN KENG TING）。保留所有权利。
+仓库公开仅供浏览；未经书面许可，不得复制、修改、分发或使用其中任何部分。详见 [LICENSE](LICENSE)。
 
 ---
 
@@ -147,12 +155,20 @@ Your contribution = points of the tasks you completed × AI grade. Code, writing
 - [docs/prototype/index.html](docs/prototype/index.html): a clickable UI prototype. Download it and open it in a browser. All data is sample data; dashed boxes are demo switches that won't appear in the real app.
 
 ### Tech
-Next.js (web, API, PWA) · PostgreSQL (Supabase) + Prisma · Expo / React Native (Android app) · GitHub webhooks · Gemini / Claude / OpenAI · deployed on Vercel.
+Expo / React Native (one UI for the Android app, the web app and the iPhone PWA) · Hono API · PostgreSQL (Supabase) + Prisma · Gemini / Claude / OpenAI · GitHub webhooks · deployed on Vercel.
 
 ### Roadmap
 - [x] Requirements
 - [x] UI design (mobile prototype)
-- [ ] Backend: scoring, evidence and AI review, reminders, project wrap-up, badges
-- [ ] Android app
-- [ ] Web app and iPhone PWA
+- [x] Projects, rule-based task splitting, packages, swaps, members and notifications
+- [x] Tasks, evidence, leader grading, leaderboard
+- [x] Security hardening (phase 1)
+- [ ] Caching and request savings
+- [ ] Reminders and project wrap-up
+- [ ] AI task splitting and AI review, Google Docs, GitHub commits
+- [ ] Sign-in, contribution report, badges
 - [ ] Launch
+
+### Copyright
+Copyright © 2026 TAN KENG TING (陈敬霆). All rights reserved.
+This repository is public for viewing only. No part of it may be copied, modified, distributed or used without written permission. See [LICENSE](LICENSE).
