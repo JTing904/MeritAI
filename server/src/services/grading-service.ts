@@ -21,6 +21,7 @@ import { bumpPackages, notify, recordEvent } from "./notify";
 import { personRef, startUnderLock } from "./packages";
 import type { GradeBody, GradeOutsideBody, OverrideBody } from "./schemas";
 import { lockAsMember, TX_OPTIONS, type Tx } from "./tx";
+import { clock } from "../lib/clock";
 
 type LeaderGrade = GradeBody["grade"];
 
@@ -69,17 +70,20 @@ async function assertNothingPending(tx: Tx, taskId: string): Promise<void> {
   if ((await tx.attempt.count({ where: { taskId, status: "PENDING" } })) > 0) throw alreadyReviewing();
 }
 
-/** 评级: the task's PENDING attempt (NOT_REVIEWING otherwise); a reason is required for HALF / FAIL. */
+/**
+ * 评级: the task's PENDING attempt (NOT_REVIEWING otherwise); a reason is required for HALF / FAIL. The one
+ * grading write an ENDED project still takes (M5: 已经交了、在等组长评的可以评完).
+ */
 export async function gradeAttempt(
   db: Db,
   projectId: string,
   taskId: string,
   userId: string,
   input: GradeBody & DevToolFlag,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<void> {
   await db.$transaction(async (tx) => {
-    const { member: leader } = await lockAsMember(tx, projectId, userId, { leader: true });
+    const { member: leader } = await lockAsMember(tx, projectId, userId, { leader: true, allowEnded: !input.devTool });
     const task = await taskUnderLock(tx, projectId, taskId);
     if (!input.devTool) assertNotOwnTask(task, leader);
     const pending = await tx.attempt.findFirst({ where: { taskId: task.id, status: "PENDING" } });
@@ -133,7 +137,7 @@ export async function gradeOutside(
   taskId: string,
   userId: string,
   input: GradeOutsideBody & DevToolFlag,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<void> {
   await db.$transaction(async (tx) => {
     const { project, member: leader } = await lockAsMember(tx, projectId, userId, { leader: true });
@@ -245,7 +249,7 @@ export async function overrideGrade(
   taskId: string,
   userId: string,
   input: OverrideBody & DevToolFlag,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<void> {
   await db.$transaction(async (tx) => {
     const { member: leader } = await lockAsMember(tx, projectId, userId, { leader: true });
@@ -286,7 +290,7 @@ export async function overrideGrade(
  * 撤销上次推翻: undoes the task's most recent live GradeChange, across all its attempts (NOTHING_TO_UNDO
  * without one); the attempt gets its earlier grade back. Repeating walks back one change at a time.
  */
-export async function undoOverride(db: Db, projectId: string, taskId: string, userId: string, now = new Date()): Promise<void> {
+export async function undoOverride(db: Db, projectId: string, taskId: string, userId: string, now = clock.now()): Promise<void> {
   await db.$transaction(async (tx) => {
     const { member: leader } = await lockAsMember(tx, projectId, userId, { leader: true });
     const task = await taskUnderLock(tx, projectId, taskId);

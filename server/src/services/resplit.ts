@@ -8,6 +8,7 @@ import { AppError } from "../lib/errors";
 import { isLocked, resplitRange } from "../lib/package-state";
 import { bumpPackages, notify, recordEvent, remindPackageless, voidSwaps } from "./notify";
 import { lockAsMember, TX_OPTIONS, type Tx } from "./tx";
+import { clock } from "../lib/clock";
 
 export type ResplitState = {
   project: Pick<Project, "leaderManages">;
@@ -151,7 +152,7 @@ export async function previewResplit(
   projectId: string,
   userId: string,
   count: number,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<ResplitPreview> {
   return db.$transaction(async (tx) => {
     const { project } = await lockAsMember(tx, projectId, userId, { leader: true });
@@ -190,7 +191,7 @@ export async function applyResplit(
   userId: string,
   count: number,
   version: number,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<void> {
   await db.$transaction(async (tx) => {
     const { project, member: leader } = await lockAsMember(tx, projectId, userId, { leader: true });

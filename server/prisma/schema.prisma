@@ -35,9 +35,10 @@ enum ProjectStatus {
   /// Being set up by the leader; only the leader sees it; no invite code yet.
   DRAFT
   ACTIVE
-  /// Past the deadline, waiting for the leader to confirm it was submitted (M5).
+  /// Past the deadline, waiting for the leader to confirm it was submitted (M5). Everything still works;
+  /// the tick ends it automatically 7 days after the deadline.
   AWAITING_CONFIRM
-  /// Ended; the 14-day grace period runs until deleteAfter (M5).
+  /// Ended (M5): read-only until purgeAfter (endedAt + 14 days), then the tick deletes it for good.
   ENDED
 }
 
@@ -96,6 +97,8 @@ enum SwapVoidReason {
   RESPLIT
   /// The leader deleted the project for everyone.
   PROJECT_DELETED
+  /// The project ended (M5).
+  PROJECT_ENDED
 }
 
 /// Who a notification went to, shown in its meta line (全组都收到 / 只有你收到 / 只有组长收到 / 只有你和组长收到).
@@ -130,6 +133,20 @@ enum NotificationType {
   PREREQ_DONE
   PROJECT_DELETED
   PROJECT_RESTORED
+  // M5: reminders (services/tick.ts) and the project lifecycle.
+  TASK_DUE_SOON
+  TASK_DUE_REVIEW
+  TASK_OWNERLESS_SOON
+  TASK_OVERDUE
+  TASK_OWNERLESS_OVERDUE
+  PREREQ_BLOCKED
+  WEEKLY_SUMMARY
+  PROJECT_DUE
+  PROJECT_AUTO_END_SOON
+  PROJECT_ENDED
+  PROJECT_REOPENED
+  PROJECT_DELETE_SOON
+  TASK_DELAYED
 }
 
 /// Entries of the project feed (动态).
@@ -156,6 +173,9 @@ enum ActivityType {
   PREREQ_SET
   PROJECT_DELETED
   PROJECT_RESTORED
+  PROJECT_ENDED
+  PROJECT_REOPENED
+  TASK_DELAYED
 }
 
 /// The leader's grade of an attempt (M4). SELF: a meeting task its owner marked done.
@@ -280,13 +300,23 @@ model Project {
   /// Conditional GETs (lib/etag.ts) hash it into their ETag. Never written by the app.
   version         Int           @default(0)
   /// 为所有人删除项目: hidden from everyone at once; the leader who did it (deletedById) can restore it
-  /// until purgeAfter (deletedAt + 7 days), after which purgeDeletedProjects removes it for good.
+  /// until purgeAfter (deletedAt + 7 days), after which the purge removes it for good.
   deletedAt       DateTime?
   deletedById     String?
+  /// When the project is deleted for good: deletedAt + 7 days (deleted for everyone), endedAt + 14 days
+  /// (ENDED), the earlier of the two when both apply. Null otherwise.
   purgeAfter      DateTime?
+  /// M5: when the project went AWAITING_CONFIRM (= the deadline it passed); null in any other status.
+  awaitingSince   DateTime?
+  /// M5: when it ended (ENDED only), by whom (null: ended automatically, or the member row is gone).
+  endedAt         DateTime?
+  endedById       String?
+  /// Ended by the tick: 7 days in AWAITING_CONFIRM without the leader acting.
+  endedAuto       Boolean       @default(false)
 
   createdBy          User                @relation("ProjectCreator", fields: [createdById], references: [id])
   deletedBy          Member?             @relation("ProjectDeleter", fields: [deletedById], references: [id], onDelete: SetNull)
+  endedBy            Member?             @relation("ProjectEnder", fields: [endedById], references: [id], onDelete: SetNull)
   members            Member[]
   packages           Package[]
   tasks              Task[]
@@ -297,10 +327,13 @@ model Project {
   swapRequests       SwapRequest[]
   notifications      Notification[]
   activity           ActivityEvent[]
+  reminders          ReminderLog[]
 
   @@index([createdById])
   @@index([purgeAfter])
   @@index([deletedById])
+  @@index([endedById])
+  @@index([status])
 }
 
 model Member {
@@ -331,6 +364,7 @@ model Member {
   addedEvidence     Evidence[]      @relation("EvidenceAdder")
   gradeChanges      GradeChange[]   @relation("GradeChanger")
   deletedProjects   Project[]       @relation("ProjectDeleter")
+  endedProjects     Project[]       @relation("ProjectEnder")
 
   @@unique([projectId, userId])
   @@index([userId])
@@ -659,6 +693,20 @@ model ActivityEvent {
 
   @@index([projectId, createdAt, id])
   @@index([actorId])
+}
+
+/// Reminders already sent (M5, services/tick.ts). The tick inserts a reminder's key with ON CONFLICT DO
+/// NOTHING in the same transaction as its notification and sends it only when the row was new. The key
+/// holds what makes a reminder new (e.g. "due24:<taskId>:<ownerMemberId|none>:<effective due ISO>"), so a
+/// later due date or another owner arms it again. No cache-version trigger: nobody sees these rows.
+model ReminderLog {
+  key       String   @id
+  projectId String
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
 }
 
 /// A fixed-window rate-limit counter (lib/rate-limit.ts). `key` names the limit and the caller,

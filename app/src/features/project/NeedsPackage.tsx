@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import type { ProjectView } from '@shared/types';
 import { useI18n } from '@/i18n';
+import { isLive } from '@/lib/lifecycle';
 import { NoticeCard } from './parts';
 
 export const freePackageCount = (project: ProjectView) => project.packages.filter((p) => p.ownerMemberId === null).length;
@@ -17,7 +18,7 @@ export const openResplit = (projectId: string) =>
 export function NeedsPackageCard({ project, onResplit }: { project: ProjectView; onResplit?: () => void }) {
   const { t } = useI18n();
   const n = t.project.needs;
-  if (!project.viewerNeedsPackage) return null;
+  if (!project.viewerNeedsPackage || !isLive(project.basics.status)) return null;
   const free = freePackageCount(project);
   const id = project.basics.id;
   if (free > 0) {
@@ -48,7 +49,7 @@ export function NeedsPackageCard({ project, onResplit }: { project: ProjectView;
 /** Leader view: other members have no package and none is free → 有 N 位组员还没有任务包 + 重新分包. */
 export function PackagelessBanner({ project, onResplit }: { project: ProjectView; onResplit: () => void }) {
   const { t } = useI18n();
-  if (project.viewerRole !== 'LEADER' || freePackageCount(project) > 0) return null;
+  if (project.viewerRole !== 'LEADER' || freePackageCount(project) > 0 || !isLive(project.basics.status)) return null;
   const waiting = project.members.filter((m) => m.needsPackage && m.id !== project.viewerMemberId).length;
   if (waiting === 0) return null;
   return (

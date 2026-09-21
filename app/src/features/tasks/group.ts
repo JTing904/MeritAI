@@ -1,5 +1,6 @@
 import type { MyTaskRow } from '@shared/types';
 import { dayDiff, weekEnd } from '@/lib/time';
+import { appNow } from '@/lib/lifecycle';
 
 export type GroupKey = 'overdue' | 'today' | 'tomorrow' | 'thisWeek' | 'later';
 
@@ -25,7 +26,7 @@ const handedIn = (row: MyTaskRow) => row.status === 'REVIEWING' || row.status ==
  * Buckets 待完成 by effective due in the device zone: 已过期, 今天, 明天, 这周 (after tomorrow through
  * Sunday of this Mon–Sun week), 之后; each sorted by due ascending. Empty groups are left out.
  */
-export function groupOpen(rows: MyTaskRow[], now = new Date()): { key: GroupKey; rows: OpenRow[] }[] {
+export function groupOpen(rows: MyTaskRow[], now = appNow()): { key: GroupKey; rows: OpenRow[] }[] {
   const end = weekEnd(now).getTime();
   const out = new Map<GroupKey, OpenRow[]>();
   for (const row of rows) {

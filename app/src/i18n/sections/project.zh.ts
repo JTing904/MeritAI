@@ -17,6 +17,8 @@ export const projectZh = {
     leader: (n: number) => `你是组长 · ${n} 人`,
     leaderManages: (n: number) => `你是组长（只管理） · ${n} 人`,
     member: (leader: string) => `你是组员 · 组长：${leader}`,
+    /** M5: an ENDED project (Ended mockup). */
+    ended: (n: number) => `已结束 · ${n} 人`,
   },
 
   hero: {
@@ -256,6 +258,11 @@ export const projectZh = {
     PREREQ_CLEARED: (a: Who, waiting: string): Inline[] => [{ b: who(a) }, ` 去掉了「${waiting}」的前置任务`],
     PROJECT_DELETED: (a: Who): Inline[] => [{ b: who(a) }, ' 删除了项目'],
     PROJECT_RESTORED: (a: Who): Inline[] => [{ b: who(a) }, ' 恢复了项目'],
+    // M5: the lifecycle and 一键延后. Dates come formatted.
+    PROJECT_ENDED: (a: Who): Inline[] => [{ b: who(a) }, ' 结束了项目'],
+    PROJECT_ENDED_AUTO: (): Inline[] => ['截止日期过了 7 天没人处理，项目自动结束了'],
+    PROJECT_REOPENED: (a: Who, date: string): Inline[] => [{ b: who(a) }, ` 重新打开了项目，新的截止日期 ${date}`],
+    TASK_DELAYED: (a: Who, title: string, date: string): Inline[] => [{ b: who(a) }, ` 把「${title}」延后到 ${date}`],
   },
 
   task: {

@@ -16,6 +16,7 @@ import { addActiveTask, updateActiveTask } from "../services/active-tasks";
 import { projectToken } from "../services/cache-tokens";
 import { applyBrief, briefFailure } from "../services/brief";
 import { deleteProject, restoreProject } from "../services/project-delete";
+import { endProject, reopenProject } from "../services/lifecycle";
 import { createInvites } from "../services/invites";
 import { confirmPlan, createDraft, deleteDraft, resetInviteCode, updateProject } from "../services/projects";
 import {
@@ -27,12 +28,14 @@ import {
   ManualPlanSchema,
   ProjectBasicsSchema,
   ProjectPatchSchema,
+  ReopenSchema,
   SplitLargeSchema,
   TaskPatchSchema,
   TaskSchema,
 } from "../services/schemas";
 import { addTask, deleteTask, replaceTasks, splitLargeTasks, updateTask } from "../services/tasks";
 import { loadDraftView, loadProjectView, loadViewFor, openProjectView } from "../services/views";
+import { clock } from "../lib/clock";
 
 export const projectRoutes = new Hono<AppEnv>();
 
@@ -68,7 +71,7 @@ projectRoutes.get("/:id/draft", async (c) => {
 projectRoutes.get("/:id", async (c) => {
   const user = await requireUser(c);
   const projectId = c.req.param("id");
-  const now = new Date();
+  const now = clock.now();
   // Conditional (B2). The view checks the membership against the members it loads (404 for anyone who
   // can't see it); the token is null for them, so a 404 is never cached.
   const token = await projectToken(c.var.db, projectId, user, now);
@@ -97,6 +100,24 @@ projectRoutes.post("/:id/delete", async (c) => {
   const { confirm } = await readBody(c, DeleteProjectSchema);
   await deleteProject(c.var.db, project.id, user.id, confirm);
   return ok(c, null);
+});
+
+// 结束项目 (M5): the leader, ACTIVE or AWAITING_CONFIRM. Answers with the project as it is now (ENDED).
+projectRoutes.post("/:id/end", async (c) => {
+  const user = await requireUser(c);
+  const projectId = c.req.param("id");
+  await endProject(c.var.db, projectId, user.id, clock.now());
+  return ok<ProjectView>(c, await loadViewFor(c.var.db, projectId, user.id));
+});
+
+// 重新打开 (M5): the leader, ENDED and before purgeAfter; a new deadline when the old one has passed.
+projectRoutes.post("/:id/reopen", async (c) => {
+  const user = await requireUser(c);
+  const projectId = c.req.param("id");
+  const input = c.req.header("content-type")?.includes("application/json") ? await readBody(c, ReopenSchema) : {};
+  const now = clock.now();
+  const { adjustedTasks } = await reopenProject(c.var.db, projectId, user.id, input, now);
+  return ok<ProjectView>(c, { ...(await loadViewFor(c.var.db, projectId, user.id, now)), ...(adjustedTasks ? { adjustedTasks } : {}) });
 });
 
 // 恢复项目: the leader who deleted it, within 7 days. The project is hidden, so the usual access check can't run.

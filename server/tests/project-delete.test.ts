@@ -77,16 +77,17 @@ describe("POST /api/projects/:id/delete", () => {
     expect((await del(t.leader.token, t.projectId, "mobile")).status).toBe(200);
   });
 
-  it("refuses drafts (they are deleted outright) and ended projects; a project past its deadline is fine", async () => {
+  it("refuses drafts (they are deleted outright); ended projects and ones past their deadline are fine", async () => {
     const leader = await person(0);
     const draft = await createDraft(leader.token);
     expect((await del(leader.token, draft.basics.id, "CS302")).error?.code).toBe("CONFLICT");
 
     const t = await activeWith(2);
-    await testDb.project.update({ where: { id: t.projectId }, data: { status: "ENDED" } });
-    expect((await del(t.leader.token, t.projectId, "CS302")).error?.code).toBe("PROJECT_ENDED");
     await testDb.project.update({ where: { id: t.projectId }, data: { status: "AWAITING_CONFIRM" } });
     expect((await del(t.leader.token, t.projectId, "CS302")).status).toBe(200);
+    const ended = await activeWith(2, { shortCode: "END1" });
+    await testDb.project.update({ where: { id: ended.projectId }, data: { status: "ENDED" } });
+    expect((await del(ended.leader.token, ended.projectId, "END1")).status).toBe(200);
   });
 
   it("hides the project from every member at once, everywhere", async () => {

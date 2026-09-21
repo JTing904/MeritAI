@@ -7,6 +7,7 @@ import { AppError, notFound } from "../lib/errors";
 import { FINISHED_WHERE, releaseTaskData } from "../lib/package-state";
 import { bumpPackages, notify, recordEvent, remindPackageless, voidSwaps } from "./notify";
 import { lockAsMember, TX_OPTIONS, type Tx } from "./tx";
+import { clock } from "../lib/clock";
 
 type Named = Member & { user: { name: string } };
 
@@ -88,9 +89,10 @@ async function depart(tx: Tx, projectId: string, member: Named, leader: Member |
 }
 
 /** Any member except the leader (LEADER_MUST_TRANSFER). They can come back later with the invite code. */
-export async function leaveProject(db: Db, projectId: string, userId: string, now = new Date()): Promise<void> {
+export async function leaveProject(db: Db, projectId: string, userId: string, now = clock.now()): Promise<void> {
   await db.$transaction(async (tx) => {
-    const { member } = await lockAsMember(tx, projectId, userId);
+    // Leaving works in an ENDED project too (M5).
+    const { member } = await lockAsMember(tx, projectId, userId, { allowEnded: true });
     if (member.role === "LEADER") {
       throw new AppError(409, "LEADER_MUST_TRANSFER", "Hand the leader role to someone else before you leave");
     }
@@ -99,7 +101,7 @@ export async function leaveProject(db: Db, projectId: string, userId: string, no
 }
 
 /** Leader removes `memberId` (not themself): like leaving, plus `removed` (no coming back with the code). */
-export async function removeMember(db: Db, projectId: string, userId: string, memberId: string, now = new Date()): Promise<void> {
+export async function removeMember(db: Db, projectId: string, userId: string, memberId: string, now = clock.now()): Promise<void> {
   await db.$transaction(async (tx) => {
     const { member: leader } = await lockAsMember(tx, projectId, userId, { leader: true });
     const target = await activeTarget(tx, projectId, memberId);
@@ -143,7 +145,7 @@ async function nextLeader(tx: Tx, projectId: string, leader: Member, memberId: s
  * Leader hands the role to `memberId` (another active member); the roles swap. 「只管理」 turns off:
  * the new leader keeps their package and the old one becomes a member who needs a package.
  */
-export async function transferLeader(db: Db, projectId: string, userId: string, memberId: string, now = new Date()): Promise<void> {
+export async function transferLeader(db: Db, projectId: string, userId: string, memberId: string, now = clock.now()): Promise<void> {
   await db.$transaction(async (tx) => {
     const { project, member } = await lockAsMember(tx, projectId, userId, { leader: true });
     const target = await nextLeader(tx, projectId, member, memberId);
@@ -163,10 +165,11 @@ export async function leaveAsLeader(
   projectId: string,
   userId: string,
   newLeaderMemberId: string,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<void> {
   await db.$transaction(async (tx) => {
-    const { project, member } = await lockAsMember(tx, projectId, userId, { leader: true });
+    // Leaving works in an ENDED project too (M5); handing the role over is part of it.
+    const { project, member } = await lockAsMember(tx, projectId, userId, { leader: true, allowEnded: true });
     const others = await tx.member.count({ where: { projectId, leftAt: null, removed: false, id: { not: member.id } } });
     if (others === 0) throw new AppError(409, "NO_ONE_TO_TRANSFER", "Nobody else is in the project to take over");
     const target = await nextLeader(tx, projectId, member, newLeaderMemberId);

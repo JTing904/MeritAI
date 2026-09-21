@@ -46,7 +46,8 @@ export function ReviewQueue({ project }: { project: ProjectView }) {
   const [open, setOpen] = useState(true);
 
   const reviews = project.pendingReviews;
-  if (project.viewerRole !== 'LEADER' || project.basics.status !== 'ACTIVE' || reviews.length === 0) return null;
+  // Also on an ENDED project: the leader may still grade what was handed in before it ended.
+  if (project.viewerRole !== 'LEADER' || project.basics.status === 'DRAFT' || reviews.length === 0) return null;
   const title = q.title(reviews.length);
 
   return (

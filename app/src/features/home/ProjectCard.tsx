@@ -9,6 +9,7 @@ import { Chip } from '@/components/Chip';
 import { Txt } from '@/components/Txt';
 import { useI18n } from '@/i18n';
 import type { Messages } from '@/i18n/zh';
+import { appNow } from '@/lib/lifecycle';
 import { makeStyles, useTheme } from '@/theme';
 import { radius } from '@/theme/tokens';
 import { daysUntil, formatWhen, projectTag } from './format';
@@ -82,6 +83,15 @@ export function projectMeta(
   return [p.courseName, p.groupLabel, people, who].filter(Boolean).join(' · ');
 }
 
+/** 11月13日, device zone (as the rest of home). */
+function useDayLabel() {
+  const { t } = useI18n();
+  return (iso: string) => {
+    const d = new Date(iso);
+    return t.home.deleted.date(d.getMonth() + 1, d.getDate());
+  };
+}
+
 /** A project I'm an active member of (not a draft). */
 export function ProjectCard({ project: p, onOpen }: { project: ProjectCardData; onOpen: () => void }) {
   const s = useStyles();
@@ -90,12 +100,25 @@ export function ProjectCard({ project: p, onOpen }: { project: ProjectCardData; 
   const card = t.home.card;
   const people = p.members.map((m) => ({ name: m.name, hl: m.color }));
   const who = p.role === 'LEADER' ? card.youLead : card.ledBy(p.leaderName);
+  const dayLabel = useDayLabel();
 
   let foot: ReactNode;
   let bar = false;
-  if (p.status === 'ENDED') foot = <Chip>{card.ended}</Chip>;
-  else if (p.status === 'AWAITING_CONFIRM')
+  // M5 (HomeLife mockup): past the deadline, and ended, get a chip and a line of their own.
+  let line: string | null = null;
+  const life = p.lifecycle;
+  const earned = card.earned(formatPoints(p.earnedPoints));
+  if (p.status === 'ENDED') {
+    foot = <Chip tone="grape">{life.endedAuto ? card.endedAuto : card.ended}</Chip>;
+    const purge = life.purgeAfter
+      ? card.purgeLine(dayLabel(life.purgeAfter), Math.max(0, daysUntil(life.purgeAfter, appNow())))
+      : null;
+    line = [earned, life.endedAuto ? card.autoEndedLine : null, purge].filter(Boolean).join(' · ');
+  } else if (p.status === 'AWAITING_CONFIRM') {
+    bar = true;
     foot = <Chip tone="warn">{p.role === 'LEADER' ? card.awaitingYou : card.awaitingLeader}</Chip>;
+    line = [earned, life.autoEndAt ? card.awaitingLine(dayLabel(life.autoEndAt)) : null].filter(Boolean).join(' · ');
+  }
   // Joined after every package was taken: waiting for the leader to re-split.
   else if (p.needsPackage && p.freePackages === 0) foot = <Chip tone="warn">{card.noPackage}</Chip>;
   else if (p.freePackages > 0) {
@@ -120,11 +143,9 @@ export function ProjectCard({ project: p, onOpen }: { project: ProjectCardData; 
     );
   }
 
-  // Per the prototype, past-deadline cards aren't opened; their own actions (confirm, report) come in a later milestone.
-  const openable = p.status === 'ACTIVE';
-
+  // M5: past the deadline and ended projects open too (结束项目 / 重新打开 / read-only results).
   return (
-    <ProjectCardFrame onPress={openable ? onOpen : undefined}>
+    <ProjectCardFrame onPress={onOpen}>
       <ProjectHead
         tag={projectTag(p.name, p.shortCode)}
         tagColor={c.hl[p.color].base}
@@ -136,6 +157,7 @@ export function ProjectCard({ project: p, onOpen }: { project: ProjectCardData; 
           <View style={[s.fill, { width: `${Math.min(100, p.earnedPoints / 10)}%`, backgroundColor: c.hl[p.color].base }]} />
         </View>
       )}
+      {line ? <Txt v="meta">{line}</Txt> : null}
       <View style={s.foot}>
         <AvatarStack people={people} />
         {foot}

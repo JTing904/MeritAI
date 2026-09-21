@@ -26,9 +26,15 @@ export const homeZh = {
     daysLeft: (n: number) => `还剩 ${n} 天`,
     dueToday: '今天截止',
     pastDeadline: '已过截止日',
-    awaitingYou: '已过截止日 · 等你确认',
-    awaitingLeader: '已过截止日 · 等组长确认',
-    ended: '已结束',
+    // M5 (HomeLife mockup): AWAITING_CONFIRM and ENDED cards.
+    awaitingYou: '📮 等你确认已交',
+    awaitingLeader: '📮 等组长确认',
+    ended: '🏁 已结束',
+    endedAuto: '🏁 自动结束',
+    awaitingLine: (autoEnd: string) => `截止已过 · ${autoEnd} 自动结束`,
+    autoEndedLine: '组长 7 天没处理，自动结束了',
+    /** `days` 0: deleted later today. */
+    purgeLine: (date: string, days: number) => (days > 0 ? `${date} 删除 · 还有 ${days} 天` : `${date} 删除 · 今天`),
   },
   draft: {
     tag: '草稿',

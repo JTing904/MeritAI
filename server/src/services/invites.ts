@@ -5,6 +5,8 @@ import type { Db } from "../lib/db";
 import { AppError, conflict, notFound } from "../lib/errors";
 import { invitesFor, joinProject } from "./join";
 import { lockAsMember, TX_OPTIONS } from "./tx";
+import { projectEnded } from "../lib/access";
+import { clock } from "../lib/clock";
 
 export const MAX_INVITES_PER_REQUEST = 20;
 /** Invites waiting for an answer in one project (A6): an invite list is not a mailing list. */
@@ -51,7 +53,9 @@ export async function createInvites(db: Db, projectId: string, inviter: User, ra
   return db.$transaction(async (tx) => {
     // The lock keeps two people inviting the same address at once from creating two invites; the
     // inviter is re-read under it (they may have left or been removed since the route checked).
-    await lockAsMember(tx, projectId, inviter.id);
+    const { project } = await lockAsMember(tx, projectId, inviter.id);
+    // Nobody joins a project past its deadline (joinProject refuses it too), so no invites either.
+    if (project.status !== "ACTIVE") throw projectEnded();
     let pendingCount = await tx.invite.count({ where: { projectId, status: "PENDING" } });
     const outcomes: InviteOutcome[] = [];
     for (const token of tokens) {
@@ -107,7 +111,7 @@ async function findMyInvite(db: Db, inviteId: string, user: User) {
 }
 
 /** Accepting joins like an invite code does (same rules). Accepting twice is harmless. */
-export async function acceptInvite(db: Db, inviteId: string, user: User, now = new Date()): Promise<Member> {
+export async function acceptInvite(db: Db, inviteId: string, user: User, now = clock.now()): Promise<Member> {
   const invite = await findMyInvite(db, inviteId, user);
   return db.$transaction(async (tx) => {
     const current = await tx.invite.findUniqueOrThrow({ where: { id: invite.id } });
@@ -125,7 +129,7 @@ export async function acceptInvite(db: Db, inviteId: string, user: User, now = n
 }
 
 /** Declining hides every pending invite this user has for that project. */
-export async function declineInvite(db: Db, inviteId: string, user: User, now = new Date()): Promise<void> {
+export async function declineInvite(db: Db, inviteId: string, user: User, now = clock.now()): Promise<void> {
   const invite = await findMyInvite(db, inviteId, user);
   if (invite.status === "DECLINED") return;
   if (invite.status !== "PENDING") throw conflict("This invite is no longer open");

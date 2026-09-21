@@ -21,6 +21,7 @@ export const projectEn: typeof projectZh = {
     leader: (n) => `You're the leader · ${people(n)}`,
     leaderManages: (n) => `You're the leader (you only manage) · ${people(n)}`,
     member: (leader) => `You're a member · Leader: ${leader}`,
+    ended: (n) => `Ended · ${people(n)}`,
   },
 
   hero: {
@@ -233,6 +234,10 @@ export const projectEn: typeof projectZh = {
     PREREQ_CLEARED: (a, waiting) => [{ b: subj(a) }, ` removed what "${waiting}" was waiting for`],
     PROJECT_DELETED: (a) => [{ b: subj(a) }, ' deleted the project'],
     PROJECT_RESTORED: (a) => [{ b: subj(a) }, ' restored the project'],
+    PROJECT_ENDED: (a) => [{ b: subj(a) }, ' ended the project'],
+    PROJECT_ENDED_AUTO: () => ['Nobody acted for 7 days after the deadline, so the project ended by itself'],
+    PROJECT_REOPENED: (a, date) => [{ b: subj(a) }, ` reopened the project; the new deadline is ${date}`],
+    TASK_DELAYED: (a, title, date) => [{ b: subj(a) }, ` moved "${title}" later, to ${date}`],
   },
 
   task: {

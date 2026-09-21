@@ -6,7 +6,8 @@ import { useI18n } from '@/i18n';
 import type { InlinePart } from '@/i18n/sections/home.zh';
 import { makeStyles, useTheme } from '@/theme';
 import { radius } from '@/theme/tokens';
-import type { NotifAction, NotifLook } from './describe';
+import { WhatsAppGlyph } from '@/components/WhatsAppGlyph';
+import { SOFT_ACTIONS, type NotifAction, type NotifLook } from './describe';
 
 // Prototype `.notif`: 40px emoji tile, 12px gap, 14px padding; the actions line up with the text.
 const TILE = 40;
@@ -109,8 +110,9 @@ export function NotifCard({
               <Button
                 key={action}
                 title={copy[action]}
-                kind={action === 'decline' || action === 'openTask' ? 'soft' : 'primary'}
+                kind={SOFT_ACTIONS.has(action) ? 'soft' : 'primary'}
                 small
+                icon={action === 'whatsapp' ? <WhatsAppGlyph size={16} /> : undefined}
                 loading={busy === action}
                 disabled={busy !== null && busy !== action}
                 onPress={() => onAction(action)}

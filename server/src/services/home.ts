@@ -1,12 +1,14 @@
 import { packageCount } from "../../../shared/planning";
 import type { DeletedProjectCard, HomeData, PendingInvite, ProjectCard } from "../../../shared/types";
 import type { User } from "../generated/prisma/client";
-import { isActiveMember } from "../lib/access";
+import { isActiveMember, isRunning } from "../lib/access";
+import { toLifecycle } from "../lib/lifecycle";
 import type { Db } from "../lib/db";
 import { earnedPoints, effectiveDue, needsPackage } from "../lib/package-state";
 import { invitesFor } from "./join";
 import { purgeDeletedProjects } from "./project-delete";
 import { sortLeaderFirst } from "./views";
+import { clock } from "../lib/clock";
 
 const STATUS_RANK = { DRAFT: 0, ACTIVE: 0, AWAITING_CONFIRM: 0, ENDED: 1 } as const;
 
@@ -20,7 +22,7 @@ const DUE_SOON_STATUSES = new Set(["TODO", "DOING", "FAIL"]);
  * projects I deleted for everyone and can still restore. My deleted projects past their restore window
  * are purged first (lazily: there is no scheduler yet).
  */
-export async function homeData(db: Db, user: User, now = new Date()): Promise<HomeData> {
+export async function homeData(db: Db, user: User, now = clock.now()): Promise<HomeData> {
   await purgeDeletedProjects(db, now, { userId: user.id });
   const memberships = await db.member.findMany({
     where: {
@@ -65,7 +67,8 @@ export async function homeData(db: Db, user: User, now = new Date()): Promise<Ho
       members: active.map((m) => ({ name: m.user.name, color: m.color })),
       updatedAt: project.updatedAt.toISOString(),
       // Only a running project hands out packages.
-      needsPackage: project.status === "ACTIVE" && needsPackage(me, project, myPackage !== undefined),
+      needsPackage: isRunning(project) && needsPackage(me, project, myPackage !== undefined),
+      lifecycle: toLifecycle(project, (id) => project.members.find((m) => m.id === id)?.user.name),
     };
   });
   projects.sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status] || b.updatedAt.localeCompare(a.updatedAt));
@@ -73,7 +76,7 @@ export async function homeData(db: Db, user: User, now = new Date()): Promise<Ho
   // Overdue ones included (the home line counts 过期 too); the app splits them by its own clock and zone.
   const horizon = now.getTime() + DUE_SOON_MS;
   const dueSoon = memberships
-    .filter(({ project }) => project.status === "ACTIVE")
+    .filter(({ project }) => isRunning(project))
     .flatMap(({ project, id }) =>
       project.tasks
         .filter((t) => t.ownerId === id && DUE_SOON_STATUSES.has(t.status))

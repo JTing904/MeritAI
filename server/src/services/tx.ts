@@ -28,17 +28,19 @@ export async function lockDraft(tx: Tx, projectId: string): Promise<Project> {
 /**
  * Start of every M3 write: locks the project row, then re-reads the actor's membership inside the
  * transaction (route-level checks only pick 404 vs 403 early and may be stale). Not an active member
- * → 404; `leader` and not the leader → 403; the project must be ACTIVE (409 otherwise).
+ * → 404; `leader` and not the leader → 403; the project must be ACTIVE or AWAITING_CONFIRM (409
+ * PROJECT_ENDED when ENDED, 409 CONFLICT for a draft). `allowEnded`: the few writes an ENDED project
+ * still takes (M5: grading a PENDING attempt, leaving).
  */
 export async function lockAsMember(
   tx: Tx,
   projectId: string,
   userId: string,
-  opts: { leader?: boolean } = {},
+  opts: { leader?: boolean; allowEnded?: boolean } = {},
 ): Promise<ProjectAccess> {
   const project = await lockProject(tx, projectId);
   const member = await memberUnderLock(tx, project, userId, opts);
-  assertActive(project);
+  if (!(opts.allowEnded && project.status === "ENDED")) assertActive(project);
   return { project, member };
 }
 

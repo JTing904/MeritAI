@@ -1,4 +1,5 @@
 import type { Messages } from '@/i18n/zh';
+import { appNow } from '@/lib/lifecycle';
 
 export type RelativeLabels = Messages['labels']['relative'];
 
@@ -8,7 +9,7 @@ const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDat
  * When something happened, in the viewer's time zone (notifications, feed): 刚刚 (under a minute,
  * or a clock slightly ahead), {m} 分钟前, {h} 小时前 (same day), 昨天, M月D日 (this year), YYYY年M月D日.
  */
-export function relativeTime(iso: string, labels: RelativeLabels, now = new Date()): string {
+export function relativeTime(iso: string, labels: RelativeLabels, now = appNow()): string {
   const d = new Date(iso);
   const minutes = Math.floor((now.getTime() - d.getTime()) / 60_000);
   if (minutes < 1) return labels.justNow;
@@ -35,7 +36,7 @@ export function dayDiff(a: Date, b: Date): number {
 }
 
 /** Sunday 23:59:59.999 of the current Monday–Sunday week, device zone. */
-export function weekEnd(now = new Date()): Date {
+export function weekEnd(now = appNow()): Date {
   const toSunday = (7 - now.getDay()) % 7;
   return new Date(now.getFullYear(), now.getMonth(), now.getDate() + toSunday, 23, 59, 59, 999);
 }
@@ -44,7 +45,7 @@ export function weekEnd(now = new Date()): Date {
  * A moment with its time, for status lines (交于 …, 评于 …): 今天 09:12 / 昨天 18:40 / 9月23日 21:10 /
  * 2025年9月23日 21:10, device zone.
  */
-export function dateTimeLabel(iso: string, labels: WhenLabels, now = new Date()): string {
+export function dateTimeLabel(iso: string, labels: WhenLabels, now = appNow()): string {
   const d = new Date(iso);
   const time = clock(d);
   const days = dayDiff(now, d);
@@ -58,7 +59,7 @@ export function dateTimeLabel(iso: string, labels: WhenLabels, now = new Date())
  * A due date, short (the tasks tab and the task page's head chip): 今天 23:59 / 明天 09:30 / 周日 20:00
  * (later this week) / 9月28日 (anything else, a past date too), device zone.
  */
-export function dueLabel(iso: string, labels: DueLabels, now = new Date()): string {
+export function dueLabel(iso: string, labels: DueLabels, now = appNow()): string {
   const d = new Date(iso);
   const time = clock(d);
   const days = dayDiff(d, now);

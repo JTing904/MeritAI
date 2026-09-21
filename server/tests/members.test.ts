@@ -191,13 +191,13 @@ describe("POST /api/projects/:id/leave", () => {
     expect(await notes(t.leader.user.id, "SWAP_VOID")).toHaveLength(0);
   });
 
-  it("needs sign-in, an active membership and a running project", async () => {
+  it("needs sign-in and an active membership; an ENDED project can still be left (M5)", async () => {
     const t = await team(3);
     const stranger = await person(5);
     expect((await leave("", t.projectId)).status).toBe(401);
     expect((await leave(stranger.token, t.projectId)).status).toBe(404);
     await testDb.project.update({ where: { id: t.projectId }, data: { status: "ENDED" } });
-    expect((await leave(t.members[0]!.token, t.projectId)).error?.code).toBe("PROJECT_ENDED");
+    expect((await leave(t.members[0]!.token, t.projectId)).status).toBe(200);
   });
 });
 
@@ -445,10 +445,11 @@ describe("POST /api/projects/:id/leave-as-leader", () => {
     expect(await testDb.member.findUniqueOrThrow({ where: { id: t.leaderId } })).toMatchObject({ role: "LEADER", leftAt: null });
   });
 
-  it("needs a running project", async () => {
+  it("works in an ENDED project too (M5: leaving is allowed after the end)", async () => {
     const t = await team(2);
     await testDb.project.update({ where: { id: t.projectId }, data: { status: "ENDED" } });
-    expect((await leaveAsLeader(t.leader.token, t.projectId, t.memberIds[0]!)).error?.code).toBe("PROJECT_ENDED");
+    expect((await leaveAsLeader(t.leader.token, t.projectId, t.memberIds[0]!)).status).toBe(200);
+    expect(await testDb.member.findUniqueOrThrow({ where: { id: t.leaderId } })).toMatchObject({ role: "MEMBER" });
   });
 });
 

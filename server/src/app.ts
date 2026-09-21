@@ -17,6 +17,7 @@ import { apiSecurityHeaders, errorSummary, requestBodyLimit } from "./lib/securi
 import { devRoutes } from "./routes/dev";
 import { evidenceLinkRoutes, evidenceRoutes, fileRoutes } from "./routes/evidence";
 import { homeRoutes } from "./routes/home";
+import { internalRoutes } from "./routes/internal";
 import { inviteRoutes } from "./routes/invites";
 import { joinRoutes } from "./routes/join";
 import { allSessionRoutes, meRoutes, sessionRoutes } from "./routes/me";
@@ -70,10 +71,10 @@ export function createApp(deps: AppDeps) {
   app.use("*", apiSecurityHeaders);
   app.use("*", requestBodyLimit);
 
-  // A17: builds older than MIN_APP_VERSION must update first. Not the health check, and not the signed
-  // file links a browser opens (they carry no app headers).
+  // A17: builds older than MIN_APP_VERSION must update first. Not the health check, not the signed
+  // file links a browser opens (they carry no app headers), and not the scheduler's tick.
   app.use("*", async (c, next) => {
-    const exempt = c.req.path === "/api/health" || c.req.path.startsWith("/api/files/");
+    const exempt = c.req.path === "/api/health" || c.req.path.startsWith("/api/files/") || c.req.path.startsWith("/api/internal/");
     if (!exempt && isTooOld(c.req.header("X-App-Version"), minVersion)) {
       return fail(c, 426, "UPDATE_REQUIRED", "This app version is too old. Update the app", { minVersion: minVersion.join(".") });
     }
@@ -112,6 +113,7 @@ export function createApp(deps: AppDeps) {
   });
 
   app.route("/dev", devRoutes);
+  app.route("/internal", internalRoutes);
   app.route("/me", meRoutes);
   app.route("/auth/session", sessionRoutes);
   app.route("/auth/sessions", allSessionRoutes);

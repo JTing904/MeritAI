@@ -59,7 +59,7 @@ Build & release
 
 ## Phase D — deployment milestone (before any real user)
 - ☐ D1 Supabase Storage driver with signed direct upload (Vercel's 4.5 MB body limit); briefs ≤ 4 MB or direct upload.
-- ☐ D2 Scheduler (M5): end/auto-end projects, purge 14 days after end and deleted projects after 7 days (rows + files), expire swaps, orphan-file sweep, prune sessions/notifications/drafts.
+- ◐ D2 Scheduler (M5): built (services/tick.ts, POST /api/internal/tick, docs/plan/tick-workflow.yml (move to .github/workflows/ at deployment) every 10 min; needs CRON_SECRET + TICK_URL once deployed). Still to do: orphan-file sweep, pruning old notifications/drafts. Original: end/auto-end projects, purge 14 days after end and deleted projects after 7 days (rows + files), expire swaps, orphan-file sweep, prune sessions/notifications/drafts.
 - ☐ D3 Nightly encrypted backups to a private GitHub repo, 30-day retention, restore runbook tested once (decision 2026-09-19).
 - ☐ D4 CI: typecheck + tests + backup + `prisma migrate deploy` + deploy; expand/contract migrations.
 - ☐ D5 Monitoring: Sentry free (server + app, scrubbed), uptime monitor on /api/health (also keeps Supabase awake), request ids shown in error toasts; alerts to kengtingtan@gmail.com.

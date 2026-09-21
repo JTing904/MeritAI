@@ -79,7 +79,13 @@ export type ErrorCode =
   | 'PREREQ_SELF'
   | 'PREREQ_CYCLE'
   | 'NO_BRIEF'
-  | 'TASK_UNDER_REVIEW';
+  | 'TASK_UNDER_REVIEW'
+  // Lifecycle and reminders (M5). An ENDED project answers every write with PROJECT_ENDED (409), except
+  // grading a PENDING attempt, leaving, reopening and 为所有人删除项目.
+  /** 400: reopening a project whose deadline has passed needs a new deadline (after now). */
+  | 'DEADLINE_REQUIRED'
+  /** 400: 一键延后 must move the task's due date later than its current effective due. */
+  | 'DELAY_NOT_LATER';
 
 export type ApiError = { code: ErrorCode; message: string; details?: unknown };
 

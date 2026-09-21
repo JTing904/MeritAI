@@ -13,6 +13,7 @@ import { Icon } from '@/components/Icon';
 import { PageTitle, Screen } from '@/components/Screen';
 import { useToast } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
+import { TimeMachine } from '@/features/life/TimeMachine';
 import { useI18n, type Locale } from '@/i18n';
 import { api, API_URL, errorCode } from '@/lib/api';
 import { useMe, useSession } from '@/lib/session';
@@ -144,6 +145,7 @@ export default function MeScreen() {
               </Txt>
               <Icon name="chevron" size={18} color={c.muted} />
             </Pressable>
+            <TimeMachine />
           </List>
         </>
       ) : null}

@@ -16,6 +16,7 @@ import {
   WITH_NAME,
 } from "./packages";
 import { lockAsMember, TX_OPTIONS, type Tx } from "./tx";
+import { clock } from "../lib/clock";
 
 export const SWAP_TTL_MS = 72 * 60 * 60 * 1000;
 
@@ -29,7 +30,7 @@ const SWAP_PEOPLE = {
 type SwapWithPeople = Prisma.SwapRequestGetPayload<{ include: typeof SWAP_PEOPLE }>;
 
 /** Asks the owner of `packageId` to swap packages with the actor. Both packages must not be started. */
-export async function requestSwap(db: Db, projectId: string, userId: string, packageId: string, now = new Date()): Promise<void> {
+export async function requestSwap(db: Db, projectId: string, userId: string, packageId: string, now = clock.now()): Promise<void> {
   await db.$transaction(async (tx) => {
     const { member } = await lockAsMember(tx, projectId, userId);
     const target = await findPackage(tx, projectId, packageId);
@@ -125,7 +126,7 @@ async function voidOne(tx: Tx, swap: SwapWithPeople, reason: SwapVoidNoticeReaso
  * VOID and the call fails with SWAP_NOT_PENDING. Every other pending request of either person ends.
  * Returns the swap's project id (the route answers with that project's view).
  */
-export async function acceptSwap(db: Db, swapId: string, userId: string, now = new Date()): Promise<string> {
+export async function acceptSwap(db: Db, swapId: string, userId: string, now = clock.now()): Promise<string> {
   const projectId = await swapProject(db, swapId);
   const failed = await db.$transaction(async (tx) => {
     const swap = await openSwap(tx, projectId, swapId, userId, "accept", now);
@@ -199,7 +200,7 @@ export async function acceptSwap(db: Db, swapId: string, userId: string, now = n
 }
 
 /** The target declines; the requester is told. Returns the swap's project id. */
-export async function declineSwap(db: Db, swapId: string, userId: string, now = new Date()): Promise<string> {
+export async function declineSwap(db: Db, swapId: string, userId: string, now = clock.now()): Promise<string> {
   const projectId = await swapProject(db, swapId);
   const failed = await db.$transaction(async (tx) => {
     const swap = await openSwap(tx, projectId, swapId, userId, "decline", now);
@@ -227,7 +228,7 @@ export async function declineSwap(db: Db, swapId: string, userId: string, now = 
 }
 
 /** The requester cancels (the target's request card shows it; no notification). Returns the swap's project id. */
-export async function cancelSwap(db: Db, swapId: string, userId: string, now = new Date()): Promise<string> {
+export async function cancelSwap(db: Db, swapId: string, userId: string, now = clock.now()): Promise<string> {
   const projectId = await swapProject(db, swapId);
   const failed = await db.$transaction(async (tx) => {
     const swap = await openSwap(tx, projectId, swapId, userId, "cancel", now);

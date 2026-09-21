@@ -4,6 +4,7 @@ import { Txt } from '@/components/Txt';
 import { isFinished, useLocalDates } from '@/features/project/parts';
 import { NoteBox } from '@/features/wizard/Field';
 import { useI18n } from '@/i18n';
+import { appNow } from '@/lib/lifecycle';
 import type { TaskCtx } from './model';
 import { CardHead, LineText, TextLink } from './parts';
 
@@ -12,7 +13,7 @@ import { CardHead, LineText, TextLink } from './parts';
  * The owner and the leader get 我在等别的任务…, also on an empty card (§15 #3; not once the task is
  * finished); others see nothing then.
  */
-export function PrereqCard({ ctx, onChange }: { ctx: TaskCtx; onChange: () => void }) {
+export function PrereqCard({ ctx, onChange, onDelay }: { ctx: TaskCtx; onChange: () => void; onDelay: () => void }) {
   const { t } = useI18n();
   const k = t.task.prereq;
   const dates = useLocalDates();
@@ -24,6 +25,12 @@ export function PrereqCard({ ctx, onChange }: { ctx: TaskCtx; onChange: () => vo
   if (!prereq && waitedBy.length === 0 && !canEdit) return null;
 
   const change = canEdit ? <TextLink title={k.change} onPress={onChange} disabled={ctx.busy !== null} /> : null;
+  // M5 一键延后: the leader, when the prerequisite is past its due and still unfinished.
+  const blocked = !!prereq && !prereq.finished && new Date(prereq.dueAt).getTime() <= appNow().getTime();
+  const delay =
+    ctx.leader && ctx.running && blocked && !isFinished(ctx.task) ? (
+      <TextLink title={t.life.delay.link} onPress={onDelay} disabled={ctx.busy !== null} />
+    ) : null;
   const who = (name: string | null) => name ?? k.noOwner;
 
   return (
@@ -34,7 +41,12 @@ export function PrereqCard({ ctx, onChange }: { ctx: TaskCtx; onChange: () => vo
         <>
           <NoteBox tone="warn">{k.waiting(prereq.title, who(prereq.ownerName), prereq.status === 'REVIEWING', dates.date(prereq.dueAt))}</NoteBox>
           {ctx.mine ? <Txt v="meta">{k.hint(prereq.title)}</Txt> : null}
-          {change ? <View style={{ alignSelf: 'flex-start', marginLeft: -4 }}>{change}</View> : null}
+          {change || delay ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 16, alignSelf: 'flex-start', marginLeft: -4 }}>
+              {change}
+              {delay}
+            </View>
+          ) : null}
         </>
       ) : null}
       {prereq && prereq.finished ? (

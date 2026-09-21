@@ -7,6 +7,7 @@ import { Txt } from '@/components/Txt';
 import { useI18n } from '@/i18n';
 import { useSession } from '@/lib/session';
 import { OptRow } from './parts';
+import { appNow } from '@/lib/lifecycle';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -29,7 +30,7 @@ export function AssignSheet({
   const { request } = useSession();
   const { show } = useToast();
   const [busy, setBusy] = useState<string | null>(null);
-  const now = Date.now();
+  const now = appNow().getTime();
   const waiting = project.members.filter((m) => m.needsPackage);
 
   const assign = async (m: MemberView) => {

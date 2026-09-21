@@ -8,6 +8,7 @@ import { ok } from "../lib/http";
 import { notificationsToken } from "../services/cache-tokens";
 import { countUnread, listNotifications, markRead } from "../services/notifications";
 import { MarkReadSchema, NotificationQuerySchema } from "../services/schemas";
+import { clock } from "../lib/clock";
 
 // The signed-in user's notifications (通知 tab).
 export const notificationRoutes = new Hono<AppEnv>();
@@ -15,7 +16,7 @@ export const notificationRoutes = new Hono<AppEnv>();
 notificationRoutes.get("/", async (c) => {
   const user = await requireUser(c);
   const query = NotificationQuerySchema.parse(c.req.query());
-  const now = new Date();
+  const now = clock.now();
   // Conditional (B2) for the first page only: later pages are fetched once, on scroll.
   const token = query.cursor ? null : await notificationsToken(c.var.db, user, query, now);
   return conditional<NotificationPage>(c, token, () => listNotifications(c.var.db, user.id, query, now));

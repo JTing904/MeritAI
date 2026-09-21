@@ -1,5 +1,6 @@
 import type { MemberView, PackageView, ProjectView, SwapView, TaskView } from '@shared/types';
 import { isFinished } from '@/lib/status';
+import { appNow } from '@/lib/lifecycle';
 
 /** What a pick card shows under its tasks, for the viewer. */
 export type PickFoot =
@@ -20,7 +21,7 @@ export type TakenAction =
 
 
 /** Swaps still waiting for an answer (the server already drops expired ones; a screen left open may not know yet). */
-export function pendingSwaps(project: ProjectView, now = Date.now()): SwapView[] {
+export function pendingSwaps(project: ProjectView, now = appNow().getTime()): SwapView[] {
   return project.swaps.filter((s) => new Date(s.expiresAt).getTime() > now);
 }
 
@@ -30,7 +31,7 @@ export function packageTasks(project: ProjectView, pkg: PackageView): TaskView[]
   return pkg.taskIds.map((id) => byId.get(id)).filter((t): t is TaskView => t !== undefined);
 }
 
-export function pickFoot(project: ProjectView, pkg: PackageView, now = Date.now()): PickFoot {
+export function pickFoot(project: ProjectView, pkg: PackageView, now = appNow().getTime()): PickFoot {
   const me = project.viewerMemberId;
   const mine = project.packages.find((p) => p.ownerMemberId === me) ?? null;
 

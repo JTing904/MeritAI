@@ -15,7 +15,7 @@ import { projectKey } from '@/lib/cacheKeys';
 import { useSession } from '@/lib/session';
 import { relativeTime } from '@/lib/time';
 import { makeStyles, useTheme } from '@/theme';
-import { InlineText } from './parts';
+import { InlineText, useLocalDates } from './parts';
 
 const PAGE = 30;
 
@@ -130,7 +130,13 @@ export function useFeed(projectId: string, active: boolean, version: number): Fe
 }
 
 /** One feed sentence (§9): short names, 你 for the viewer. */
-function sentence(item: ActivityView, viewerId: string, f: Messages['project']['feed'], grades: Messages['labels']['grade']): Inline[] {
+function sentence(
+  item: ActivityView,
+  viewerId: string,
+  f: Messages['project']['feed'],
+  grades: Messages['labels']['grade'],
+  date: (iso: string) => string,
+): Inline[] {
   const person = (p: PersonRef): Who => ({ name: givenName(p.name), you: p.memberId === viewerId });
   const a: Who = item.actor ? person(item.actor) : { name: f.someone, you: false };
   const someone: Who = { name: f.someone, you: false };
@@ -189,6 +195,12 @@ function sentence(item: ActivityView, viewerId: string, f: Messages['project']['
       return f.PROJECT_DELETED(a);
     case 'PROJECT_RESTORED':
       return f.PROJECT_RESTORED(a);
+    case 'PROJECT_ENDED':
+      return p.auto || !item.actor ? f.PROJECT_ENDED_AUTO() : f.PROJECT_ENDED(a);
+    case 'PROJECT_REOPENED':
+      return f.PROJECT_REOPENED(a, date(p.deadline));
+    case 'TASK_DELAYED':
+      return f.TASK_DELAYED(a, p.title, date(p.dueAt));
   }
 }
 
@@ -198,6 +210,7 @@ export function FeedList({ project, feed }: { project: ProjectView; feed: FeedSt
   const { c } = useTheme();
   const { t } = useI18n();
   const f = t.project.feed;
+  const dates = useLocalDates();
 
   if (feed.error && !feed.items) {
     return (
@@ -227,7 +240,7 @@ export function FeedList({ project, feed }: { project: ProjectView; feed: FeedSt
           <View key={item.id} style={s.item}>
             {item.actor ? <Avatar name={item.actor.name} hl={item.actor.color} size="sm" decorative /> : <View style={s.noAvatar} />}
             <View style={s.body}>
-              <InlineText parts={sentence(item, project.viewerMemberId, f, t.labels.grade)} v="small" />
+              <InlineText parts={sentence(item, project.viewerMemberId, f, t.labels.grade, dates.date)} v="small" />
               <Txt v="meta" size={11.5} style={{ marginTop: 2 }}>
                 {relativeTime(item.createdAt, t.labels.relative)}
               </Txt>

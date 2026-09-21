@@ -1,6 +1,7 @@
 import { apportion, balancePackages, packageCount } from "../../../shared/planning";
 import type { AdjustedTask } from "../../../shared/types";
 import { Prisma, type Project, type User } from "../generated/prisma/client";
+import { projectEnded } from "../lib/access";
 import { pickHighlighter, pickProjectColor } from "../lib/colors";
 import type { Db } from "../lib/db";
 import { AppError } from "../lib/errors";
@@ -10,11 +11,12 @@ import { spreadDueDates, toInstant } from "../lib/plan/dates";
 import { recordEvent } from "./notify";
 import type { ProjectBasicsBody, ProjectPatchBody } from "./schemas";
 import { assertPointsTotal, lockAsMember, lockDraft, lockProject, memberUnderLock, TOTAL_POINTS, TX_OPTIONS, type Tx } from "./tx";
+import { clock } from "../lib/clock";
 
 const deadlineInPast = () => new AppError(400, "DEADLINE_IN_PAST", "The deadline must be in the future");
 
 /** Creates a draft (wizard step 1 done): the creator becomes its leader; the wizard continues at step 2. */
-export async function createDraft(db: Db, user: User, input: ProjectBasicsBody, now = new Date()): Promise<string> {
+export async function createDraft(db: Db, user: User, input: ProjectBasicsBody, now = clock.now()): Promise<string> {
   const deadline = toInstant(input.deadline, input.timezone);
   if (deadline <= now) throw deadlineInPast();
   return db.$transaction(async (tx) => {
@@ -48,21 +50,21 @@ export async function createDraft(db: Db, user: User, input: ProjectBasicsBody, 
  * Leader edits of the project basics. Drafts can change everything; an active project keeps its team
  * size and "leader only manages" (changing the number of packages is a re-split, M3). A new deadline
  * moves the task due dates with it (see rescheduleTasks); `adjustedTasks` lists the ones that moved.
+ * M5: an AWAITING_CONFIRM project takes edits too, and a new deadline (always after now) puts it back to
+ * ACTIVE; the reminders arm again through their keys. An ENDED project → 409 PROJECT_ENDED (reopen it).
  */
 export async function updateProject(
   db: Db,
   projectId: string,
   userId: string,
   input: ProjectPatchBody,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<{ adjustedTasks?: AdjustedTask[] }> {
   return db.$transaction(async (tx) => {
     const project = await lockProject(tx, projectId);
     // The route's leader check ran before the lock; a transfer may have committed since.
     await memberUnderLock(tx, project, userId, { leader: true });
-    if (project.status === "AWAITING_CONFIRM" || project.status === "ENDED") {
-      throw new AppError(409, "PROJECT_ENDED", "The project has ended");
-    }
+    if (project.status === "ENDED") throw projectEnded();
     const isDraft = project.status === "DRAFT";
     if (!isDraft) {
       const resizes =
@@ -94,6 +96,8 @@ export async function updateProject(
         leaderManages: isDraft ? input.leaderManages : undefined,
         repoFullName: input.repoFullName,
         draftStep: isDraft ? input.draftStep : undefined,
+        // Past the deadline and pushed later: running again.
+        ...(deadline && project.status === "AWAITING_CONFIRM" ? { status: "ACTIVE" as const, awaitingSince: null } : {}),
       },
     });
     if (!deadline) return {};
@@ -109,7 +113,7 @@ export async function updateProject(
  * a later one gives the leader's date back. A suggestion after the new deadline moves to the deadline.
  * Finished tasks keep the date they were done against. Returns the tasks whose due date changed.
  */
-async function rescheduleTasks(tx: Tx, project: Project, deadline: Date, timezone: string, now: Date): Promise<AdjustedTask[]> {
+export async function rescheduleTasks(tx: Tx, project: Project, deadline: Date, timezone: string, now: Date): Promise<AdjustedTask[]> {
   const tasks = await tx.task.findMany({
     where: { projectId: project.id, AND: [UNFINISHED_WHERE] },
     orderBy: [{ order: "asc" }, { number: "asc" }],
@@ -145,7 +149,7 @@ export async function deleteDraft(db: Db, projectId: string): Promise<void> {
  * packages (feature groups kept together), renumbers tasks #1…#n in plan order, creates the invite
  * code and makes the project ACTIVE. The row lock makes a double tap confirm only once.
  */
-export async function confirmPlan(db: Db, projectId: string, now = new Date()): Promise<void> {
+export async function confirmPlan(db: Db, projectId: string, now = clock.now()): Promise<void> {
   await db.$transaction(async (tx) => {
     const project = await lockDraft(tx, projectId);
     if (project.deadline <= now) throw deadlineInPast();

@@ -48,6 +48,7 @@ describe("GET /api/home", () => {
         members: [{ name: "陈思远", color: "lemon" }],
         updatedAt: expect.any(String),
         needsPackage: false,
+        lifecycle: { status: "DRAFT", awaitingSince: null, autoEndAt: null, endedAt: null, endedAuto: false, endedBy: null, purgeAfter: null },
       },
     ]);
     expect((await home(other.token)).projects).toEqual([]);

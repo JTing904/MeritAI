@@ -21,6 +21,7 @@ import { MemberActions } from '@/features/members/MemberActions';
 import { PickNewLeaderSheet } from '@/features/members/PickNewLeaderSheet';
 import { useProject } from '@/features/project/useProject';
 import { useI18n } from '@/i18n';
+import { isEnded } from '@/lib/lifecycle';
 import { useSession } from '@/lib/session';
 import { makeStyles } from '@/theme';
 
@@ -76,6 +77,8 @@ function Members({
   // The leader's way out: the choice, then picking the next leader or deleting for everyone.
   const [leaderStep, setLeaderStep] = useState<'choose' | 'pick' | 'delete' | null>(null);
   const leader = project.viewerRole === 'LEADER';
+  // ENDED: read-only (transfer and remove are refused); leaving still works.
+  const ended = isEnded(project.basics.status);
   const tag = projectTag(project.basics.name, project.basics.shortCode);
 
   const active = [...activeMembers(project)].sort((a, b) => (a.role === b.role ? 0 : a.role === 'LEADER' ? -1 : 1));
@@ -101,7 +104,7 @@ function Members({
             key={m.id}
             project={project}
             member={m}
-            onMore={leader && m.id !== project.viewerMemberId ? () => setActionsFor(m.id) : undefined}
+            onMore={leader && !ended && m.id !== project.viewerMemberId ? () => setActionsFor(m.id) : undefined}
           />
         ))}
       </List>
@@ -117,7 +120,10 @@ function Members({
         </>
       ) : null}
 
-      <Button title={p.invite} kind="soft" block onPress={() => setInviting(true)} />
+      {/* Nobody joins past the deadline (M5): invites only while ACTIVE. */}
+      {project.basics.status === 'ACTIVE' ? (
+        <Button title={p.invite} kind="soft" block onPress={() => setInviting(true)} />
+      ) : null}
 
       <Card style={{ gap: 10 }}>
         <Button title={p.leave} kind="danger" block onPress={() => (leader ? setLeaderStep('choose') : setLeaving(true))} />

@@ -8,6 +8,7 @@ import { isFinished } from "../lib/package-state";
 import { notify, recordEvent } from "./notify";
 import { personRef, WITH_NAME } from "./packages";
 import { lockAsMember, TX_OPTIONS, type Tx } from "./tx";
+import { clock } from "../lib/clock";
 
 /** Sets (WAITING_ON_YOU, feed PREREQ_SET) or clears (feed only) the task's prerequisite: the owner or the leader. */
 export async function setPrereq(
@@ -16,7 +17,7 @@ export async function setPrereq(
   taskId: string,
   userId: string,
   prereqTaskId: string | null,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<void> {
   await db.$transaction(async (tx) => {
     const { member } = await lockAsMember(tx, projectId, userId);

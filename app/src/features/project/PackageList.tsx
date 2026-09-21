@@ -8,6 +8,7 @@ import { Chip } from '@/components/Chip';
 import { Icon } from '@/components/Icon';
 import { Txt } from '@/components/Txt';
 import { useI18n } from '@/i18n';
+import { isLive } from '@/lib/lifecycle';
 import { displayStatus } from '@/lib/status';
 import { makeStyles, useTheme } from '@/theme';
 import { radius } from '@/theme/tokens';
@@ -93,7 +94,8 @@ function PackageCard({
   const owner = ownerOf(project, pkg);
   const mine = owner !== null && owner.id === project.viewerMemberId;
   const leader = project.viewerRole === 'LEADER';
-  const running = project.basics.status === 'ACTIVE';
+  // ENDED is read-only: no assign, move or switch.
+  const running = isLive(project.basics.status);
   const canAssign = leader && running && !owner && project.members.some((m) => m.needsPackage);
   const tasks = project.tasks.filter((task) => task.packageId === pkg.id);
   const reviewing = tasks.some((task) => task.status === 'REVIEWING');

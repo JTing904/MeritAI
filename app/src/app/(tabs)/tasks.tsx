@@ -10,6 +10,7 @@ import { DoneTaskRow, OpenTaskRow } from '@/features/tasks/TaskRow';
 import { useMyTasks } from '@/features/tasks/useMyTasks';
 import { useI18n } from '@/i18n';
 import { useTheme } from '@/theme';
+import { appNow } from '@/lib/lifecycle';
 
 type Tab = 'open' | 'done';
 
@@ -20,7 +21,7 @@ export default function TasksScreen() {
   const list = useMyTasks();
   const [tab, setTab] = useState<Tab>('open');
   const data = list.data;
-  const now = new Date();
+  const now = appNow();
   const copy = t.tasks;
 
   const groups = data ? groupOpen(data.open, now) : [];

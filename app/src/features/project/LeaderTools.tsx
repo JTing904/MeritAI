@@ -9,6 +9,7 @@ import { useToast } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
 import { useI18n } from '@/i18n';
 import { errorCode } from '@/lib/api';
+import { isLive } from '@/lib/lifecycle';
 import { makeStyles, useTheme } from '@/theme';
 import { AddTaskSheet } from './AddTaskSheet';
 import { ResplitSheet } from './ResplitSheet';
@@ -42,7 +43,7 @@ export function LeaderTools({ project, onChange, variant, onError }: LeaderTools
   const { show } = useToast();
   const [open, setOpen] = useState<'add' | 'resplit' | null>(null);
 
-  if (project.viewerRole !== 'LEADER' || project.basics.status !== 'ACTIVE') return null;
+  if (project.viewerRole !== 'LEADER' || !isLive(project.basics.status)) return null;
 
   const fail = onError ?? ((err: unknown) => show(t.errors[errorCode(err)]));
   const close = () => setOpen(null);

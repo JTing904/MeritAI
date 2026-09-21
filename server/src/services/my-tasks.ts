@@ -1,10 +1,11 @@
-// 我的任务 (M4 spec §2): every task I own in my ACTIVE projects.
+// 我的任务 (M4 spec §2): every task I own in my running projects (ACTIVE or AWAITING_CONFIRM; not ENDED).
 import { projectTag } from "../../../shared/format";
 import type { MyTaskRow, MyTasksView } from "../../../shared/types";
 import type { User } from "../generated/prisma/client";
 import type { Db } from "../lib/db";
 import { countingAttempt } from "../lib/grading";
 import { earnedPoints, effectiveDue, isOverdue, needsPackage } from "../lib/package-state";
+import { clock } from "../lib/clock";
 
 /**
  * 待完成 holds everything not yet at full points: a task waiting for review or graded 拿一半 stays
@@ -14,9 +15,9 @@ import { earnedPoints, effectiveDue, isOverdue, needsPackage } from "../lib/pack
 const OPEN_STATUSES = new Set(["TODO", "DOING", "REVIEWING", "HALF", "FAIL"]);
 
 /** GET /api/tasks/mine */
-export async function myTasks(db: Db, user: User, now = new Date()): Promise<MyTasksView> {
+export async function myTasks(db: Db, user: User, now = clock.now()): Promise<MyTasksView> {
   const memberships = await db.member.findMany({
-    where: { userId: user.id, leftAt: null, removed: false, project: { status: "ACTIVE", deletedAt: null } },
+    where: { userId: user.id, leftAt: null, removed: false, project: { status: { in: ["ACTIVE", "AWAITING_CONFIRM"] }, deletedAt: null } },
     orderBy: { joinedAt: "asc" },
     include: {
       project: true,

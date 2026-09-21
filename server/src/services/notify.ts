@@ -1,9 +1,10 @@
 // Notifications, the project feed, the packages version and swap expiry/voiding, shared by every M3 write.
 import type { ActivityPayload, NotificationPayload, SwapVoidReason } from "../../../shared/types";
 import type { NotificationAudience, Prisma } from "../generated/prisma/client";
-import { isActiveMember } from "../lib/access";
+import { isActiveMember, isRunning } from "../lib/access";
 import { needsPackage } from "../lib/package-state";
 import type { Tx } from "./tx";
+import { clock } from "../lib/clock";
 
 type NotificationKind = NotificationPayload["type"];
 type ActivityKind = ActivityPayload["type"];
@@ -130,7 +131,7 @@ export type VoidSwapsInput = {
   /** Member whose action voided them (stored; they get no SWAP_VOID). */
   voidedById: string | null;
   now: Date;
-  /** Send SWAP_VOID to each active requester other than `voidedById`. Never sent for RESPLIT or PROJECT_DELETED. */
+  /** Send SWAP_VOID to each active requester other than `voidedById`. Never sent for RESPLIT, PROJECT_DELETED or PROJECT_ENDED. */
   notify: boolean;
 };
 
@@ -159,7 +160,7 @@ export async function voidSwaps(tx: Tx, input: VoidSwapsInput): Promise<string[]
     });
     if (count !== 1) continue;
     voided.push(swap.id);
-    if (!input.notify || reason === "RESPLIT" || reason === "PROJECT_DELETED") continue;
+    if (!input.notify || reason === "RESPLIT" || reason === "PROJECT_DELETED" || reason === "PROJECT_ENDED") continue;
     if (!isActiveMember(swap.requester) || swap.requester.id === voidedById) continue;
     await notify(tx, {
       userIds: [swap.requester.userId],
@@ -187,7 +188,7 @@ export async function remindPackageless(
   projectId: string,
   opts: { joinedMemberId?: string; now?: Date } = {},
 ): Promise<void> {
-  const now = opts.now ?? new Date();
+  const now = opts.now ?? clock.now();
   await tx.member.updateMany({
     where: {
       projectId,
@@ -208,6 +209,8 @@ export async function remindPackageless(
       },
     },
   });
+  // An ENDED project hands out nothing any more (a member leaving it must not ask the leader to re-split).
+  if (!isRunning(project)) return;
   if (project.packages.some((p) => p.ownerId === null)) return;
   const leader = project.members.find((m) => m.role === "LEADER");
   if (!leader) return;

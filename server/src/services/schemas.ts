@@ -148,3 +148,16 @@ export const NotificationQuerySchema = PageQuerySchema.extend({
     .transform((v) => v === "1" || v === "true"),
 });
 export type NotificationQuery = z.infer<typeof NotificationQuerySchema>;
+
+// ─── M5: lifecycle, delay, time machine ──────────────────────────────────────
+
+/** POST /projects/:id/reopen: `deadline` required when the old one has passed (checked in the service). */
+export const ReopenSchema = z.object({ deadline: DateInput.optional() });
+/** POST /projects/:id/tasks/:taskId/delay */
+export const DelaySchema = z.object({ dueAt: DateInput });
+/** POST /api/dev/time-machine: exactly one of the three. */
+export const TimeMachineSchema = z.union([
+  z.object({ offsetMs: z.number().finite() }).strict(),
+  z.object({ advanceMs: z.number().finite() }).strict(),
+  z.object({ reset: z.literal(true) }).strict(),
+]);

@@ -243,9 +243,58 @@ export type SwapView = {
   expiresAt: string;
 };
 
+/**
+ * Where a confirmed project is in its life (M5). Same shape on ProjectView, ProjectCard and
+ * TaskDetail.project. Dates are ISO; the app counts 「还有 N 天」 from its own clock.
+ *
+ * - ACTIVE: every date below is null.
+ * - AWAITING_CONFIRM: the deadline passed (`awaitingSince` = that deadline). Everything still works (except
+ *   joining and invites, as before); the leader can 结束项目 or push the deadline later (PATCH
+ *   /projects/:id with a deadline after now, which puts it back to ACTIVE). `autoEndAt` = deadline + 7
+ *   days: the tick ends it then (`endedAuto`).
+ * - ENDED: read-only (every write → 409 PROJECT_ENDED except grading a PENDING attempt, leaving,
+ *   reopening and 为所有人删除项目). `purgeAfter` = endedAt + 14 days: deleted for good then; the leader
+ *   can reopen it until then (POST /projects/:id/reopen).
+ * - DRAFT: all null.
+ */
+export type ProjectLifecycle = {
+  status: ProjectStatus;
+  awaitingSince: string | null;
+  autoEndAt: string | null;
+  endedAt: string | null;
+  /** Ended by the tick (7 days after the deadline without the leader acting). */
+  endedAuto: boolean;
+  /** The leader who pressed 结束项目 (null when it ended automatically or the member row is gone). */
+  endedBy: PersonRef | null;
+  /** ENDED only: when it is deleted for good. */
+  purgeAfter: string | null;
+};
+
+// POST /api/projects/:id/end (结束项目; leader; ACTIVE or AWAITING_CONFIRM; no body) answers with the
+// ProjectView. Pending swaps end as VOID (PROJECT_ENDED); everyone else gets PROJECT_ENDED.
+
+/**
+ * POST /api/projects/:id/reopen (leader; ENDED, before purgeAfter). `deadline` ("YYYY-MM-DD" = 23:59 that
+ * day in the project zone, or an ISO date-time) is required when the current deadline has passed
+ * (DEADLINE_REQUIRED) and must be after now (DEADLINE_IN_PAST); when the old deadline is still ahead it
+ * is optional. A new deadline moves the task due dates as PATCH /projects/:id does (the answer's
+ * adjustedTasks). Answers with the ProjectView.
+ */
+export type ReopenInput = { deadline?: string };
+
+/**
+ * POST /api/projects/:id/tasks/:taskId/delay (一键延后; leader; task unfinished, else TASK_FINISHED).
+ * `dueAt`: "YYYY-MM-DD" or ISO; not after the project deadline (DUE_AFTER_DEADLINE), later than the
+ * current effective due (DELAY_NOT_LATER). It becomes the leader's date (as a leader due-date edit). The
+ * owner gets TASK_DELAYED. Answers with the TaskDetail.
+ */
+export type DelayInput = { dueAt: string };
+
 /** A project as members see it. GET /api/projects/:id (M3 extends it with the project page). */
 export type ProjectView = {
   basics: ProjectBasics;
+  /** M5: status and lifecycle dates (see ProjectLifecycle); lifecycle.status = basics.status. */
+  lifecycle: ProjectLifecycle;
   inviteCode: string | null;
   viewerMemberId: string;
   viewerRole: MemberRole;
@@ -302,6 +351,11 @@ export type ProjectCard = {
   updatedAt: string;
   /** I'm active, have no package and am not a leader who only manages. */
   needsPackage: boolean;
+  /**
+   * M5 chips: AWAITING_CONFIRM → 「📮 等你确认已交」 (leader) / 「📮 等组长确认」 (member); ENDED →
+   * 「🏁 已结束」 / 「🏁 自动结束」 (endedAuto) with 「{purgeAfter} 删除 · 还有 {n} 天」.
+   */
+  lifecycle: ProjectLifecycle;
 };
 
 export type PendingInvite = {
@@ -319,7 +373,7 @@ export type HomeData = {
   projects: ProjectCard[];
   invites: PendingInvite[];
   /**
-   * Effective due (ISO) of my TODO / DOING / FAIL tasks in ACTIVE projects that are overdue or due
+   * Effective due (ISO) of my TODO / DOING / FAIL tasks in ACTIVE / AWAITING_CONFIRM projects that are overdue or due
    * within the next 8 days (past dates included, so the home line can count 过期).
    */
   dueSoon: string[];
@@ -369,9 +423,17 @@ export type InviteOutcome = { target: string; result: 'INVITED' | 'ALREADY_MEMBE
 // ─── Packages, swaps, members, notifications (M3) ─────────────────────────────
 
 export type SwapStatus = 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'CANCELLED' | 'EXPIRED' | 'VOID';
-export type SwapVoidReason = 'SWITCHED' | 'STARTED' | 'SWAPPED_ELSEWHERE' | 'LEFT' | 'RESPLIT' | 'PROJECT_DELETED';
-/** The reasons a SWAP_VOID notification can give (a re-split or a deleted project sends its own notice). */
-export type SwapVoidNoticeReason = Exclude<SwapVoidReason, 'RESPLIT' | 'PROJECT_DELETED'>;
+export type SwapVoidReason =
+  | 'SWITCHED'
+  | 'STARTED'
+  | 'SWAPPED_ELSEWHERE'
+  | 'LEFT'
+  | 'RESPLIT'
+  | 'PROJECT_DELETED'
+  /** M5: the project ended (PROJECT_ENDED tells everyone). */
+  | 'PROJECT_ENDED';
+/** The reasons a SWAP_VOID notification can give (a re-split, a deleted or an ended project sends its own notice). */
+export type SwapVoidNoticeReason = Exclude<SwapVoidReason, 'RESPLIT' | 'PROJECT_DELETED' | 'PROJECT_ENDED'>;
 
 /** POST /api/projects/:id/packages/:packageId/assign */
 export type AssignInput = { memberId: string };
@@ -433,7 +495,21 @@ export type NotificationType =
   | 'WAITING_ON_YOU'
   | 'PREREQ_DONE'
   | 'PROJECT_DELETED'
-  | 'PROJECT_RESTORED';
+  | 'PROJECT_RESTORED'
+  // M5 (reminders from the tick, and the lifecycle)
+  | 'TASK_DUE_SOON'
+  | 'TASK_DUE_REVIEW'
+  | 'TASK_OWNERLESS_SOON'
+  | 'TASK_OVERDUE'
+  | 'TASK_OWNERLESS_OVERDUE'
+  | 'PREREQ_BLOCKED'
+  | 'WEEKLY_SUMMARY'
+  | 'PROJECT_DUE'
+  | 'PROJECT_AUTO_END_SOON'
+  | 'PROJECT_ENDED'
+  | 'PROJECT_REOPENED'
+  | 'PROJECT_DELETE_SOON'
+  | 'TASK_DELAYED';
 
 /** 全组都收到 / 只有你收到 / 只有组长收到 / 只有你和组长收到. */
 export type NotificationAudience = 'GROUP' | 'ONLY_YOU' | 'ONLY_LEADER' | 'YOU_AND_LEADER';
@@ -558,7 +634,106 @@ export type NotificationPayload =
   | { type: 'PREREQ_DONE'; prereqTaskId: string; prereqTitle: string; waitingTaskId: string; waitingTitle: string }
   /** To every active member but the leader. `purgeAfter`: when it is deleted for good unless restored. */
   | { type: 'PROJECT_DELETED'; leader: PersonRef; purgeAfter: string }
-  | { type: 'PROJECT_RESTORED'; leader: PersonRef };
+  | { type: 'PROJECT_RESTORED'; leader: PersonRef }
+  // ─── M5 ───
+  // Reminders are sent by the tick (services/tick.ts), each once (a later or earlier due date, or another
+  // owner, sends it again). Due dates are the task's EFFECTIVE due (its own, else the project deadline),
+  // ISO. 「明天 23:59 / 今天 18:00」: render `dueAt` relative to NotificationView.createdAt; `timezone` is
+  // the project's (use it or the device zone, as the rest of the app does). All in-app only for now.
+  /** To the owner (ONLY_YOU): due within 24 h (at least 1 h left), not handed in. 「打开任务」. */
+  | { type: 'TASK_DUE_SOON'; taskId: string; title: string; dueAt: string; timezone: string }
+  /**
+   * To the leader (ONLY_LEADER): due within 24 h, handed in, waiting for the grade (never for the leader's
+   * own task). `owner`: who owns it. 「去评级」.
+   */
+  | { type: 'TASK_DUE_REVIEW'; taskId: string; title: string; dueAt: string; timezone: string; owner: PersonRef | null }
+  /** To the leader (ONLY_LEADER): due within 24 h and nobody (active) owns it. 「移给谁」 (task page, move sheet). */
+  | { type: 'TASK_OWNERLESS_SOON'; taskId: string; title: string; dueAt: string; timezone: string }
+  /**
+   * To every active member (GROUP; the owner's copy has mine: true): past due, unfinished, not handed in.
+   * `template` 0-4 picks the roast line (stable per task; the emoji is part of the line; name or TA only):
+   *  0 「🐢 {name} 的『{task}』过期了，TA 可能还在路上…」
+   *  1 「⏰『{task}』的截止时间过了，{name} 还没交。大家帮 TA 加加油？」
+   *  2 「🫠 大家等『{task}』等到过期了，{name} 快冲！」
+   *  3 「📣 过期提醒：{name} 的『{task}』还差最后一步。」
+   *  4 「🧃『{task}』过期了，{name} 要不要先喝口水，再一口气交掉？」
+   * `waitingFor`: the task waits for an unfinished prerequisite → append 「（TA 在等 {owner} 的『{title}』）」.
+   * Buttons: 打开任务, 发到 WhatsApp.
+   */
+  | {
+      type: 'TASK_OVERDUE';
+      taskId: string;
+      title: string;
+      dueAt: string;
+      owner: PersonRef;
+      template: number;
+      waitingFor: { taskId: string; title: string; owner: PersonRef | null } | null;
+    }
+  /** To every active member (GROUP; mine: true for the leader): past due and nobody owns it. 「发到 WhatsApp」. */
+  | { type: 'TASK_OWNERLESS_OVERDUE'; taskId: string; title: string; dueAt: string }
+  /**
+   * To the leader (ONLY_LEADER): 「『{waitingTitle}』被『{prereqTitle}』卡了 {blockedDays} 天，要不要延后？」 —
+   * the prerequisite is unfinished 3+ days past its due while the waiting task is unfinished too.
+   * 「一键延后」 opens the DelaySheet for waitingTaskId (default waitingDueAt + blockedDays days, chips +1 /
+   * +blockedDays / +7, never past projectDeadline); 「看任务」 opens waitingTaskId.
+   */
+  | {
+      type: 'PREREQ_BLOCKED';
+      waitingTaskId: string;
+      waitingTitle: string;
+      waitingOwner: PersonRef | null;
+      waitingDueAt: string;
+      prereqTaskId: string;
+      prereqTitle: string;
+      prereqOwner: PersonRef | null;
+      prereqDueAt: string;
+      blockedDays: number;
+      projectDeadline: string;
+    }
+  /**
+   * To each active member with weeklyEnabled (GROUP, mine: false), Sunday 20:00 in the project zone (the
+   * first tick after it that Sunday), also in a week without progress; ACTIVE and AWAITING_CONFIRM only.
+   * Counts over the 7 days before the tick. `weekEnding`: that Sunday, YYYY-MM-DD in the project zone.
+   * Points in tenths. 「{tag} 这周：完成 {finishedCount} 个任务（+{finishedPoints} 分），全组 {totalPoints} / 100
+   * 分；过期 {overdueCount} 个；下周要交 {dueNextWeekCount} 个。{top.member} 这周最多（+{top.points} 分）。」 Leave out
+   * the parts that are zero, except the total; `top` null → leave that sentence out. 「发到 WhatsApp」.
+   * overdueCount: unfinished tasks overdue now; dueNextWeekCount: not-handed-in tasks due in the next 7 days.
+   */
+  | {
+      type: 'WEEKLY_SUMMARY';
+      weekEnding: string;
+      finishedCount: number;
+      finishedPoints: number;
+      totalPoints: number;
+      overdueCount: number;
+      dueNextWeekCount: number;
+      top: { member: PersonRef; points: number } | null;
+    }
+  /** To the leader (ONLY_LEADER): the deadline passed, the project is AWAITING_CONFIRM now. 「结束项目」 (EndSheet). */
+  | { type: 'PROJECT_DUE'; deadline: string; autoEndAt: string }
+  /** To the leader (ONLY_LEADER): it ends by itself at autoEndAt (「明天」). 「结束项目」. */
+  | { type: 'PROJECT_AUTO_END_SOON'; deadline: string; autoEndAt: string }
+  /**
+   * `auto` false: to everyone but the leader, 「组长 {leader} 结束了 {tag}。{purgeAfter} 会彻底删除…」;
+   * `auto` true (leader null): to every active member, 「组长 7 天没处理，{tag} 自动结束了…」. 「看项目」.
+   */
+  | { type: 'PROJECT_ENDED'; auto: boolean; leader: PersonRef | null; purgeAfter: string }
+  /** To everyone but the leader: 「组长 {leader} 重新打开了 {tag}，新的截止日期 {deadline}。」 */
+  | { type: 'PROJECT_REOPENED'; leader: PersonRef; deadline: string }
+  /** To every active member (GROUP), 3 days and 1 day before an ENDED project is deleted: `days` 3 or 1. */
+  | { type: 'PROJECT_DELETE_SOON'; days: number; purgeAfter: string }
+  /**
+   * To the owner (ONLY_YOU; not when the leader delays their own task): 「组长把你的『{title}』延后到
+   * {dueAt}」 + 「（在等『{prereq.title}』）」 when the task waits for an unfinished prerequisite.
+   */
+  | {
+      type: 'TASK_DELAYED';
+      taskId: string;
+      title: string;
+      dueAt: string;
+      fromDueAt: string;
+      prereq: { taskId: string; title: string } | null;
+    };
 
 export type NotificationView = {
   id: string;
@@ -610,7 +785,10 @@ export type ActivityType =
   | 'START_UNDONE'
   | 'PREREQ_SET'
   | 'PROJECT_DELETED'
-  | 'PROJECT_RESTORED';
+  | 'PROJECT_RESTORED'
+  | 'PROJECT_ENDED'
+  | 'PROJECT_REOPENED'
+  | 'TASK_DELAYED';
 
 /** What a feed entry says, by type (who did it is ActivityView.actor). Snapshotted when it happened. */
 export type ActivityPayload =
@@ -667,7 +845,13 @@ export type ActivityPayload =
     }
   /** The actor (the leader) deleted the project for everyone / restored it (seen once it is back). */
   | { type: 'PROJECT_DELETED' }
-  | { type: 'PROJECT_RESTORED' };
+  | { type: 'PROJECT_RESTORED' }
+  /** M5. `auto`: ended by the tick (actor null); otherwise the actor is the leader who ended it. */
+  | { type: 'PROJECT_ENDED'; auto: boolean }
+  /** The actor (the leader) reopened it; `deadline` as it is after reopening. */
+  | { type: 'PROJECT_REOPENED'; deadline: string }
+  /** The actor (the leader) moved the task's due date later (一键延后). */
+  | { type: 'TASK_DELAYED'; taskId: string; title: string; dueAt: string; fromDueAt: string };
 
 export type ActivityView = {
   id: string;
@@ -767,6 +951,8 @@ export type TaskDetail = {
     viewerRole: MemberRole;
     leaderMemberId: string | null;
     leaderName: string | null;
+    /** M5: ENDED → the task page shows the frozen note instead of actions (the leader may still grade a PENDING attempt). */
+    lifecycle: ProjectLifecycle;
   };
   owner: TaskPerson | null;
   packageIndex: number | null;
@@ -853,12 +1039,51 @@ export type MyTaskRow = {
   overridden: boolean;
 };
 
-/** GET /api/tasks/mine: every task I own in my ACTIVE projects. */
+/** GET /api/tasks/mine: every task I own in my ACTIVE and AWAITING_CONFIRM projects (not drafts, not ENDED). */
 export type MyTasksView = {
   /** TODO, DOING, REVIEWING, HALF, FAIL. */
   open: MyTaskRow[];
   /** DONE, newest finishedAt first. */
   done: MyTaskRow[];
-  /** ACTIVE projects where I still need a package. */
+  /** ACTIVE / AWAITING_CONFIRM projects where I still need a package. */
   withoutPackage: { projectId: string; projectTag: string }[];
 };
+
+// ─── Reminders tick and the time machine (M5) ─────────────────────────────────
+
+/** What one tick did (POST /api/internal/tick, and the time machine's answer): counts per job. */
+export type TickResult = {
+  /** The server clock the tick ran at (the time machine's time), ISO. */
+  now: string;
+  swapsExpired: number;
+  /** ACTIVE → AWAITING_CONFIRM (each with PROJECT_DUE). */
+  projectsDue: number;
+  autoEndWarnings: number;
+  autoEnded: number;
+  /** Notifications of each reminder kind sent (one per recipient). */
+  dueSoon: number;
+  overdue: number;
+  blocked: number;
+  weekly: number;
+  deleteWarnings: number;
+  /** Projects deleted for good (ended or deleted for everyone). */
+  purged: number;
+  /** Jobs or projects that failed (logged on the server); the others still ran. */
+  errors: number;
+};
+
+/**
+ * GET /api/dev/time-machine and the answer of POST (development only: 404 unless the server's dev gate is
+ * on). The server clock is real time + offsetMs; every route uses it, ETags included (sessions,
+ * idempotency keys and rate limits keep real time). The offset lives in the API process: restarting the
+ * dev server resets it. `tick`: the tick POST ran right after changing the offset (null on GET).
+ */
+export type TimeMachineState = { offsetMs: number; now: string; realNow: string; tick: TickResult | null };
+
+/**
+ * POST /api/dev/time-machine: exactly one of `offsetMs` (set), `advanceMs` (add; may be negative) or
+ * `reset: true` (back to 0). The offset must stay within ±400 days (VALIDATION). Runs one tick right
+ * away; afterwards the app revalidates its caches (home, my tasks, notifications, the open project).
+ * 「到下个周日 20:05」: the app computes advanceMs from TimeMachineState.now in the device zone.
+ */
+export type TimeMachineInput = { offsetMs: number } | { advanceMs: number } | { reset: true };

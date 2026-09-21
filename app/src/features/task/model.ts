@@ -30,8 +30,10 @@ export type TaskCtx = {
   leader: boolean;
   /** The viewer owns the task. */
   mine: boolean;
-  /** ACTIVE project: writes are allowed (ended or draft projects are read-only). */
+  /** ACTIVE or AWAITING_CONFIRM project: writes are allowed (ended or draft projects are read-only). */
   running: boolean;
+  /** ENDED (M5): read-only, except the leader grading a PENDING attempt. */
+  ended: boolean;
   /** The request running now (its button shows loading; every other button is disabled). */
   busy: string | null;
   run: RunWrite;

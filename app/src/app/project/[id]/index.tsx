@@ -9,6 +9,10 @@ import { Seg } from '@/components/Controls';
 import { Icon } from '@/components/Icon';
 import { AppBar, Screen } from '@/components/Screen';
 import { Txt } from '@/components/Txt';
+import { EndSheet } from '@/features/life/EndSheet';
+import { FrozenLine, LifecycleCard } from '@/features/life/LifecycleCard';
+import { ReopenSheet } from '@/features/life/ReopenSheet';
+import { ProjectInfoSheet } from '@/features/members/ProjectInfoSheet';
 import { AssignSheet } from '@/features/project/AssignSheet';
 import { BriefCard } from '@/features/project/BriefCard';
 import { FeedList, useFeed } from '@/features/project/Feed';
@@ -23,13 +27,14 @@ import { ResplitSheet } from '@/features/project/ResplitSheet';
 import { ReviewQueue } from '@/features/project/ReviewQueue';
 import { useProject } from '@/features/project/useProject';
 import { useI18n } from '@/i18n';
+import { isEnded, isLive } from '@/lib/lifecycle';
 import { useTheme } from '@/theme';
 
 type Tab = 'packages' | 'rank' | 'feed';
 
 /**
- * Project page (ProjectLeader, NoPackage and ReviewQueue mockups, proto §4.5). `?open=resplit` opens the
- * re-split sheet.
+ * Project page (ProjectLeader, NoPackage and ReviewQueue mockups, proto §4.5; M5: DueLeader / DueMember /
+ * Ended). `?open=resplit` opens the re-split sheet, `?open=end` the 结束项目 sheet (PROJECT_DUE).
  */
 export default function ProjectScreen() {
   const { id, open } = useLocalSearchParams<{ id: string; open?: string }>();
@@ -43,10 +48,14 @@ export default function ProjectScreen() {
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
   const [resplitting, setResplitting] = useState(false);
+  // M5: 结束项目, 重新打开 and 延后截止日期 (the project info sheet).
+  const [lifeSheet, setLifeSheet] = useState<'end' | 'reopen' | 'info' | null>(null);
   const feed = useFeed(id, tab === 'feed', project?.packagesVersion ?? 0);
 
   const isLeader = project?.viewerRole === 'LEADER';
-  const running = project?.basics.status === 'ACTIVE';
+  // AWAITING_CONFIRM works like ACTIVE; ENDED is read-only (the leader can still grade PENDING attempts).
+  const running = !!project && isLive(project.basics.status);
+  const ended = !!project && isEnded(project.basics.status);
   const tools = !!project && isLeader && running;
   // Checked against every fresh view (as PackageList offers them): after someone picks the package, or the
   // task gets finished, the reload closes the sheet instead of leaving it open on a target that now fails.
@@ -70,10 +79,13 @@ export default function ProjectScreen() {
     if (myPackageId) setOpenPkgs((prev) => (prev.has(myPackageId) ? prev : new Set(prev).add(myPackageId)));
   }, [myPackageId]);
 
-  // From a MEMBER_NEEDS_PACKAGE notification: open the re-split sheet once, then drop the parameter.
+  // From a MEMBER_NEEDS_PACKAGE / PROJECT_DUE notification: open the sheet once, then drop the parameter.
   useEffect(() => {
-    if (!project || open !== 'resplit') return;
-    if (isLeader && running) setResplitting(true);
+    if (!project || (open !== 'resplit' && open !== 'end')) return;
+    if (isLeader && running) {
+      if (open === 'resplit') setResplitting(true);
+      else setLifeSheet('end');
+    }
     router.setParams({ open: undefined });
   }, [project, open, isLeader, running]);
 
@@ -102,7 +114,8 @@ export default function ProjectScreen() {
     const b = project.basics;
     title = projectTag(b.name, b.shortCode);
     const active = project.members.filter((m) => m.active).length;
-    if (isLeader) sub = b.leaderManages ? p.sub.leaderManages(active) : p.sub.leader(active);
+    if (ended) sub = p.sub.ended(active);
+    else if (isLeader) sub = b.leaderManages ? p.sub.leaderManages(active) : p.sub.leader(active);
     else sub = p.sub.member(project.members.find((m) => m.role === 'LEADER' && m.active)?.name ?? '');
   }
 
@@ -123,6 +136,12 @@ export default function ProjectScreen() {
       ) : (
         <>
           <ProjectHero project={project} />
+          <LifecycleCard
+            project={project}
+            onEnd={() => setLifeSheet('end')}
+            onExtend={() => setLifeSheet('info')}
+            onReopen={() => setLifeSheet('reopen')}
+          />
           <ReviewQueue project={project} />
           <NeedsPackageCard project={project} onResplit={() => setResplitting(true)} />
           {!project.viewerNeedsPackage ? <PackagelessBanner project={project} onResplit={() => setResplitting(true)} /> : null}
@@ -141,6 +160,7 @@ export default function ProjectScreen() {
 
           {tab === 'packages' ? (
             <>
+              {ended ? <FrozenLine /> : null}
               <PackageList
                 project={project}
                 open={openPkgs}
@@ -175,6 +195,15 @@ export default function ProjectScreen() {
           ) : null}
           {resplitting && tools ? (
             <ResplitSheet project={project} onClose={() => setResplitting(false)} onChange={setProject} onError={onError} />
+          ) : null}
+          {lifeSheet === 'end' && isLeader && running ? (
+            <EndSheet project={project} onClose={() => setLifeSheet(null)} onChange={setProject} onError={onError} />
+          ) : null}
+          {lifeSheet === 'reopen' && isLeader && ended ? (
+            <ReopenSheet project={project} onClose={() => setLifeSheet(null)} onChange={setProject} onError={onError} />
+          ) : null}
+          {lifeSheet === 'info' && isLeader && running ? (
+            <ProjectInfoSheet project={project} onClose={() => setLifeSheet(null)} onSaved={setProject} onError={onError} />
           ) : null}
         </>
       )}

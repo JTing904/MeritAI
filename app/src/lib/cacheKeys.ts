@@ -78,6 +78,9 @@ export function writeEffect(path: string, result: unknown): WriteEffect {
       else effect.stale.push(underProject(id));
     } else effect.stale.push(underProject(id));
   }
+  // The time machine (development) moved the server clock and ran the reminders: anything may read
+  // differently now (due chips, lifecycle, new notifications).
+  if (bare === '/dev/time-machine') effect.stale.push(() => true);
   // Swaps and invites change the project and the notification cards that show them.
   if (/^\/(swaps|invites|join)\//.test(bare)) effect.stale.push(isNotificationsKey);
 

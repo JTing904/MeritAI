@@ -7,6 +7,7 @@ import { AppError, forbidden, notFound } from "../lib/errors";
 import { FINISHED_WHERE, isFinished, isLocked, packageStarted, releaseTaskData, UNFINISHED_WHERE } from "../lib/package-state";
 import { bumpPackages, notify, recordEvent, remindPackageless, voidSwaps } from "./notify";
 import { lockAsMember, TX_OPTIONS, type Tx } from "./tx";
+import { clock } from "../lib/clock";
 
 export const packageTaken = () => new AppError(409, "PACKAGE_TAKEN", "Someone just took this package");
 export const ownPackageStarted = () => new AppError(409, "PACKAGE_STARTED", "You've started, so you can't switch packages");
@@ -59,7 +60,7 @@ async function claimPackage(tx: Tx, packageId: string, memberId: string): Promis
  * 选包 / 换包: a member who needs a package takes a free one; someone whose package isn't started
  * switches to a free one. Picking your own package does nothing.
  */
-export async function pickPackage(db: Db, projectId: string, packageId: string, userId: string, now = new Date()): Promise<void> {
+export async function pickPackage(db: Db, projectId: string, packageId: string, userId: string, now = clock.now()): Promise<void> {
   await db.$transaction(async (tx) => {
     const { project, member } = await lockAsMember(tx, projectId, userId);
     if (member.role === "LEADER" && project.leaderManages) throw leaderOnlyManages();
@@ -112,7 +113,7 @@ export async function assignPackage(
   packageId: string,
   userId: string,
   memberId: string,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<void> {
   await db.$transaction(async (tx) => {
     const { project, member: leader } = await lockAsMember(tx, projectId, userId, { leader: true });
@@ -163,7 +164,7 @@ export async function moveTask(
   taskId: string,
   userId: string,
   packageId: string,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<void> {
   await db.$transaction(async (tx) => {
     const { member: leader } = await lockAsMember(tx, projectId, userId, { leader: true });
@@ -274,7 +275,7 @@ export async function startUnderLock(
  * 开始做: only the task's owner. Starts it, or makes a moved-in task someone else started theirs
  * (startUnderLock); otherwise a no-op. Starting ends the owner's pending swaps.
  */
-export async function startTask(db: Db, projectId: string, taskId: string, userId: string, now = new Date()): Promise<void> {
+export async function startTask(db: Db, projectId: string, taskId: string, userId: string, now = clock.now()): Promise<void> {
   await db.$transaction(async (tx) => {
     const { member } = await lockAsMember(tx, projectId, userId);
     const task = await tx.task.findFirst({ where: { id: taskId, projectId } });

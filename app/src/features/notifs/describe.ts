@@ -3,9 +3,33 @@ import { formatPoints, formatTotal } from '@shared/planning';
 import type { Grade, NotificationView } from '@shared/types';
 import type { Messages } from '@/i18n/zh';
 import type { InlinePart } from '@/i18n/sections/home.zh';
+import { dayDiff, dueLabel } from '@/lib/time';
 import type { Highlighter } from '@/theme/tokens';
 
-export type NotifAction = 'decline' | 'accept' | 'resplit' | 'pick' | 'openTask' | 'grade';
+export type NotifAction =
+  | 'decline'
+  | 'accept'
+  | 'resplit'
+  | 'pick'
+  | 'openTask'
+  | 'grade'
+  // M5
+  | 'delay'
+  | 'viewTask'
+  | 'move'
+  | 'end'
+  | 'viewProject'
+  | 'whatsapp';
+
+/** Buttons drawn as the soft (secondary) kind; the others are primary (NotifsM5 mockup). */
+export const SOFT_ACTIONS: ReadonlySet<NotifAction> = new Set([
+  'decline',
+  'openTask',
+  'viewTask',
+  'move',
+  'viewProject',
+  'whatsapp',
+]);
 
 export type NotifLook = {
   emoji: string;
@@ -17,9 +41,32 @@ export type NotifLook = {
   actions: NotifAction[];
   /** Where tapping the card goes; null when the viewer can't open the project any more. */
   href: Href | null;
+  /** Where a button goes when it isn't `href` (一键延后, 移给谁, 结束项目). */
+  to?: Partial<Record<NotifAction, Href>>;
+  /** 发到 WhatsApp: the text to send (plain, with the project tag). */
+  share?: string;
 };
 
 type Copy = Messages['notifs'];
+type Labels = Messages['labels'];
+
+/** The parts as plain text (no bold): what 发到 WhatsApp sends. */
+const plain = (parts: InlinePart[]) => parts.map((p) => (typeof p === 'string' ? p : p.b)).join('');
+
+/** 今天 / 明天 / 10月13日 for a due date, counted from when the reminder was sent (device zone). */
+function dueDay(iso: string, sentAt: string, copy: Copy, labels: Labels): string {
+  const d = new Date(iso);
+  const days = dayDiff(d, new Date(sentAt));
+  if (days === 0) return copy.day.today;
+  if (days === 1) return copy.day.tomorrow;
+  return labels.due.date(d.getMonth() + 1, d.getDate());
+}
+
+/** 11月13日 (device zone), for lifecycle dates. */
+const monthDay = (iso: string, labels: Labels) => {
+  const d = new Date(iso);
+  return labels.due.date(d.getMonth() + 1, d.getDate());
+};
 
 /** Tile of a grade notification (M4 spec §8): full ✅ mint, 拿一半 🌓 tang, 不通过 ❌ tang. */
 function gradeTile(grade: Grade): Pick<NotifLook, 'emoji' | 'tint'> {
@@ -72,10 +119,10 @@ function swapRequestParts(n: NotificationView, p: Extract<NotificationView['payl
 }
 
 /**
- * Emoji, tint, text, buttons and tap target of one notification (M3 and M4 spec §8). Null for a type this
- * version of the app doesn't know (an older APK talking to a newer server): the list skips it.
+ * Emoji, tint, text, buttons and tap target of one notification (M3 and M4 spec §8, M5 spec §5). Null for a
+ * type this version of the app doesn't know (an older APK talking to a newer server): the list skips it.
  */
-export function describeNotification(n: NotificationView, copy: Copy): NotifLook | null {
+export function describeNotification(n: NotificationView, copy: Copy, labels: Labels): NotifLook | null {
   const tag = n.projectTag ?? '';
   const id = n.projectId;
   const open = n.projectOpen && id !== null;
@@ -83,6 +130,9 @@ export function describeNotification(n: NotificationView, copy: Copy): NotifLook
   const taskHref = (taskId: string, grade = false): Href | null =>
     open ? { pathname: '/project/[id]/task/[taskId]', params: grade ? { id, taskId, grade: '1' } : { id, taskId } } : null;
   const p = n.payload;
+  const taskWith = (taskId: string, params: Record<string, string>): Href | null =>
+    open ? { pathname: '/project/[id]/task/[taskId]', params: { id, taskId, ...params } } : null;
+  const share = (parts: InlinePart[], emoji = '') => copy.share(tag, `${emoji ? `${emoji} ` : ''}${plain(parts)}`);
 
   switch (p.type) {
     case 'SWAP_REQUEST':
@@ -279,6 +329,118 @@ export function describeNotification(n: NotificationView, copy: Copy): NotifLook
         emoji: '🔨',
         tint: 'sky',
         parts: copy.prereqDone(p.prereqTitle, p.waitingTitle),
+        actions: href ? ['openTask'] : [],
+        href,
+      };
+    }
+    // ─── M5: reminders ───
+    case 'TASK_DUE_SOON': {
+      const href = taskHref(p.taskId);
+      const when = dueLabel(p.dueAt, labels.due, new Date(n.createdAt));
+      return { emoji: '⏰', tint: 'lemon', parts: copy.dueSoon(p.title, when), actions: href ? ['openTask'] : [], href };
+    }
+    case 'TASK_DUE_REVIEW': {
+      const href = taskHref(p.taskId, true);
+      const parts = copy.dueReview(p.title, dueDay(p.dueAt, n.createdAt, copy, labels), p.owner?.name ?? null);
+      return { emoji: '📨', tint: 'gum', parts, actions: href ? ['grade'] : [], href };
+    }
+    case 'TASK_OWNERLESS_SOON': {
+      const href = taskHref(p.taskId);
+      const move = taskWith(p.taskId, { move: '1' });
+      return {
+        emoji: '🙋',
+        tint: 'sky',
+        parts: copy.ownerlessSoon(p.title, dueDay(p.dueAt, n.createdAt, copy, labels)),
+        actions: move ? ['move'] : [],
+        href,
+        to: move ? { move } : undefined,
+      };
+    }
+    case 'TASK_OVERDUE': {
+      const href = taskHref(p.taskId);
+      const i = Number.isInteger(p.template) && p.template >= 0 && p.template < copy.overdue.lines.length ? p.template : 0;
+      const line = copy.overdue.lines[i]!(p.owner.name, p.title);
+      const parts = p.waitingFor ? [...line, copy.overdue.waiting(p.waitingFor.owner?.name ?? null, p.waitingFor.title)] : line;
+      const emoji = copy.overdue.emoji[i] ?? '🐢';
+      return {
+        emoji,
+        tint: 'mint',
+        parts,
+        actions: href ? ['openTask', 'whatsapp'] : ['whatsapp'],
+        href,
+        share: share(parts, emoji),
+      };
+    }
+    case 'TASK_OWNERLESS_OVERDUE': {
+      const parts = copy.ownerlessOverdue(p.title);
+      return { emoji: '👻', tint: 'sky', parts, actions: ['whatsapp'], href: taskHref(p.taskId), share: share(parts, '👻') };
+    }
+    case 'PREREQ_BLOCKED': {
+      const href = taskHref(p.waitingTaskId);
+      const delay = taskWith(p.waitingTaskId, { delay: String(p.blockedDays) });
+      return {
+        emoji: '🧱',
+        tint: 'mint',
+        parts: copy.prereqBlocked(p.waitingTitle, p.prereqTitle, p.blockedDays),
+        actions: delay ? ['delay', 'viewTask'] : [],
+        href,
+        to: delay ? { delay } : undefined,
+      };
+    }
+    case 'WEEKLY_SUMMARY': {
+      const parts = copy.weekly({
+        tag,
+        finished: p.finishedCount,
+        finishedPts: formatPoints(p.finishedPoints),
+        total: formatPoints(p.totalPoints),
+        overdue: p.overdueCount,
+        next: p.dueNextWeekCount,
+        top: p.top ? { name: p.top.member.name, pts: formatPoints(p.top.points) } : null,
+      });
+      return {
+        emoji: '📊',
+        tint: 'lemon',
+        parts,
+        actions: projectHref ? ['viewProject', 'whatsapp'] : ['whatsapp'],
+        href: projectHref,
+        share: share(parts, '📊'),
+      };
+    }
+    // ─── M5: the project lifecycle ───
+    case 'PROJECT_DUE': {
+      const end: Href | null = open ? { pathname: '/project/[id]', params: { id, open: 'end' } } : null;
+      return {
+        emoji: '📮',
+        tint: 'lemon',
+        parts: copy.projectDue(tag, monthDay(p.autoEndAt, labels)),
+        actions: end ? ['end'] : [],
+        href: projectHref,
+        to: end ? { end } : undefined,
+      };
+    }
+    case 'PROJECT_AUTO_END_SOON':
+      return { emoji: '⌛', tint: 'lemon', parts: copy.autoEndSoon(tag), actions: [], href: projectHref };
+    case 'PROJECT_ENDED': {
+      const purge = monthDay(p.purgeAfter, labels);
+      const parts = p.auto || !p.leader ? copy.projectEndedAuto(tag, purge) : copy.projectEnded(p.leader.name, tag, purge);
+      return { emoji: '🏁', tint: 'lilac', parts, actions: projectHref ? ['viewProject'] : [], href: projectHref };
+    }
+    case 'PROJECT_REOPENED':
+      return {
+        emoji: '🔓',
+        tint: 'mint',
+        parts: copy.projectReopened(p.leader.name, tag, monthDay(p.deadline, labels)),
+        actions: projectHref ? ['viewProject'] : [],
+        href: projectHref,
+      };
+    case 'PROJECT_DELETE_SOON':
+      return { emoji: '🗑️', tint: 'sky', parts: copy.deleteSoon(tag, p.days), actions: [], href: projectHref };
+    case 'TASK_DELAYED': {
+      const href = taskHref(p.taskId);
+      return {
+        emoji: '⏳',
+        tint: 'sky',
+        parts: copy.taskDelayed(p.title, monthDay(p.dueAt, labels), p.prereq?.title ?? null),
         actions: href ? ['openTask'] : [],
         href,
       };

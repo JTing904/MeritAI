@@ -12,6 +12,7 @@ import { alreadyReviewing, assertOwner, nextAttemptNo, taskDone, taskUnderLock }
 import { bumpPackages } from "./notify";
 import { startUnderLock } from "./packages";
 import { lockAsMember, TX_OPTIONS, type Tx } from "./tx";
+import { clock } from "../lib/clock";
 
 /** A file already written to storage (key = "<projectId>/<taskId>/<newFileId()>.<ext>"); mimeType = the sniffed canonical type. */
 export type StoredEvidenceFile = { key: string; name: string; sizeBytes: number; mimeType: string };
@@ -95,7 +96,7 @@ export async function addFileEvidence(
   taskId: string,
   userId: string,
   file: StoredEvidenceFile,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<void> {
   await addEvidence(
     db,
@@ -143,7 +144,7 @@ export async function addLinkEvidence(
   taskId: string,
   userId: string,
   url: string,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<void> {
   const link = checkLink(url);
   await addEvidence(db, projectId, taskId, userId, { kind: "LINK", name: linkName(link.parsed), url: link.url }, now);
@@ -159,7 +160,7 @@ export async function deleteEvidence(
   taskId: string,
   userId: string,
   evidenceId: string,
-  _now = new Date(),
+  _now = clock.now(),
 ): Promise<{ storageKey: string | null }> {
   return db.$transaction(async (tx) => {
     const { member } = await lockAsMember(tx, projectId, userId);
@@ -175,7 +176,7 @@ export async function deleteEvidence(
 }
 
 /** GET /api/evidence/:id/link: a member of the evidence's project (404 otherwise) gets a 10-minute signed URL. */
-export async function evidenceLink(db: Db, evidenceId: string, userId: string, now = new Date()): Promise<EvidenceLink> {
+export async function evidenceLink(db: Db, evidenceId: string, userId: string, now = clock.now()): Promise<EvidenceLink> {
   const evidence = await db.evidence.findUnique({ where: { id: evidenceId }, include: { task: { select: { projectId: true } } } });
   if (!evidence) throw notFound("Evidence");
   await requireActiveMember(db, evidence.task.projectId, userId);
@@ -216,7 +217,7 @@ export async function signedFileResponse(
   db: Db,
   key: string,
   query: { exp?: string; sig?: string },
-  now = new Date(),
+  now = clock.now(),
 ): Promise<Response> {
   const missing = () => notFound("File");
   if (!isStorageKey(key) || !query.sig || !query.exp || !/^\d{1,12}$/.test(query.exp)) throw missing();

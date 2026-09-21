@@ -16,11 +16,13 @@ import { Carousel } from '@/features/pick/Carousel';
 import { Confetti } from '@/features/pick/Confetti';
 import { packageTasks, pickFoot, startIndex } from '@/features/pick/foot';
 import { PackageCard } from '@/features/pick/PackageCard';
+import { FrozenLine } from '@/features/life/LifecycleCard';
 import { LeaderTools } from '@/features/project/LeaderTools';
 import { NeedsPackageCard } from '@/features/project/NeedsPackage';
 import { ResplitSheet } from '@/features/project/ResplitSheet';
 import { useProject } from '@/features/project/useProject';
 import { useI18n } from '@/i18n';
+import { isEnded, isLive } from '@/lib/lifecycle';
 import { packageSpread } from '@/lib/packages';
 import { useSession } from '@/lib/session';
 import { useTheme } from '@/theme';
@@ -76,6 +78,8 @@ export default function PickScreen() {
   const people = project.members.filter((m) => m.active).length;
   const free = packages.filter((x) => x.ownerMemberId === null).length;
   const leader = project.viewerRole === 'LEADER';
+  // ENDED: the packages can be looked at, not picked or swapped.
+  const ended = isEnded(project.basics.status);
 
   // Title (the same test as wizard step 6): equal packages say their points, even ones the average,
   // uneven ones say so and the intro gives the biggest and smallest.
@@ -143,6 +147,7 @@ export default function PickScreen() {
           </Txt>
         </View>
 
+        {ended ? <FrozenLine /> : null}
         {/* The project page's warn card (null unless the viewer needs a package). */}
         {free === 0 && <NeedsPackageCard project={project} onResplit={() => setResplitting(true)} />}
 
@@ -156,25 +161,27 @@ export default function PickScreen() {
               deadline={project.basics.deadline}
               onOpenTask={openTask}
               foot={
-                <CardFoot
-                  project={project}
-                  pkg={pkg}
-                  foot={pickFoot(project, pkg)}
-                  myColor={myColor}
-                  busy={busy}
-                  onPick={(x) => void pick(x)}
-                  onRequestSwap={(x) => void requestSwap(x)}
-                  onOpenTask={openTask}
-                  onChange={setProject}
-                  onError={onError}
-                />
+                ended ? null : (
+                  <CardFoot
+                    project={project}
+                    pkg={pkg}
+                    foot={pickFoot(project, pkg)}
+                    myColor={myColor}
+                    busy={busy}
+                    onPick={(x) => void pick(x)}
+                    onRequestSwap={(x) => void requestSwap(x)}
+                    onOpenTask={openTask}
+                    onChange={setProject}
+                    onError={onError}
+                  />
+                )
               }
             />
           ))}
         </Carousel>
 
         {leader && <LeaderTools project={project} onChange={setProject} variant="pick" onError={onError} />}
-        {resplitting && leader && project.basics.status === 'ACTIVE' && (
+        {resplitting && leader && isLive(project.basics.status) && (
           <ResplitSheet project={project} onClose={() => setResplitting(false)} onChange={setProject} onError={onError} />
         )}
         {dueHint && (

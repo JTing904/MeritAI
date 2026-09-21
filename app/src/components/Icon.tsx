@@ -26,14 +26,15 @@ export type IconName =
   | 'table'
   | 'door'
   | 'trash'
-  | 'wifiOff';
+  | 'wifiOff'
+  | 'lock';
 
 const HIDDEN =
   Platform.OS === 'web'
     ? ({ 'aria-hidden': true } as object)
     : ({ accessibilityElementsHidden: true, importantForAccessibility: 'no-hide-descendants' } as const);
 
-const STROKE: Partial<Record<IconName, number>> = { plus: 2.6, back: 2.4, close: 2.4, check: 3 };
+const STROKE: Partial<Record<IconName, number>> = { plus: 2.6, back: 2.4, close: 2.4, check: 3, lock: 2.2 };
 
 export function Icon({ name, size = 22, color }: { name: IconName; size?: number; color: string }) {
   return (
@@ -53,6 +54,12 @@ export function Icon({ name, size = 22, color }: { name: IconName; size?: number
 }
 
 const GLYPHS: Record<IconName, React.ReactNode> = {
+  lock: (
+    <>
+      <Rect x={5} y={11} width={14} height={10} rx={2} />
+      <Path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </>
+  ),
   wifiOff: (
     <>
       <Path d="M2 2l20 20" />

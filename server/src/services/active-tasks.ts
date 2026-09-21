@@ -8,6 +8,7 @@ import { bumpPackages, notify, recordEvent } from "./notify";
 import { MAX_TASKS, type ActiveTaskPatchBody, type TaskBody } from "./schemas";
 import { resolveDueAt } from "./tasks";
 import { assertPointsTotal, lockAsMember, TOTAL_POINTS, touchProject, TX_OPTIONS, type Tx } from "./tx";
+import { clock } from "../lib/clock";
 
 /** Feature and milestone ids must belong to this project. */
 async function assertRefs(tx: Tx, projectId: string, input: Pick<TaskBody, "featureId" | "milestoneId">) {
@@ -41,7 +42,7 @@ async function rescale(tx: Tx, tasks: { id: string; points: number }[], total: n
  * package's owner; every other task (finished ones and those of people who left too) is rescaled so
  * the total stays exactly 1000.
  */
-export async function addActiveTask(db: Db, projectId: string, userId: string, input: TaskBody, now = new Date()): Promise<void> {
+export async function addActiveTask(db: Db, projectId: string, userId: string, input: TaskBody, now = clock.now()): Promise<void> {
   await db.$transaction(async (tx) => {
     const { project, member: leader } = await lockAsMember(tx, projectId, userId, { leader: true });
     if (!Number.isInteger(input.points) || input.points < 1 || input.points > 999) {
@@ -117,7 +118,7 @@ export async function updateActiveTask(
   taskId: string,
   userId: string,
   input: ActiveTaskPatchBody,
-  _now = new Date(),
+  _now = clock.now(),
 ): Promise<void> {
   await db.$transaction(async (tx) => {
     const { project, member } = await lockAsMember(tx, projectId, userId);

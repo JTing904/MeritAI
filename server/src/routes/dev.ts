@@ -9,7 +9,11 @@ import { devLoginEnabled } from "../lib/dev-gate";
 import { notFound } from "../lib/errors";
 import { ok } from "../lib/http";
 import { setDevTaskStatus } from "../services/dev-tasks";
-import { DevStatusSchema } from "../services/schemas";
+import { DevStatusSchema, TimeMachineSchema } from "../services/schemas";
+import { runTick } from "../services/tick";
+import { clock, MAX_OFFSET_MS } from "../lib/clock";
+import { AppError } from "../lib/errors";
+import type { TickResult, TimeMachineState } from "../../../shared/types";
 
 // Developer one-tap login. Every route answers 404 unless dev login is enabled,
 // so production never reveals that it exists. Only the seeded test people can be used.
@@ -48,4 +52,25 @@ devRoutes.post("/tasks/:taskId/status", async (c) => {
   const { status } = await readBody(c, DevStatusSchema);
   await setDevTaskStatus(c.var.db, c.req.param("taskId"), user.id, status);
   return ok(c, null);
+});
+
+// The time machine (M5): shifts the server clock (lib/clock.ts) and runs one tick at the new time, so
+// reminders, overdue flags, the lifecycle and swap expiry can be tried without waiting. Only behind the dev
+// gate above; the offset lives in this process (a restart resets it) and affects everyone using it.
+const machineState = (tick: TickResult | null): TimeMachineState => ({
+  offsetMs: clock.offsetMs(),
+  now: clock.now().toISOString(),
+  realNow: new Date().toISOString(),
+  tick,
+});
+
+devRoutes.get("/time-machine", (c) => ok<TimeMachineState>(c, machineState(null)));
+
+devRoutes.post("/time-machine", async (c) => {
+  const input = await readBody(c, TimeMachineSchema);
+  const next = "reset" in input ? 0 : "offsetMs" in input ? input.offsetMs : clock.offsetMs() + input.advanceMs;
+  if (Math.abs(next) > MAX_OFFSET_MS) throw new AppError(400, "VALIDATION", "The time machine goes at most 400 days either way");
+  clock.setOffset(next);
+  const tick = await runTick(c.var.db, clock.now());
+  return ok<TimeMachineState>(c, machineState(tick));
 });

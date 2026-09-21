@@ -37,6 +37,9 @@ export const membersZh = {
     endHint:
       '确认作业已经交了之后，大家有 14 天可以下载团队贡献报告，之后整个项目会被删除（徽章会保留）。截止日过了 7 天还没确认，会自动结束。',
     endButton: '确认已交，结束项目',
+    /** ENDED (M5): the same card offers 重新打开. */
+    endedTitle: '项目已结束',
+    endedHint: '现在只能看。删除之前，组长可以重新打开，大家又能交证据、评级。',
     /** The danger card at the bottom (leader): opens DeleteProjectSheet. */
     deleteTitle: '删除项目',
     deleteHint: '为所有人删除这个项目：所有人都会马上看不到它。7 天内你可以在首页恢复，之后彻底删除。',

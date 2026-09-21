@@ -52,8 +52,18 @@ export function assertDraft(project: Pick<Project, "status">): void {
   if (project.status !== "DRAFT") throw new AppError(409, "NOT_A_DRAFT", "The plan was already confirmed");
 }
 
-/** Drafts have no invite code yet; ended projects take no new people or changes. */
+/**
+ * A confirmed project that takes changes: ACTIVE, or AWAITING_CONFIRM (past the deadline, where everything
+ * still works until the leader ends it, M5). Drafts → 409 CONFLICT; ENDED projects are read-only → 409
+ * PROJECT_ENDED.
+ */
 export function assertActive(project: Pick<Project, "status">): void {
   if (project.status === "DRAFT") throw new AppError(409, "CONFLICT", "Confirm the plan first");
-  if (project.status !== "ACTIVE") throw new AppError(409, "PROJECT_ENDED", "The project has ended");
+  if (!isRunning(project)) throw projectEnded();
 }
+
+export const projectEnded = () => new AppError(409, "PROJECT_ENDED", "The project has ended");
+
+/** ACTIVE or AWAITING_CONFIRM: packages are handed out, tasks are worked on, reminders count. */
+export const isRunning = (project: Pick<Project, "status">): boolean =>
+  project.status === "ACTIVE" || project.status === "AWAITING_CONFIRM";

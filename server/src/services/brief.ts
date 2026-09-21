@@ -8,6 +8,7 @@ import { MAX_BRIEF_BYTES } from "../lib/plan/extract";
 import { normalizeBrief, parseBriefWithRules } from "../lib/plan/rules";
 import { lockDraft, TX_OPTIONS } from "./tx";
 import { loadDraftView } from "./views";
+import { clock } from "../lib/clock";
 
 /**
  * Most of a brief kept in Project.briefText (A12): about 100 pages of text. A longer one is still parsed
@@ -59,7 +60,7 @@ export async function applyBrief(
   db: Db,
   projectId: string,
   brief: { text: string; fileName: string | null; sizeBytes: number | null; typed?: boolean },
-  now = new Date(),
+  now = clock.now(),
 ): Promise<BriefResult> {
   if (!brief.text.trim()) return briefFailure("EMPTY", brief.fileName, brief.sizeBytes);
   const parsed = parseBriefWithRules(brief.text, { typed: brief.typed ?? false });

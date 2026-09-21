@@ -3,6 +3,7 @@ import type { Db } from "../lib/db";
 import { AppError, forbidden, notFound } from "../lib/errors";
 import type { ChecklistBody } from "./schemas";
 import { lockAsMember, TX_OPTIONS, type Tx } from "./tx";
+import { clock } from "../lib/clock";
 
 async function findTask(tx: Tx, projectId: string, taskId: string) {
   const task = await tx.task.findFirst({ where: { id: taskId, projectId }, select: { id: true, ownerId: true } });
@@ -17,7 +18,7 @@ export async function replaceChecklist(
   taskId: string,
   userId: string,
   input: ChecklistBody,
-  _now = new Date(),
+  _now = clock.now(),
 ): Promise<void> {
   await db.$transaction(async (tx) => {
     const { member } = await lockAsMember(tx, projectId, userId);
@@ -49,7 +50,7 @@ export async function tickItem(
   userId: string,
   itemId: string,
   done: boolean,
-  _now = new Date(),
+  _now = clock.now(),
 ): Promise<void> {
   await db.$transaction(async (tx) => {
     const { member } = await lockAsMember(tx, projectId, userId);

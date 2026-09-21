@@ -11,6 +11,10 @@ import { Txt } from '@/components/Txt';
 import { GradeSheet } from '@/features/grading/GradeSheet';
 import { OverrideSheet } from '@/features/grading/OverrideSheet';
 import { Confetti } from '@/features/pick/Confetti';
+import { DelaySheet } from '@/features/life/DelaySheet';
+import { FrozenLine } from '@/features/life/LifecycleCard';
+import { MoveTaskSheet } from '@/features/project/MoveTaskSheet';
+import { isFinished } from '@/features/project/parts';
 import { useProject } from '@/features/project/useProject';
 import { AttemptResult } from '@/features/task/AttemptResult';
 import { Attempts } from '@/features/task/Attempts';
@@ -26,6 +30,7 @@ import { TaskEditActiveSheet } from '@/features/task/TaskEditActiveSheet';
 import { TaskHead } from '@/features/task/TaskHead';
 import { useTaskDetail } from '@/features/task/useTaskDetail';
 import { useI18n } from '@/i18n';
+import { isEnded, isLive } from '@/lib/lifecycle';
 import { useSession } from '@/lib/session';
 import { useTheme } from '@/theme';
 
@@ -37,7 +42,8 @@ const styles = StyleSheet.create({
 const DEV_STATUSES: DevTaskStatusInput['status'][] = ['TODO', 'DOING', 'DONE', 'HALF'];
 
 type OpenSheet =
-  | { kind: 'edit' | 'prereq' | 'checklist' }
+  | { kind: 'edit' | 'prereq' | 'checklist' | 'move' }
+  | { kind: 'delay'; blockedDays?: number }
   | { kind: 'grade'; mode: 'pending' | 'outside' }
   | { kind: 'override'; attemptId: string };
 
@@ -45,9 +51,17 @@ type OpenSheet =
  * 任务详情 (M4, boards 1–9): head → 作业要求（原文）→ 前置任务 → 清单 → 开始做 → 交证据 → 评级结果.
  * What shows depends on who is looking (the owner, the leader, anyone else) and where the task is.
  * `?grade=1` (去评级, the review queue) opens the grading sheet once, only while an attempt waits for review.
+ * M5: `?delay=<days>` (一键延后, PREREQ_BLOCKED) opens the DelaySheet and `?move=1` (移给谁,
+ * TASK_OWNERLESS_SOON) the move sheet, once, for the leader of a running project. ENDED: read-only.
  */
 export default function TaskScreen() {
-  const { id, taskId, grade } = useLocalSearchParams<{ id: string; taskId: string; grade?: string }>();
+  const { id, taskId, grade, delay, move } = useLocalSearchParams<{
+    id: string;
+    taskId: string;
+    grade?: string;
+    delay?: string;
+    move?: string;
+  }>();
   const { t } = useI18n();
   const { c } = useTheme();
   const k = t.task;
@@ -114,6 +128,18 @@ export default function TaskScreen() {
     if (detail.current?.status === 'PENDING' && detail.project.viewerRole === 'LEADER') setSheet({ kind: 'grade', mode: 'pending' });
   }, [grade, detail]);
 
+  // ?delay= / ?move=: once, and only while the leader can still do it.
+  useEffect(() => {
+    if ((!delay && !move) || !detail || !project) return;
+    router.setParams({ delay: undefined, move: undefined });
+    const can = detail.project.viewerRole === 'LEADER' && isLive(project.basics.status) && !isFinished(detail.task);
+    if (!can) return;
+    if (delay) {
+      const days = Number(delay);
+      setSheet({ kind: 'delay', blockedDays: Number.isFinite(days) && days > 0 ? Math.round(days) : undefined });
+    } else if (detail.task.status !== 'REVIEWING') setSheet({ kind: 'move' });
+  }, [delay, move, detail, project]);
+
   const ctx = useMemo<TaskCtx | null>(() => {
     if (!project || !detail) return null;
     const viewerId = detail.project.viewerMemberId;
@@ -127,7 +153,8 @@ export default function TaskScreen() {
       viewerId,
       leader: detail.project.viewerRole === 'LEADER',
       mine: detail.owner !== null && detail.owner.memberId === viewerId,
-      running: project.basics.status === 'ACTIVE',
+      running: isLive(project.basics.status),
+      ended: isEnded(project.basics.status),
       busy,
       run,
       nameOf: (memberId) => (memberId ? (names.get(memberId) ?? null) : null),
@@ -192,7 +219,7 @@ export default function TaskScreen() {
   } else if (!ctx) {
     content = <ActivityIndicator color={c.grape} style={{ paddingVertical: 24 }} />;
   } else {
-    const { task, detail: d, mine, leader, running } = ctx;
+    const { task, detail: d, mine, leader, running, ended } = ctx;
     const viewerId = ctx.viewerId;
     const pending = d.current?.status === 'PENDING';
     const editor = showsEvidenceEditor(ctx, resubmitting);
@@ -218,8 +245,9 @@ export default function TaskScreen() {
     content = (
       <>
         <TaskHead ctx={ctx} onEdit={() => setSheet({ kind: 'edit' })} />
+        {ended ? <FrozenLine /> : null}
         <BriefExcerpt ctx={ctx} />
-        <PrereqCard ctx={ctx} onChange={() => setSheet({ kind: 'prereq' })} />
+        <PrereqCard ctx={ctx} onChange={() => setSheet({ kind: 'prereq' })} onDelay={() => setSheet({ kind: 'delay' })} />
         <Checklist ctx={ctx} setDetail={setDetail} onEdit={() => setSheet({ kind: 'checklist' })} />
         {canStart ? (
           <View style={{ gap: 6 }}>
@@ -286,6 +314,12 @@ export default function TaskScreen() {
     );
   }
 
+  // 移给谁: the task as the project lists it, while it can still move (not finished, not waiting for a grade).
+  const moveTarget =
+    (ctx?.leader &&
+      ctx.running &&
+      ctx.project.tasks.find((x) => x.id === taskId && !isFinished(x) && x.status !== 'REVIEWING')) ||
+    null;
   const override = ctx && sheet?.kind === 'override' ? (ctx.detail.attempts.find((a) => a.id === sheet.attemptId) ?? null) : null;
   const tag = detail?.project.tag ?? '';
 
@@ -303,6 +337,27 @@ export default function TaskScreen() {
         />
       ) : null}
       {ctx && sheet?.kind === 'prereq' ? <PrereqSheet ctx={ctx} onClose={() => setSheet(null)} /> : null}
+      {ctx && sheet?.kind === 'delay' && ctx.leader && ctx.running && !isFinished(ctx.task) ? (
+        <DelaySheet
+          detail={ctx.detail}
+          blockedDays={sheet.blockedDays}
+          onClose={() => setSheet(null)}
+          onChange={onSheetChange}
+          onError={onError}
+        />
+      ) : null}
+      {ctx && sheet?.kind === 'move' && moveTarget ? (
+        <MoveTaskSheet
+          project={ctx.project}
+          task={moveTarget}
+          onClose={() => setSheet(null)}
+          onChange={(view) => {
+            setProject(view);
+            void reload();
+          }}
+          onError={onError}
+        />
+      ) : null}
       {ctx && sheet?.kind === 'checklist' ? <ChecklistEditSheet ctx={ctx} onClose={() => setSheet(null)} /> : null}
       {ctx && sheet?.kind === 'grade' ? (
         <GradeSheet

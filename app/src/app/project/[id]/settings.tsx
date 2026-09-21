@@ -13,6 +13,9 @@ import { Icon } from '@/components/Icon';
 import { AppBar, Screen } from '@/components/Screen';
 import { useToast } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
+import { EndSheet } from '@/features/life/EndSheet';
+import { FrozenLine } from '@/features/life/LifecycleCard';
+import { ReopenSheet } from '@/features/life/ReopenSheet';
 import { DeleteProjectSheet } from '@/features/members/DeleteProjectSheet';
 import { activeMembers, peopleLabel } from '@/features/members/format';
 import { InviteCodeBox } from '@/features/members/InvitePanel';
@@ -22,6 +25,7 @@ import { useProject } from '@/features/project/useProject';
 import { useDates, zoneName } from '@/features/wizard/dates';
 import { Field, Hint, Input } from '@/features/wizard/Field';
 import { useI18n } from '@/i18n';
+import { isEnded, isLive } from '@/lib/lifecycle';
 import { useSession } from '@/lib/session';
 import { useTheme } from '@/theme';
 
@@ -76,6 +80,9 @@ function Settings({
   const busy = useRef(false);
   const leader = project.viewerRole === 'LEADER';
   const id = project.basics.id;
+  // M5: ENDED is read-only (no edits); joining (and so the invite code) only while ACTIVE.
+  const ended = isEnded(project.basics.status);
+  const joinable = project.basics.status === 'ACTIVE';
 
   const tz = project.basics.timezone;
   const city = tz === 'UTC' ? 'UTC' : zoneName(tz, t.wizard.zones);
@@ -105,6 +112,7 @@ function Settings({
 
   return (
     <>
+      {ended ? <FrozenLine /> : null}
       <List>
         <View style={styles.row}>
           <View style={styles.grow}>
@@ -113,7 +121,7 @@ function Settings({
               {summary}
             </Txt>
           </View>
-          {leader ? (
+          {leader && !ended ? (
             <Button title={s.edit} kind="soft" small accessibilityLabel={s.editLabel} onPress={() => setEditing(true)} />
           ) : null}
         </View>
@@ -135,24 +143,26 @@ function Settings({
         </Pressable>
       </List>
 
-      <Card style={{ gap: 10 }}>
-        <Txt v="body" weight={700}>
-          {s.inviteTitle}
-        </Txt>
-        {project.inviteCode ? <InviteCodeBox code={project.inviteCode} /> : null}
-        {leader ? (
-          <>
-            <View style={{ alignSelf: 'flex-start', opacity: regenerating ? 0.5 : 1 }}>
-              <LinkButton title={s.regenerate} onPress={regenerate} />
-            </View>
-            <Hint>{s.regenerateHint}</Hint>
-          </>
-        ) : null}
-      </Card>
+      {joinable ? (
+        <Card style={{ gap: 10 }}>
+          <Txt v="body" weight={700}>
+            {s.inviteTitle}
+          </Txt>
+          {project.inviteCode ? <InviteCodeBox code={project.inviteCode} /> : null}
+          {leader ? (
+            <>
+              <View style={{ alignSelf: 'flex-start', opacity: regenerating ? 0.5 : 1 }}>
+                <LinkButton title={s.regenerate} onPress={regenerate} />
+              </View>
+              <Hint>{s.regenerateHint}</Hint>
+            </>
+          ) : null}
+        </Card>
+      ) : null}
 
-      {leader ? <LeaderOnly project={project} onError={onError} /> : null}
+      {leader ? <LeaderOnly project={project} setProject={setProject} onError={onError} /> : null}
 
-      {editing && leader ? (
+      {editing && leader && !ended ? (
         <ProjectInfoSheet project={project} onClose={() => setEditing(false)} onSaved={setProject} onError={onError} />
       ) : null}
     </>
@@ -160,88 +170,119 @@ function Settings({
 }
 
 /**
- * AI key, integrations and 结束项目 exactly as the mockup, disabled until their milestones; then the
- * working 删除项目 card (为所有人删除项目).
+ * AI key and integrations exactly as the mockup, disabled until their milestones (hidden once ENDED); the
+ * 结束项目 card (M5: EndSheet; 重新打开 when ENDED); then the working 删除项目 card (为所有人删除项目).
  */
-function LeaderOnly({ project, onError }: { project: ProjectView; onError: (err: unknown) => void }) {
+function LeaderOnly({
+  project,
+  setProject,
+  onError,
+}: {
+  project: ProjectView;
+  setProject: (view: ProjectView) => void;
+  onError: (err: unknown) => void;
+}) {
   const { t } = useI18n();
   const s = t.members.settings;
   const [deleting, setDeleting] = useState(false);
+  const [lifeSheet, setLifeSheet] = useState<'end' | 'reopen' | null>(null);
   const tag = projectTag(project.basics.name, project.basics.shortCode);
+  const ended = isEnded(project.basics.status);
+  const live = isLive(project.basics.status);
   return (
     <>
-      <Card style={{ gap: 10 }}>
-        <Txt v="body" weight={700}>
-          {s.ai}
-        </Txt>
-        <View style={styles.inert}>
-          <Seg
-            label={s.aiProviders}
-            value="gemini"
-            onChange={() => {}}
-            disabled
-            options={[
-              { value: 'gemini', label: 'Gemini' },
-              { value: 'claude', label: 'Claude' },
-              { value: 'openai', label: 'OpenAI' },
-            ]}
-          />
-        </View>
-        <Field label={s.aiKey('Gemini')} small={s.aiKeySmall}>
-          <View style={styles.inert}>
-            <Input label={s.aiKey('Gemini')} placeholder={s.aiKeyPlaceholder} editable={false} aria-disabled />
-          </View>
-        </Field>
-        <Hint>{s.aiHint}</Hint>
-      </Card>
-      <DevNote milestone="M6" />
-
-      <List>
-        <View style={styles.row}>
-          <Txt style={styles.emoji} aria-hidden>
-            🐙
-          </Txt>
-          <View style={styles.grow}>
-            <Txt v="text">{s.github}</Txt>
-            <Txt v="meta" size={12}>
-              {s.githubSub}
+      {ended ? null : (
+        <>
+          <Card style={{ gap: 10 }}>
+            <Txt v="body" weight={700}>
+              {s.ai}
             </Txt>
-          </View>
-          <Chip>{s.notConnected}</Chip>
-        </View>
-        <View style={styles.row}>
-          <Txt style={styles.emoji} aria-hidden>
-            💬
-          </Txt>
-          <View style={styles.grow}>
-            <Txt v="text">{s.discord}</Txt>
-            <Txt v="meta" size={12}>
-              {s.discordSub}
-            </Txt>
-          </View>
-          <Button title={s.connect} kind="soft" small disabled accessibilityLabel={s.connectLabel(s.discord)} />
-        </View>
-        <View style={styles.row}>
-          <Txt style={styles.emoji} aria-hidden>
-            ✈️
-          </Txt>
-          <View style={styles.grow}>
-            <Txt v="text">{s.telegram}</Txt>
-          </View>
-          <Button title={s.connect} kind="soft" small disabled accessibilityLabel={s.connectLabel(s.telegram)} />
-        </View>
-      </List>
-      <DevNote milestone="M8" />
-      <DevNote milestone="M9" />
+            <View style={styles.inert}>
+              <Seg
+                label={s.aiProviders}
+                value="gemini"
+                onChange={() => {}}
+                disabled
+                options={[
+                  { value: 'gemini', label: 'Gemini' },
+                  { value: 'claude', label: 'Claude' },
+                  { value: 'openai', label: 'OpenAI' },
+                ]}
+              />
+            </View>
+            <Field label={s.aiKey('Gemini')} small={s.aiKeySmall}>
+              <View style={styles.inert}>
+                <Input label={s.aiKey('Gemini')} placeholder={s.aiKeyPlaceholder} editable={false} aria-disabled />
+              </View>
+            </Field>
+            <Hint>{s.aiHint}</Hint>
+          </Card>
+          <DevNote milestone="M6" />
 
-      <Card style={{ gap: 10 }}>
-        <Txt v="body" weight={700}>
-          {s.end}
-        </Txt>
-        <Hint>{s.endHint}</Hint>
-        <Button title={s.endButton} kind="danger" block disabled />
-      </Card>
-      <DevNote milestone="M5" />
+          <List>
+            <View style={styles.row}>
+              <Txt style={styles.emoji} aria-hidden>
+                🐙
+              </Txt>
+              <View style={styles.grow}>
+                <Txt v="text">{s.github}</Txt>
+                <Txt v="meta" size={12}>
+                  {s.githubSub}
+                </Txt>
+              </View>
+              <Chip>{s.notConnected}</Chip>
+            </View>
+            <View style={styles.row}>
+              <Txt style={styles.emoji} aria-hidden>
+                💬
+              </Txt>
+              <View style={styles.grow}>
+                <Txt v="text">{s.discord}</Txt>
+                <Txt v="meta" size={12}>
+                  {s.discordSub}
+                </Txt>
+              </View>
+              <Button title={s.connect} kind="soft" small disabled accessibilityLabel={s.connectLabel(s.discord)} />
+            </View>
+            <View style={styles.row}>
+              <Txt style={styles.emoji} aria-hidden>
+                ✈️
+              </Txt>
+              <View style={styles.grow}>
+                <Txt v="text">{s.telegram}</Txt>
+              </View>
+              <Button title={s.connect} kind="soft" small disabled accessibilityLabel={s.connectLabel(s.telegram)} />
+            </View>
+          </List>
+          <DevNote milestone="M8" />
+          <DevNote milestone="M9" />
+        </>
+      )}
+
+      {live ? (
+        <Card style={{ gap: 10 }}>
+          <Txt v="body" weight={700}>
+            {s.end}
+          </Txt>
+          <Hint>{s.endHint}</Hint>
+          <Button title={s.endButton} kind="danger" block onPress={() => setLifeSheet('end')} />
+        </Card>
+      ) : null}
+      {ended ? (
+        <Card style={{ gap: 10 }}>
+          <Txt v="body" weight={700}>
+            {s.endedTitle}
+          </Txt>
+          <Hint>{s.endedHint}</Hint>
+          <Button title={t.life.ended.reopen} kind="soft" block onPress={() => setLifeSheet('reopen')} />
+        </Card>
+      ) : null}
+      {lifeSheet === 'end' && live ? (
+        <EndSheet project={project} onClose={() => setLifeSheet(null)} onChange={setProject} onError={onError} />
+      ) : null}
+      {lifeSheet === 'reopen' && ended ? (
+        <ReopenSheet project={project} onClose={() => setLifeSheet(null)} onChange={setProject} onError={onError} />
+      ) : null}
 
       <Card style={{ gap: 10 }}>
         <Txt v="body" weight={700} color="bad">

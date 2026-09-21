@@ -9,6 +9,7 @@ import { normalizeInviteCode } from "../lib/invite-code";
 import { bumpPackages, recordEvent, remindPackageless } from "./notify";
 import { lockProject, TX_OPTIONS, type Tx } from "./tx";
 import { sortLeaderFirst } from "./views";
+import { clock } from "../lib/clock";
 
 /** A team has at most this many active members (REQUIREMENTS §13); the next one to join gets TEAM_FULL. */
 export const MAX_ACTIVE_MEMBERS = 8;
@@ -79,7 +80,7 @@ export function invitesFor(user: Pick<User, "email" | "githubUsername">): Prisma
  * size when needed, goes into the feed and reminds the leader when no package is left for them. Any
  * pending invites the user had for this project count as accepted.
  */
-export async function joinProject(tx: Tx, projectId: string, user: User, now = new Date()): Promise<Member> {
+export async function joinProject(tx: Tx, projectId: string, user: User, now = clock.now()): Promise<Member> {
   const project = await lockProject(tx, projectId);
   if (project.deletedAt !== null) throw notFound("Project");
   if (project.status !== "ACTIVE") throw projectEnded();
@@ -130,7 +131,7 @@ async function acceptInvites(tx: Tx, projectId: string, user: User, now: Date): 
   });
 }
 
-export async function joinByCode(db: Db, rawCode: string, user: User, now = new Date()): Promise<Member> {
+export async function joinByCode(db: Db, rawCode: string, user: User, now = clock.now()): Promise<Member> {
   const project = await findProjectByCode(db, rawCode);
   return db.$transaction((tx) => joinProject(tx, project.id, user, now), TX_OPTIONS);
 }

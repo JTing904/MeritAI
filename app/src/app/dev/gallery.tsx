@@ -13,6 +13,8 @@ import { AppBar, Screen } from '@/components/Screen';
 import { Sheet, SheetOption } from '@/components/Sheet';
 import { useToast } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
+import { WhatsAppGlyph } from '@/components/WhatsAppGlyph';
+import { FrozenLine } from '@/features/life/LifecycleCard';
 import { useI18n } from '@/i18n';
 import { useTheme } from '@/theme';
 import { HIGHLIGHTERS } from '@/theme/tokens';
@@ -93,6 +95,16 @@ function Gallery() {
             ]}
           />
         </View>
+      </Card>
+
+      <SectionHeader title="M5 · 提醒和项目结束" />
+      <Card style={{ gap: 12 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+          <Button title={t.notifs.actions.openTask} kind="soft" small />
+          <Button title={t.notifs.actions.whatsapp} kind="soft" small icon={<WhatsAppGlyph size={16} />} />
+          <Button title={t.notifs.actions.delay} small />
+        </View>
+        <FrozenLine />
       </Card>
 
       <SectionHeader title="列表" />

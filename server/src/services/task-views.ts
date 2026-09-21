@@ -3,6 +3,7 @@ import { projectTag } from "../../../shared/format";
 import type { AttemptView, EvidenceView, TaskDetail, TaskPerson, TaskRef } from "../../../shared/types";
 import type { Attempt, Evidence, GradeChange, Member, Prisma } from "../generated/prisma/client";
 import { canSee, isActiveMember } from "../lib/access";
+import { toLifecycle } from "../lib/lifecycle";
 import { notFound } from "../lib/errors";
 import {
   countingAttempt,
@@ -14,6 +15,7 @@ import {
 } from "../lib/grading";
 import { isFinished } from "../lib/package-state";
 import { sortLeaderFirst, toTaskView, type AttemptStat } from "./views";
+import { clock } from "../lib/clock";
 
 type Db = Prisma.TransactionClient;
 
@@ -86,7 +88,7 @@ export async function loadTaskDetail(
   projectId: string,
   taskId: string,
   viewer: Pick<Member, "userId">,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<TaskDetail> {
   const task = await db.task.findFirst({
     where: { id: taskId, projectId },
@@ -171,6 +173,7 @@ export async function loadTaskDetail(
       viewerRole: me.role,
       leaderMemberId: leader?.id ?? null,
       leaderName: leader?.user.name ?? null,
+      lifecycle: toLifecycle(project, (id) => project.members.find((m) => m.id === id)?.user.name),
     },
     owner: owner ? person(owner) : null,
     packageIndex: task.package?.index ?? null,
@@ -206,6 +209,6 @@ export async function loadTaskDetail(
 }
 
 /** The task as `userId` sees it now (after a write: the membership is read with the detail). */
-export async function loadTaskDetailFor(db: Db, projectId: string, taskId: string, userId: string, now = new Date()): Promise<TaskDetail> {
+export async function loadTaskDetailFor(db: Db, projectId: string, taskId: string, userId: string, now = clock.now()): Promise<TaskDetail> {
   return loadTaskDetail(db, projectId, taskId, { userId }, now);
 }

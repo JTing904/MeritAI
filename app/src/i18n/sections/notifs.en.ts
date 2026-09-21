@@ -1,4 +1,5 @@
 import { labelsEn } from './labels.en';
+import type { InlinePart } from './home.zh';
 import type { GradeKey, GradeText, notifsZh, OutsideText, OverrideText } from './notifs.zh';
 
 const tasks = (k: number) => (k === 1 ? 'the 1 unfinished task now has no owner' : `the ${k} unfinished tasks now have no owner`);
@@ -36,7 +37,16 @@ export const notifsEn: typeof notifsZh = {
     pick: 'Pick a package',
     openTask: 'Open task',
     grade: 'Grade it',
+    delay: 'Delay it',
+    viewTask: 'See task',
+    move: 'Move it to…',
+    end: 'End project',
+    viewProject: 'See project',
+    whatsapp: 'Send to WhatsApp',
   },
+  share: (tag, text) => (tag && !text.includes(tag) ? `[${tag}] ${text}` : text),
+  weeklyMeta: 'Weekly summary',
+  day: { today: 'today', tomorrow: 'tomorrow' },
   toast: {
     accepted: (n) => `Swapped! Package ${n} is yours now`,
     declined: 'Swap declined',
@@ -169,4 +179,65 @@ export const notifsEn: typeof notifsZh = {
     toLeaderNoOwner: (waiter, prereq) => [{ b: waiter }, ` is waiting on "${prereq}", which nobody is responsible for yet.`],
   },
   prereqDone: (prereq, waiting) => [`"${prereq}" is finished. You can start "${waiting}" now.`],
+
+  dueSoon: (title, when) => [`Your "${title}" is due `, { b: when }, " and hasn't been handed in yet."],
+  dueReview: (title, day, owner) =>
+    owner
+      ? [`"${title}" is due ${day}. `, { b: owner }, ' has handed it in, and it is waiting for your grade.']
+      : [`"${title}" is due ${day}. It has been handed in and is waiting for your grade.`],
+  ownerlessSoon: (title, day) => [`"${title}" is due ${day}, and nobody is responsible for it yet.`],
+  overdue: {
+    emoji: ['🐢', '⏰', '🫠', '📣', '🧃'],
+    lines: [
+      (name, task) => [{ b: name }, `'s "${task}" is overdue. They might still be on the way…`],
+      (name, task) => [`"${task}" is past its due time and `, { b: name }, " hasn't handed it in yet. Cheer them on?"],
+      (name, task) => [`We waited for "${task}" until it went overdue. Go, `, { b: name }, '!'],
+      (name, task) => ['Overdue: ', { b: name }, `'s "${task}" is one last step away.`],
+      (name, task) => [`"${task}" is overdue. `, { b: name }, ', grab a sip of water, then hand it in in one go?'],
+    ],
+    waiting: (owner, title) => (owner ? ` (they're waiting for ${owner}'s "${title}")` : ` (they're waiting for "${title}")`),
+  },
+  ownerlessOverdue: (title) => [`"${title}" is overdue, and nobody ever took it.`],
+  prereqBlocked: (waiting, prereq, days) => [
+    `"${waiting}" has been held up by "${prereq}" for ${days === 1 ? '1 day' : `${days} days`}. Move it later?`,
+  ],
+  weekly: (w) => {
+    const bits: string[] = [];
+    if (w.finished > 0) bits.push(`${w.finished === 1 ? '1 task' : `${w.finished} tasks`} finished (+${w.finishedPts} pts)`);
+    bits.push(`the team is at ${w.total} / 100 pts`);
+    if (w.overdue > 0) bits.push(`${w.overdue} overdue`);
+    if (w.next > 0) bits.push(`${w.next} due next week`);
+    const parts: InlinePart[] = [{ b: w.tag ? `${w.tag} this week` : 'This week' }, `: ${bits.join('; ')}.`];
+    if (w.top) parts.push(' ', { b: w.top.name }, ` earned the most this week (+${w.top.pts} pts).`);
+    return parts;
+  },
+  projectDue: (tag, autoEnd) => [
+    `${tag}'s deadline has come. If it was handed in, press End project; if nobody acts by `,
+    { b: autoEnd },
+    ', it ends by itself.',
+  ],
+  autoEndSoon: (tag) => [
+    `${tag} ends by itself `,
+    { b: 'tomorrow' },
+    '. If it was handed in you can end it now; if not, you can push the deadline later.',
+  ],
+  projectEnded: (leader, tag, purge) => [
+    'The leader, ',
+    { b: leader },
+    `, ended ${tag}. It will be deleted for good on ${purge}; until then you can see the results and download the report.`,
+  ],
+  projectEndedAuto: (tag, purge) => [
+    `The leader didn't act for 7 days, so ${tag} ended by itself. It will be deleted for good on ${purge}; until then you can see the results and download the report.`,
+  ],
+  projectReopened: (leader, tag, deadline) => ['The leader, ', { b: leader }, `, reopened ${tag}. The new deadline is ${deadline}.`],
+  deleteSoon: (tag, days) => [
+    `${tag} will be deleted for good `,
+    { b: days === 1 ? 'in 1 day' : `in ${days} days` },
+    '. Remember to download the contribution report.',
+  ],
+  taskDelayed: (title, date, prereq) => [
+    `The leader moved your "${title}" later, to `,
+    { b: date },
+    prereq ? ` (it's waiting for "${prereq}").` : '.',
+  ],
 };

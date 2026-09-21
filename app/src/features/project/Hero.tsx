@@ -8,6 +8,7 @@ import { daysUntil } from '@/features/home/format';
 import { useI18n } from '@/i18n';
 import { makeStyles, useTheme } from '@/theme';
 import { useLocalDates } from './parts';
+import { appNow } from '@/lib/lifecycle';
 
 const SIZE = 86;
 const R = 36;
@@ -45,7 +46,7 @@ export function ProjectHero({ project }: { project: ProjectView }) {
   const meta = [b.courseName, b.groupLabel, h.due(dates.date(b.deadline))].filter(Boolean).join(' · ');
   const days = daysUntil(b.deadline);
   const left = days > 0 ? h.daysLeft(days) : days === 0 ? h.dueToday : h.pastDeadline;
-  const now = Date.now();
+  const now = appNow().getTime();
   const next = project.milestones.find((m) => new Date(m.dueAt).getTime() >= now) ?? null;
   const repo = b.repoFullName ? (b.repoFullName.split('/').pop() ?? b.repoFullName) : null;
   const earned = formatPoints(project.earnedPoints);

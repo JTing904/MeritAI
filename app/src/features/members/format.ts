@@ -1,6 +1,7 @@
 import type { MemberView, PackageView, ProjectView } from '@shared/types';
 import type { Messages } from '@/i18n/zh';
 import type { RelativeLabels } from '@/lib/time';
+import { appNow } from '@/lib/lifecycle';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -15,10 +16,10 @@ export const memberPackage = (project: ProjectView, member: MemberView): Package
   member.packageId ? (project.packages.find((p) => p.id === member.packageId) ?? null) : null;
 
 /** Joined less than a day ago (「刚加入」). */
-export const joinedRecently = (member: MemberView, now = Date.now()) => now - Date.parse(member.joinedAt) < DAY_MS;
+export const joinedRecently = (member: MemberView, now = appNow().getTime()) => now - Date.parse(member.joinedAt) < DAY_MS;
 
 /** 「9月18日」 / 「2025年9月18日」 in the viewer's time zone. */
-export function dayLabel(iso: string, labels: RelativeLabels, now = new Date()): string {
+export function dayLabel(iso: string, labels: RelativeLabels, now = appNow()): string {
   const d = new Date(iso);
   return d.getFullYear() === now.getFullYear()
     ? labels.thisYear(d.getMonth() + 1, d.getDate())

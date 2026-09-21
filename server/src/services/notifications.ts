@@ -8,6 +8,7 @@ import { AppError, notFound } from "../lib/errors";
 import { expireSwaps } from "./notify";
 import type { NotificationQuery } from "./schemas";
 import { TX_OPTIONS } from "./tx";
+import { clock } from "../lib/clock";
 
 /**
  * Lazy expiry for reads (GET project view, notifications, unread count). Cheap when nothing is due;
@@ -47,7 +48,7 @@ export async function listNotifications(
   db: Db,
   userId: string,
   query: NotificationQuery,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<NotificationPage> {
   await expireDueSwaps(db, swapsOf(userId), now);
 
@@ -108,7 +109,7 @@ export async function listNotifications(
 }
 
 /** Unread notifications (expires the user's swaps first, which may add SWAP_EXPIRED). */
-export async function countUnread(db: Db, userId: string, now = new Date()): Promise<number> {
+export async function countUnread(db: Db, userId: string, now = clock.now()): Promise<number> {
   await expireDueSwaps(db, swapsOf(userId), now);
   return countUnreadRows(db, userId);
 }
@@ -117,7 +118,7 @@ export async function countUnread(db: Db, userId: string, now = new Date()): Pro
  * Marks `upToId` and everything older (list order) as read; returns the unread left, which is what
  * arrived after the list was loaded.
  */
-export async function markRead(db: Db, userId: string, upToId: string, now = new Date()): Promise<number> {
+export async function markRead(db: Db, userId: string, upToId: string, now = clock.now()): Promise<number> {
   const upTo = await db.notification.findFirst({ where: { id: upToId, userId }, select: { id: true, createdAt: true } });
   if (!upTo) throw notFound("Notification");
   await db.notification.updateMany({

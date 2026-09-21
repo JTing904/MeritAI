@@ -11,8 +11,10 @@ import { loadBrief } from "../services/brief-view";
 import { replaceChecklist, tickItem } from "../services/checklist";
 import { myTasks } from "../services/my-tasks";
 import { setPrereq } from "../services/prereq";
-import { ChecklistSchema, PrereqSchema, TickSchema } from "../services/schemas";
+import { ChecklistSchema, DelaySchema, PrereqSchema, TickSchema } from "../services/schemas";
+import { delayTask } from "../services/lifecycle";
 import { loadTaskDetail, loadTaskDetailFor } from "../services/task-views";
+import { clock } from "../lib/clock";
 
 // The task page's reads and small edits (M4 spec §6): taskRoutes → /projects (detail, checklist,
 // prerequisite, brief), myTaskRoutes → /tasks (我的任务). One router per base path. The writes check the
@@ -39,7 +41,7 @@ taskRoutes.get("/:id/tasks/:taskId", async (c) => {
   const user = await requireUser(c);
   const projectId = c.req.param("id");
   const taskId = c.req.param("taskId");
-  const now = new Date();
+  const now = clock.now();
   // Conditional (B2). The detail checks the membership against the members it loads (404 for anyone
   // who can't see it); the token is null for them.
   const token = await taskToken(c.var.db, projectId, taskId, user, now);
@@ -67,6 +69,14 @@ taskRoutes.put("/:id/tasks/:taskId/prereq", async (c) => {
   return ok<TaskDetail>(c, await loadTaskDetailFor(c.var.db, projectId, taskId, user.id));
 });
 
+// 一键延后 (M5): the leader moves an unfinished task's due date later (never past the project deadline).
+taskRoutes.post("/:id/tasks/:taskId/delay", async (c) => {
+  const { user, projectId, taskId } = await who(c);
+  const { dueAt } = await readBody(c, DelaySchema);
+  await delayTask(c.var.db, projectId, taskId, user.id, { dueAt });
+  return ok<TaskDetail>(c, await loadTaskDetailFor(c.var.db, projectId, taskId, user.id));
+});
+
 taskRoutes.get("/:id/brief", async (c) => {
   const { projectId } = await asMember(c);
   return ok<BriefView>(c, await loadBrief(c.var.db, projectId));
@@ -74,6 +84,6 @@ taskRoutes.get("/:id/brief", async (c) => {
 
 myTaskRoutes.get("/mine", async (c) => {
   const user = await requireUser(c);
-  const now = new Date();
+  const now = clock.now();
   return conditional<MyTasksView>(c, await myTasksToken(c.var.db, user, now), () => myTasks(c.var.db, user, now));
 });

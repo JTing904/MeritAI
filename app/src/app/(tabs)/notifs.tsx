@@ -10,9 +10,11 @@ import { useToast } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
 import { describeNotification, type NotifAction } from '@/features/notifs/describe';
 import { NotifCard } from '@/features/notifs/NotifCard';
+import { sendToWhatsApp } from '@/features/notifs/whatsapp';
 import { useNotifications, type NotifFilter } from '@/features/notifs/useNotifications';
 import { useI18n } from '@/i18n';
 import { errorCode } from '@/lib/api';
+import { appNow } from '@/lib/lifecycle';
 import { useSession } from '@/lib/session';
 import { relativeTime } from '@/lib/time';
 import { useTheme } from '@/theme';
@@ -25,7 +27,8 @@ export default function NotifsScreen() {
   const { show } = useToast();
   const list = useNotifications();
   const [busy, setBusy] = useState<{ id: string; action: NotifAction } | null>(null);
-  const now = new Date();
+  // The server's clock (the time machine moves it in development builds).
+  const now = appNow();
 
   const answerSwap = async (n: NotificationView, action: 'accept' | 'decline') => {
     const swapId = n.swap?.id;
@@ -88,9 +91,14 @@ export default function NotifsScreen() {
       )}
 
       {list.items?.map((n) => {
-        const look = describeNotification(n, t.notifs);
+        const look = describeNotification(n, t.notifs, t.labels);
         if (!look) return null;
-        const meta = [n.projectTag, n.audience && t.notifs.audience[n.audience], relativeTime(n.createdAt, t.labels.relative, now)]
+        const meta = [
+          n.projectTag,
+          n.type === 'WEEKLY_SUMMARY' ? t.notifs.weeklyMeta : null,
+          n.audience && t.notifs.audience[n.audience],
+          relativeTime(n.createdAt, t.labels.relative, now),
+        ]
           .filter(Boolean)
           .join(' · ');
         const href = look.href;
@@ -104,7 +112,12 @@ export default function NotifsScreen() {
             onOpen={href ? () => router.push(href) : null}
             onAction={(action) => {
               if (action === 'accept' || action === 'decline') void answerSwap(n, action);
-              else if (href) router.push(href);
+              else if (action === 'whatsapp') {
+                if (look.share) void sendToWhatsApp(look.share).catch(() => show(t.errors.NETWORK));
+              } else {
+                const target = look.to?.[action] ?? href;
+                if (target) router.push(target);
+              }
             }}
           />
         );

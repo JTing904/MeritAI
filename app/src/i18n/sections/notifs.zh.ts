@@ -39,6 +39,20 @@ const overrideGain = (o: OverrideText) => {
   return o.to === 'HALF' ? `现在拿 ${o.earned} 分` : '0 分';
 };
 
+/** WEEKLY_SUMMARY, points formatted. Zero parts are left out (except the total); `top` null → no last sentence. */
+export type WeeklyText = {
+  tag: string;
+  finished: number;
+  finishedPts: string;
+  total: string;
+  overdue: number;
+  next: number;
+  top: { name: string; pts: string } | null;
+};
+
+/** TASK_OVERDUE: the roast lines (M5 spec §2), index = payload.template. The emoji goes on the tile. */
+type Roast = (name: string, task: string) => InlinePart[];
+
 export const notifsZh = {
   title: '通知',
   filterLabel: '通知筛选',
@@ -48,7 +62,27 @@ export const notifsZh = {
   unread: '未读',
   empty: '还没有通知',
   footer: '提醒只跟截止日期走：到期前 24 小时提醒负责人，过期了通知全组，每种只发一次。',
-  actions: { decline: '拒绝', accept: '同意互换', resplit: '重新分包', pick: '去选任务包', openTask: '打开任务', grade: '去评级' },
+  actions: {
+    decline: '拒绝',
+    accept: '同意互换',
+    resplit: '重新分包',
+    pick: '去选任务包',
+    openTask: '打开任务',
+    grade: '去评级',
+    // M5
+    delay: '一键延后',
+    viewTask: '看任务',
+    move: '移给谁',
+    end: '结束项目',
+    viewProject: '看项目',
+    whatsapp: '发到 WhatsApp',
+  },
+  /** 发到 WhatsApp: the notification as plain text, the project tag in front unless the text names it. */
+  share: (tag: string, text: string) => (tag && !text.includes(tag) ? `【${tag}】${text}` : text),
+  /** Relative day words for due dates (「明天到期」), relative to when the reminder was sent. */
+  /** In the meta line of a WEEKLY_SUMMARY (NotifsM5 mockup). */
+  weeklyMeta: '每周小结',
+  day: { today: '今天', tomorrow: '明天' },
   toast: {
     accepted: (n: number) => `互换好了！任务包 ${n} 是你的了`,
     declined: '已拒绝互换',
@@ -219,4 +253,60 @@ export const notifsZh = {
     ],
   },
   prereqDone: (prereq: string, waiting: string): InlinePart[] => [`「${prereq}」做完了，可以开始「${waiting}」了。`],
+
+  // M5: reminders (sent by the tick) and the project lifecycle (NotifsM5 mockup, M5 spec §2–§4).
+  dueSoon: (title: string, when: string): InlinePart[] => [`你的「${title}」`, { b: when }, ' 到期，还没交。'],
+  dueReview: (title: string, day: string, owner: string | null): InlinePart[] =>
+    owner ? [`「${title}」${day}到期，`, { b: owner }, ' 已经交了，还在等你评。'] : [`「${title}」${day}到期，已经交了，还在等你评。`],
+  ownerlessSoon: (title: string, day: string): InlinePart[] => [`「${title}」${day}到期，还没人负责。`],
+  overdue: {
+    emoji: ['🐢', '⏰', '🫠', '📣', '🧃'],
+    lines: [
+      (name, task) => [{ b: name }, ` 的「${task}」过期了，TA 可能还在路上…`],
+      (name, task) => [`「${task}」的截止时间过了，`, { b: name }, ' 还没交。大家帮 TA 加加油？'],
+      (name, task) => [`大家等「${task}」等到过期了，`, { b: name }, ' 快冲！'],
+      (name, task) => ['过期提醒：', { b: name }, ` 的「${task}」还差最后一步。`],
+      (name, task) => [`「${task}」过期了，`, { b: name }, ' 要不要先喝口水，再一口气交掉？'],
+    ] as Roast[],
+    /** Appended when the task waits for an unfinished prerequisite. */
+    waiting: (owner: string | null, title: string) => (owner ? `（TA 在等 ${owner} 的「${title}」）` : `（TA 在等「${title}」）`),
+  },
+  ownerlessOverdue: (title: string): InlinePart[] => [`「${title}」过期了，一直没人认领。`],
+  prereqBlocked: (waiting: string, prereq: string, days: number): InlinePart[] => [
+    `「${waiting}」被「${prereq}」卡了 ${days} 天，要不要延后？`,
+  ],
+  weekly: (w: WeeklyText): InlinePart[] => {
+    let line = w.finished > 0 ? `完成 ${w.finished} 个任务（+${w.finishedPts} 分），` : '';
+    line += `全组 ${w.total} / 100 分`;
+    if (w.overdue > 0) line += `；过期 ${w.overdue} 个`;
+    if (w.next > 0) line += `；下周要交 ${w.next} 个`;
+    const parts: InlinePart[] = [{ b: w.tag ? `${w.tag} 这周` : '这周' }, `：${line}。`];
+    if (w.top) parts.push(' ', { b: w.top.name }, ` 这周最多（+${w.top.pts} 分）。`);
+    return parts;
+  },
+  projectDue: (tag: string, autoEnd: string): InlinePart[] => [
+    `${tag} 截止日期到了。作业交了就按「结束项目」；`,
+    { b: autoEnd },
+    ' 前没处理会自动结束。',
+  ],
+  autoEndSoon: (tag: string): InlinePart[] => [`${tag} `, { b: '明天' }, '会自动结束。作业交了可以现在就按结束；还没交可以延后截止日期。'],
+  projectEnded: (leader: string, tag: string, purge: string): InlinePart[] => [
+    '组长 ',
+    { b: leader },
+    ` 结束了 ${tag}。${purge} 会彻底删除，在那之前可以看结果、下载报告。`,
+  ],
+  projectEndedAuto: (tag: string, purge: string): InlinePart[] => [
+    `组长 7 天没处理，${tag} 自动结束了。${purge} 会彻底删除，在那之前可以看结果、下载报告。`,
+  ],
+  projectReopened: (leader: string, tag: string, deadline: string): InlinePart[] => [
+    '组长 ',
+    { b: leader },
+    ` 重新打开了 ${tag}，新的截止日期 ${deadline}。`,
+  ],
+  deleteSoon: (tag: string, days: number): InlinePart[] => [`${tag} `, { b: `${days} 天后` }, '会彻底删除，记得下载贡献报告。'],
+  taskDelayed: (title: string, date: string, prereq: string | null): InlinePart[] => [
+    `组长把你的「${title}」延后到 `,
+    { b: date },
+    prereq ? `（在等「${prereq}」）。` : '。',
+  ],
 };

@@ -13,7 +13,8 @@ import type {
   TaskView,
 } from "../../../shared/types";
 import type { Attempt, Feature, Member, Milestone, Prisma, Project, Task } from "../generated/prisma/client";
-import { canSee, isActiveMember } from "../lib/access";
+import { canSee, isActiveMember, isRunning } from "../lib/access";
+import { toLifecycle } from "../lib/lifecycle";
 import type { Db as Client } from "../lib/db";
 import { notFound } from "../lib/errors";
 import {
@@ -28,6 +29,7 @@ import {
   resplitRange,
 } from "../lib/package-state";
 import { expireDueSwaps } from "./notifications";
+import { clock } from "../lib/clock";
 
 type Db = Prisma.TransactionClient;
 
@@ -119,7 +121,7 @@ export function sortLeaderFirst<T extends Pick<Member, "role">>(members: T[]): T
 
 const TASK_ORDER = [{ order: "asc" as const }, { number: "asc" as const }];
 
-export async function loadDraftView(db: Db, projectId: string, now = new Date()): Promise<DraftView> {
+export async function loadDraftView(db: Db, projectId: string, now = clock.now()): Promise<DraftView> {
   const project = await db.project.findUnique({
     where: { id: projectId },
     include: {
@@ -168,7 +170,7 @@ export async function loadProjectView(
   db: Db,
   projectId: string,
   viewer: Pick<Member, "userId">,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<ProjectView> {
   const project = await db.project.findUnique({
     where: { id: projectId },
@@ -188,8 +190,8 @@ export async function loadProjectView(
   // Read here, after the write this view may follow (a transfer changes roles).
   const me = project?.members.find((m) => m.userId === viewer.userId);
   if (!project || !me || !canSee(project, me)) throw notFound("Project");
-  // Only a running project hands out packages.
-  const running = project.status === "ACTIVE";
+  // Only a running project (ACTIVE or AWAITING_CONFIRM) hands out packages.
+  const running = isRunning(project);
 
   const members: MemberView[] = sortLeaderFirst(project.members).map((m) => {
     const owned = project.tasks.filter((t) => t.ownerId === m.id);
@@ -244,6 +246,7 @@ export async function loadProjectView(
 
   return {
     basics: toBasics(project, project.packages.length),
+    lifecycle: toLifecycle(project, (id) => project.members.find((m) => m.id === id)?.user.name),
     inviteCode: project.inviteCode,
     viewerMemberId: me.id,
     viewerRole: me.role,
@@ -290,12 +293,12 @@ function pendingReviews(
 }
 
 /** The project as `userId` sees it now (after a write: the membership is read with the view). */
-export async function loadViewFor(db: Db, projectId: string, userId: string, now = new Date()): Promise<ProjectView> {
+export async function loadViewFor(db: Db, projectId: string, userId: string, now = clock.now()): Promise<ProjectView> {
   return loadProjectView(db, projectId, { userId }, now);
 }
 
 /** GET /api/projects/:id: swaps that ran out are marked EXPIRED (and their requesters told) first. */
-export async function openProjectView(db: Client, projectId: string, userId: string, now = new Date()): Promise<ProjectView> {
+export async function openProjectView(db: Client, projectId: string, userId: string, now = clock.now()): Promise<ProjectView> {
   await expireDueSwaps(db, { projectId }, now);
   return loadProjectView(db, projectId, { userId }, now);
 }

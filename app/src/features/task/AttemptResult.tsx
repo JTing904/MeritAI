@@ -47,7 +47,7 @@ export function AttemptResult({
   const { t } = useI18n();
   const k = t.task.result;
   const dates = useLocalDates();
-  const { detail, task, mine, leader, running, busy } = ctx;
+  const { detail, task, mine, leader, running, ended, busy } = ctx;
   const leaderName = detail.project.leaderName ?? '';
 
   if (shown.status === 'DRAFT') return null;
@@ -69,7 +69,8 @@ export function AttemptResult({
                 ? k.pendingMine(leaderName)
                 : k.pendingOthers(leaderName)}
           </Txt>
-          {grading && running ? <Button title={k.grade} block disabled={busy !== null} onPress={onGrade} /> : null}
+          {/* An ENDED project still lets the leader grade what was handed in before it ended. */}
+          {grading && (running || ended) ? <Button title={k.grade} block disabled={busy !== null} onPress={onGrade} /> : null}
         </Card>
       </>
     );

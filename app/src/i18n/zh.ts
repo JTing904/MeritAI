@@ -5,6 +5,7 @@ import { gradeZh } from './sections/grade.zh';
 import { homeZh } from './sections/home.zh';
 import { joinZh } from './sections/join.zh';
 import { labelsZh } from './sections/labels.zh';
+import { lifeZh } from './sections/life.zh';
 import { membersZh } from './sections/members.zh';
 import { notifsZh } from './sections/notifs.zh';
 import { pickZh } from './sections/pick.zh';
@@ -53,6 +54,7 @@ export const zh = {
   tasks: tasksZh,
   task: taskZh,
   grade: gradeZh,
+  life: lifeZh,
   me: {
     title: '我',
     appearance: '外观',
@@ -110,7 +112,7 @@ export const zh = {
     INVITE_CODE_INVALID: '找不到这个邀请码，请检查一下有没有打错。',
     INVITE_CODE_EXPIRED: '这个邀请码已经失效了，组长换了新的邀请码。',
     REMOVED_FROM_PROJECT: '你已经被组长移出这个项目，不能再用邀请码加入。',
-    PROJECT_ENDED: '这个项目已经结束了，不能再加入。',
+    PROJECT_ENDED: '这个项目已经结束了，只能查看，不能再改动或加入。',
     NOT_A_DRAFT: '这个项目已经建好了，不能再用新建流程修改。',
     PLAN_EMPTY: '还没有任务，至少要有一个任务才能分包。',
     DEADLINE_IN_PAST: '截止日期要在现在之后。',
@@ -126,7 +128,7 @@ export const zh = {
     ALREADY_HAS_PACKAGE: 'TA 已经有任务包了',
     LEADER_ONLY_MANAGES: '只管理的组长不用选任务包',
     LEADER_MUST_TRANSFER: '你是组长，要先把组长转给别人才能退出',
-    TASK_FINISHED: '这个任务已经完成，不能移动',
+    TASK_FINISHED: '这个任务已经完成，不能再移动或延后',
     STALE_PREVIEW: '情况有变，请重新看一下预览',
     TEAM_FULL: '这个项目已经 8 个人了，不能再加入',
     EVIDENCE_LIMIT: '最多 5 份证据，先删掉一份再传',
@@ -154,6 +156,8 @@ export const zh = {
     TASK_UNDER_REVIEW: 'TA 已经交了，先评级再移',
     NO_ONE_TO_TRANSFER: '组里只剩你一个人，没有人可以接手',
     DELETE_CONFIRM_MISMATCH: '项目简称打得不对，再看一下',
+    DEADLINE_REQUIRED: '截止日期已经过了，先选一个今天之后的新截止日期再重新打开',
+    DELAY_NOT_LATER: '新的日期要比现在的截止时间晚',
   },
 };
 

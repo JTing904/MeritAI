@@ -2,6 +2,7 @@ import { gradeEn } from './sections/grade.en';
 import { homeEn } from './sections/home.en';
 import { joinEn } from './sections/join.en';
 import { labelsEn } from './sections/labels.en';
+import { lifeEn } from './sections/life.en';
 import { membersEn } from './sections/members.en';
 import { notifsEn } from './sections/notifs.en';
 import { pickEn } from './sections/pick.en';
@@ -52,6 +53,7 @@ export const en: Messages = {
   tasks: tasksEn,
   task: taskEn,
   grade: gradeEn,
+  life: lifeEn,
   me: {
     title: 'Me',
     appearance: 'Appearance',
@@ -109,7 +111,7 @@ export const en: Messages = {
     INVITE_CODE_INVALID: "We can't find that invite code. Check it for typos.",
     INVITE_CODE_EXPIRED: 'That invite code has expired: the leader made a new one.',
     REMOVED_FROM_PROJECT: 'The leader removed you from this project, so the invite code no longer works for you.',
-    PROJECT_ENDED: 'This project has ended and no longer takes new members.',
+    PROJECT_ENDED: "This project has ended. It's read-only now and takes no new members.",
     NOT_A_DRAFT: "This project is already set up; it can't be changed through the new-project steps.",
     PLAN_EMPTY: 'Add at least one task before splitting into packages.',
     DEADLINE_IN_PAST: 'The deadline has to be in the future.',
@@ -125,7 +127,7 @@ export const en: Messages = {
     ALREADY_HAS_PACKAGE: 'They already have a package',
     LEADER_ONLY_MANAGES: "A leader who only manages doesn't pick a package",
     LEADER_MUST_TRANSFER: "You're the leader. Hand the leader role to someone else before you leave",
-    TASK_FINISHED: "This task is finished, so it can't be moved",
+    TASK_FINISHED: "This task is finished, so it can't be moved or delayed",
     STALE_PREVIEW: 'Something changed. Check the preview again',
     TEAM_FULL: 'This project already has 8 people',
     EVIDENCE_LIMIT: 'Up to 5 pieces of evidence. Remove one first',
@@ -153,5 +155,7 @@ export const en: Messages = {
     TASK_UNDER_REVIEW: "They've already submitted this. Grade it first, then move it",
     NO_ONE_TO_TRANSFER: "You're the only one left in the group, so there's nobody to hand over to",
     DELETE_CONFIRM_MISMATCH: "That isn't the project's short name. Check it and try again",
+    DEADLINE_REQUIRED: 'The deadline has passed. Pick a new one after today to reopen the project',
+    DELAY_NOT_LATER: 'Pick a date later than the current due date',
   },
 };

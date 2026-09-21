@@ -5,11 +5,13 @@ import { deleteConfirmMatches, projectTag } from "../../../shared/format";
 import type { PersonRef } from "../../../shared/types";
 import type { Member } from "../generated/prisma/client";
 import { isActiveMember } from "../lib/access";
+import { endedPurgeAt } from "../lib/lifecycle";
 import type { Db } from "../lib/db";
 import { AppError, conflict, notFound } from "../lib/errors";
 import { getStorage } from "../lib/storage";
 import { bumpPackages, notify, recordEvent, voidSwaps } from "./notify";
 import { lockProject, memberUnderLock, TX_OPTIONS, type Tx } from "./tx";
+import { clock } from "../lib/clock";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -28,23 +30,24 @@ async function othersOf(tx: Tx, projectId: string, leaderId: string): Promise<st
 }
 
 /**
- * The leader deletes a running (ACTIVE or AWAITING_CONFIRM) project for everyone. `confirm` must be the
+ * The leader deletes a confirmed (ACTIVE, AWAITING_CONFIRM or ENDED) project for everyone. `confirm` must be the
  * project tag (case and spaces ignored), checked against the tag as it is under the lock. From now on
  * nobody sees the project (every read and write answers 404); the leader can restore it until
  * purgeAfter. Pending swaps end as VOID (no SWAP_VOID: PROJECT_DELETED tells everyone). Drafts are
- * deleted outright with DELETE /projects/:id instead.
+ * deleted outright with DELETE /projects/:id instead. An ENDED project keeps the earlier of its two purge
+ * dates (M5); restoring it gives the ended one back.
  */
-export async function deleteProject(db: Db, projectId: string, userId: string, confirm: string, now = new Date()): Promise<void> {
+export async function deleteProject(db: Db, projectId: string, userId: string, confirm: string, now = clock.now()): Promise<void> {
   await db.$transaction(async (tx) => {
     const project = await lockProject(tx, projectId);
     const leader = await memberUnderLock(tx, project, userId, { leader: true });
     if (project.status === "DRAFT") throw new AppError(409, "CONFLICT", "Delete a draft from the home screen instead");
-    if (project.status === "ENDED") throw new AppError(409, "PROJECT_ENDED", "The project has ended");
     if (!deleteConfirmMatches(confirm, projectTag(project.name, project.shortCode))) {
       throw new AppError(400, "DELETE_CONFIRM_MISMATCH", "Type the project's short name to delete it");
     }
 
-    const purgeAfter = new Date(now.getTime() + PROJECT_RESTORE_DAYS * DAY_MS);
+    const restoreUntil = new Date(now.getTime() + PROJECT_RESTORE_DAYS * DAY_MS);
+    const purgeAfter = project.purgeAfter !== null && project.purgeAfter < restoreUntil ? project.purgeAfter : restoreUntil;
     await tx.project.update({ where: { id: projectId }, data: { deletedAt: now, purgeAfter, deletedById: leader.id } });
     await voidSwaps(tx, { projectId, all: true, reason: "PROJECT_DELETED", voidedById: leader.id, now, notify: false });
     await notify(tx, {
@@ -65,7 +68,7 @@ export async function deleteProject(db: Db, projectId: string, userId: string, c
  * else, or too late, gets 404 as for any project they can't see; a project that isn't deleted → 409.
  * Everything comes back as it was, except the swaps that were voided.
  */
-export async function restoreProject(db: Db, projectId: string, userId: string, now = new Date()): Promise<void> {
+export async function restoreProject(db: Db, projectId: string, userId: string, now = clock.now()): Promise<void> {
   await db.$transaction(async (tx) => {
     const project = await lockProject(tx, projectId);
     const member = await tx.member.findUnique({ where: { projectId_userId: { projectId, userId } } });
@@ -77,7 +80,9 @@ export async function restoreProject(db: Db, projectId: string, userId: string, 
     const due = project.purgeAfter !== null && project.purgeAfter <= now;
     if (member.role !== "LEADER" || project.deletedById !== member.id || due) throw notFound("Project");
 
-    await tx.project.update({ where: { id: projectId }, data: { deletedAt: null, purgeAfter: null, deletedById: null } });
+    // An ENDED project goes back to its own purge date (endedAt + 14 days, always later than this one).
+    const endedPurge = project.status === "ENDED" && project.endedAt ? endedPurgeAt(project.endedAt) : null;
+    await tx.project.update({ where: { id: projectId }, data: { deletedAt: null, purgeAfter: endedPurge, deletedById: null } });
     await notify(tx, {
       userIds: await othersOf(tx, projectId, member.id),
       projectId,
@@ -92,17 +97,25 @@ export async function restoreProject(db: Db, projectId: string, userId: string, 
 }
 
 /**
- * Deletes for good every project deleted for everyone whose purgeAfter has passed: its rows (the
- * cascade takes members, tasks, attempts, evidence rows, notifications, feed…) and then its files
- * (the storage prefix "<projectId>"). `userId` limits it to that person's projects (GET /api/home runs
- * it lazily for the caller; the M5 scheduler calls it without). Each project is re-checked under its
- * lock, so a restore that got in first wins. A storage failure is logged, not thrown: the rows are
- * gone and the files are unreachable. Returns the ids purged.
+ * Deletes for good every project deleted for everyone whose purgeAfter has passed (and, with `ended`,
+ * every ENDED project past its purgeAfter too, M5): its rows (the cascade takes members, tasks,
+ * attempts, evidence rows, notifications, feed…) and then its files (the storage prefix "<projectId>").
+ * `userId` limits it to that person's projects (GET /api/home runs it lazily for the caller, deleted
+ * ones only, as before M5; the tick calls it for everything with `ended`). Each project is re-checked
+ * under its lock, so a restore or reopen that got in first wins. A storage failure is logged, not
+ * thrown: the rows are gone and the files are unreachable. Returns the ids purged.
+ *
+ * TODO(D7): badges must outlive the project; copy them out before the delete once they exist.
  */
-export async function purgeDeletedProjects(db: Db, now = new Date(), scope: { userId?: string } = {}): Promise<string[]> {
+export async function purgeDeletedProjects(
+  db: Db,
+  now = clock.now(),
+  scope: { userId?: string; ended?: boolean } = {},
+): Promise<string[]> {
+  const kinds = [{ deletedAt: { not: null } }, ...(scope.ended ? [{ status: "ENDED" as const }] : [])];
   const due = await db.project.findMany({
     where: {
-      deletedAt: { not: null },
+      OR: kinds,
       purgeAfter: { lte: now },
       ...(scope.userId ? { members: { some: { userId: scope.userId } } } : {}),
     },
@@ -114,8 +127,9 @@ export async function purgeDeletedProjects(db: Db, now = new Date(), scope: { us
     const gone = await db.$transaction(async (tx) => {
       const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Project" WHERE id = ${id} FOR UPDATE`;
       if (rows.length === 0) return false;
-      const project = await tx.project.findUniqueOrThrow({ where: { id }, select: { deletedAt: true, purgeAfter: true } });
-      if (project.deletedAt === null || project.purgeAfter === null || project.purgeAfter > now) return false;
+      const project = await tx.project.findUniqueOrThrow({ where: { id }, select: { deletedAt: true, status: true, purgeAfter: true } });
+      const kind = project.deletedAt !== null || (scope.ended === true && project.status === "ENDED");
+      if (!kind || project.purgeAfter === null || project.purgeAfter > now) return false;
       await tx.project.delete({ where: { id } });
       return true;
     }, TX_OPTIONS);

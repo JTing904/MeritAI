@@ -9,6 +9,7 @@ import { bumpPackages, notify, recordEvent } from "./notify";
 import { personRef, startUnderLock, WITH_NAME } from "./packages";
 import type { MeetingDoneBody } from "./schemas";
 import { lockAsMember, TX_OPTIONS, type Tx } from "./tx";
+import { clock } from "../lib/clock";
 
 export const alreadyReviewing = () =>
   new AppError(409, "ALREADY_REVIEWING", "Already submitted and waiting for review. Withdraw it to make changes");
@@ -58,7 +59,7 @@ export function ownerToTell(task: TaskWithOwner, actor: Pick<Member, "id">): Tas
  * and before the task has any attempt row (HAS_EVIDENCE: even a deleted file leaves its attempt). The start
  * is cleared entirely; swaps it voided stay void.
  */
-export async function undoStart(db: Db, projectId: string, taskId: string, userId: string, now = new Date()): Promise<void> {
+export async function undoStart(db: Db, projectId: string, taskId: string, userId: string, now = clock.now()): Promise<void> {
   await db.$transaction(async (tx) => {
     const { member } = await lockAsMember(tx, projectId, userId);
     const task = await taskUnderLock(tx, projectId, taskId);
@@ -86,7 +87,7 @@ export async function undoStart(db: Db, projectId: string, taskId: string, userI
  * 我做完了，请组长看: the owner's DRAFT attempt (≥ 1 evidence) is handed in. Another member's goes PENDING
  * (the leader hears SUBMITTED); the leader's own task is graded PASS at once (合格（组长自评）).
  */
-export async function submitAttempt(db: Db, projectId: string, taskId: string, userId: string, now = new Date()): Promise<void> {
+export async function submitAttempt(db: Db, projectId: string, taskId: string, userId: string, now = clock.now()): Promise<void> {
   await db.$transaction(async (tx) => {
     const { project, member } = await lockAsMember(tx, projectId, userId);
     const task = await taskUnderLock(tx, projectId, taskId);
@@ -163,7 +164,7 @@ export async function submitAttempt(db: Db, projectId: string, taskId: string, u
  * 撤回修改: the owner takes the PENDING attempt back to DRAFT (its evidence stays) to change it. The
  * status goes back to DOING, or HALF / FAIL when an earlier attempt was graded so.
  */
-export async function withdrawAttempt(db: Db, projectId: string, taskId: string, userId: string, now = new Date()): Promise<void> {
+export async function withdrawAttempt(db: Db, projectId: string, taskId: string, userId: string, now = clock.now()): Promise<void> {
   await db.$transaction(async (tx) => {
     const { member } = await lockAsMember(tx, projectId, userId);
     const task = await taskUnderLock(tx, projectId, taskId);
@@ -191,7 +192,7 @@ export async function meetingDone(
   taskId: string,
   userId: string,
   input: MeetingDoneBody,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<void> {
   await db.$transaction(async (tx) => {
     const { project, member } = await lockAsMember(tx, projectId, userId);

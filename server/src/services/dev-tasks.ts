@@ -11,6 +11,7 @@ import { bumpPackages } from "./notify";
 import { startUnderLock } from "./packages";
 import type { DevTaskStatus } from "./schemas";
 import { lockAsMember, TX_OPTIONS } from "./tx";
+import { clock } from "../lib/clock";
 
 /** What the tool writes as the leader's 理由 / 评语. */
 const DEV_NOTE = "开发测试";
@@ -31,7 +32,7 @@ export async function setDevTaskStatus(
   taskId: string,
   userId: string,
   status: DevTaskStatus,
-  now = new Date(),
+  now = clock.now(),
 ): Promise<void> {
   const found = await db.task.findUnique({ where: { id: taskId }, select: { projectId: true } });
   if (!found) throw notFound("Task");

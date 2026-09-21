@@ -36,6 +36,8 @@ export const membersEn: typeof membersZh = {
     endHint:
       "Once you confirm the work was handed in, everyone has 14 days to download the team contribution report. Then the whole project is deleted (badges stay). If nobody confirms within 7 days after the deadline, it ends by itself.",
     endButton: 'Handed in, end the project',
+    endedTitle: 'The project has ended',
+    endedHint: "It's read-only now. Until it's deleted, the leader can reopen it so everyone can hand in evidence and grade again.",
     deleteTitle: 'Delete the project',
     deleteHint: 'Delete this project for everyone: nobody will see it any more. You can restore it from Home within 7 days; after that it is deleted for good.',
     deleteButton: 'Delete the project',

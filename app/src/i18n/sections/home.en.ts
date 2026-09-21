@@ -27,9 +27,14 @@ export const homeEn: typeof homeZh = {
     daysLeft: (n) => (n === 1 ? '1 day left' : `${n} days left`),
     dueToday: 'Due today',
     pastDeadline: 'Past the deadline',
-    awaitingYou: 'Past the deadline · waiting for you to confirm',
-    awaitingLeader: 'Past the deadline · waiting for the leader',
-    ended: 'Ended',
+    awaitingYou: '📮 Confirm it was handed in',
+    awaitingLeader: '📮 Waiting for the leader to confirm',
+    ended: '🏁 Ended',
+    endedAuto: '🏁 Ended automatically',
+    awaitingLine: (autoEnd) => `Past the deadline · ends by itself on ${autoEnd}`,
+    autoEndedLine: "The leader didn't act for 7 days, so it ended by itself",
+    purgeLine: (date, days) =>
+      days > 0 ? `Deleted on ${date} · ${days === 1 ? '1 day' : `${days} days`} left` : `Deleted on ${date} · today`,
   },
   draft: {
     tag: 'Draft',
