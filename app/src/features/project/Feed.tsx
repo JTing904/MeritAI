@@ -10,6 +10,8 @@ import { useI18n } from '@/i18n';
 import type { Messages } from '@/i18n/zh';
 import type { Inline, Who } from '@/i18n/sections/project.zh';
 import { errorCode, type ClientErrorCode } from '@/lib/api';
+import { queryCache } from '@/lib/cache';
+import { projectKey } from '@/lib/cacheKeys';
 import { useSession } from '@/lib/session';
 import { relativeTime } from '@/lib/time';
 import { makeStyles, useTheme } from '@/theme';
@@ -42,12 +44,17 @@ export type FeedState = {
 
 /**
  * GET /projects/:id/feed, newest first. Loads while `active` (the 动态 tab is showing) and again whenever
- * `version` changes (every feed event also bumps the project's packagesVersion).
+ * `version` changes (every feed event also bumps the project's packagesVersion). The first page goes
+ * through the data cache: the last copy shows at once, and showing the tab again within 30 s with the
+ * same version doesn't ask again.
  */
 export function useFeed(projectId: string, active: boolean, version: number): FeedState {
-  const { request } = useSession();
-  const [items, setItems] = useState<ActivityView[] | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
+  const { request, cached } = useSession();
+  const firstKey = `${projectKey(projectId)}/feed?limit=${PAGE}`;
+  const [items, setItems] = useState<ActivityView[] | null>(() => queryCache.peek<FeedPage>(firstKey)?.items ?? null);
+  const [cursor, setCursor] = useState<string | null>(() => queryCache.peek<FeedPage>(firstKey)?.nextCursor ?? null);
+  // The version the first page was last loaded for: a new one always asks the server.
+  const loadedFor = useRef<number | null>(null);
   const [error, setError] = useState<ClientErrorCode | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreFailed, setMoreFailed] = useState(false);
@@ -58,28 +65,33 @@ export function useFeed(projectId: string, active: boolean, version: number): Fe
   // check can't send the same page again.
   const moreFailedRef = useRef(false);
 
-  const reload = useCallback(() => {
+  const load = useCallback((force: boolean, forVersion: number | null) => {
     const gen = ++generation.current;
     moreBusy.current = false;
     moreFailedRef.current = false;
     setLoadingMore(false);
     setMoreFailed(false);
     setError(null);
-    request<FeedPage>(`/projects/${encodeURIComponent(projectId)}/feed?limit=${PAGE}`)
-      .then((page) => {
+    cached<FeedPage>(firstKey, { force })
+      .then(({ data: page }) => {
         if (gen !== generation.current) return;
+        if (forVersion !== null) loadedFor.current = forVersion;
         setItems(page.items);
         setCursor(page.nextCursor);
       })
       .catch((err) => {
         if (gen !== generation.current) return;
-        setError(errorCode(err));
+        // With the kept copy on screen, keep it (as the other cached screens do).
+        if (!queryCache.has(firstKey)) setError(errorCode(err));
       });
-  }, [projectId, request]);
+  }, [firstKey, cached]);
+
+  /** 再试一次 and other explicit reloads: always ask the server. */
+  const reload = useCallback(() => load(true, null), [load]);
 
   useEffect(() => {
-    if (active) reload();
-  }, [active, version, reload]);
+    if (active) load(loadedFor.current !== null && loadedFor.current !== version, version);
+  }, [active, version, load]);
 
   const loadMore = useCallback(() => {
     if (!cursor || moreBusy.current || moreFailedRef.current) return;

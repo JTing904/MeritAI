@@ -25,7 +25,8 @@ export type IconName =
   | 'image'
   | 'table'
   | 'door'
-  | 'trash';
+  | 'trash'
+  | 'wifiOff';
 
 const HIDDEN =
   Platform.OS === 'web'
@@ -52,6 +53,17 @@ export function Icon({ name, size = 22, color }: { name: IconName; size?: number
 }
 
 const GLYPHS: Record<IconName, React.ReactNode> = {
+  wifiOff: (
+    <>
+      <Path d="M2 2l20 20" />
+      <Path d="M8.5 16.5a5 5 0 0 1 7 0" />
+      <Path d="M5 12.9a10 10 0 0 1 5.2-2.8" />
+      <Path d="M19 12.9a10 10 0 0 0-2.1-1.6" />
+      <Path d="M2 8.8a15 15 0 0 1 4.2-2.8" />
+      <Path d="M22 8.8A15 15 0 0 0 10.7 5" />
+      <Circle cx={12} cy={20} r={1} />
+    </>
+  ),
   home: <Path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
   tasks: (
     <>

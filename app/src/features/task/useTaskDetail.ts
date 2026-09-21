@@ -2,16 +2,25 @@ import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import type { TaskDetail } from '@shared/types';
 import { useToast } from '@/components/Toast';
+import { forgetProject } from '@/features/project/useProject';
 import { useI18n } from '@/i18n';
 import { ApiClientError, errorCode, type ClientErrorCode } from '@/lib/api';
+import { applyWrite, hasCached, queryCache, useCached } from '@/lib/cache';
+import { taskKey } from '@/lib/cacheKeys';
+import { onReconnect } from '@/lib/network';
 import { useSession } from '@/lib/session';
 
 export type TaskDetailState = {
-  /** Null until the first load succeeds. */
+  /** Null until there is something to show (the cached copy, or the first load). */
   detail: TaskDetail | null;
   /** Why the first load failed (null while loading and once something is shown): show it with 再试一次. */
   error: ClientErrorCode | null;
-  /** Fetches the task again (also runs whenever the screen regains focus). */
+  /**
+   * The server answered at least once since the screen opened. Until then `detail` may be the copy kept
+   * from an earlier visit (a change it shows then happened while away, not while looking).
+   */
+  confirmed: boolean;
+  /** Fetches the task again (always asks the server; focus uses the cache's 30 s rule). */
   reload: () => Promise<void>;
   /** Shows the detail a write returned (every task write answers with the fresh TaskDetail). */
   setDetail: (detail: TaskDetail) => void;
@@ -23,59 +32,68 @@ export type TaskDetailState = {
   onError: (err: unknown) => void;
 };
 
-/** GET /api/projects/:id/tasks/:taskId for the task page (useProject's rules, for one task). */
+/** GET /api/projects/:id/tasks/:taskId for the task page, through the data cache (useProject's rules, for one task). */
 export function useTaskDetail(projectId: string, taskId: string): TaskDetailState {
-  const { request } = useSession();
+  const { cached } = useSession();
   const { t } = useI18n();
   // show is stable; the object useToast returns is not.
   const { show: showToast } = useToast();
-  const [detail, setDetailState] = useState<TaskDetail | null>(null);
+  const key = taskKey(projectId, taskId);
+  const cachedDetail = useCached<TaskDetail>(key);
   const [error, setError] = useState<ClientErrorCode | null>(null);
-  // Only the newest load (or write result) may set state: a slow focus reload must not undo a write.
-  const latest = useRef(0);
-  const hasData = useRef(false);
+  // Leaving the project drops it from the cache just before the screen closes: keep the last detail meanwhile.
+  const last = useRef<{ key: string; detail: TaskDetail } | null>(null);
+  if (cachedDetail) last.current = { key, detail: cachedDetail };
+  const detail = cachedDetail ?? (!error && last.current?.key === key ? last.current.detail : null);
+  const [confirmed, setConfirmed] = useState(false);
 
   // quiet: the caller already toasted NOT_FOUND (one failure, one toast).
   const load = useCallback(
-    async (quiet: boolean) => {
-      const reqId = ++latest.current;
-      if (!hasData.current) setError(null);
+    async (quiet: boolean, force: boolean) => {
+      const had = hasCached(key);
+      if (!had) setError(null);
       try {
-        const next = await request<TaskDetail>(`/projects/${encodeURIComponent(projectId)}/tasks/${encodeURIComponent(taskId)}`);
-        if (reqId !== latest.current) return;
-        hasData.current = true;
-        setDetailState(next);
+        await cached<TaskDetail>(key, { force });
         setError(null);
+        setConfirmed(true);
       } catch (err) {
-        if (reqId !== latest.current) return;
         const code = errorCode(err);
-        if (!hasData.current) setError(code);
-        else if (code === 'NOT_FOUND') {
-          // The task was deleted, or the viewer left the project, while looking at it.
-          if (!quiet) showToast(t.errors.NOT_FOUND);
-          if (router.canGoBack()) router.back();
-          else router.replace('/');
-        }
+        if (code === 'NOT_FOUND' || code === 'FORBIDDEN') {
+          // The task was deleted (404), or the viewer is no longer in the project (403): forget it.
+          if (code === 'FORBIDDEN') forgetProject(projectId);
+          else queryCache.drop((k) => k === key);
+          // Going back keeps the last detail on screen for the transition; otherwise say why it's gone.
+          if (!had || code !== 'NOT_FOUND') setError(code);
+          else {
+            if (!quiet) showToast(t.errors.NOT_FOUND);
+            if (router.canGoBack()) router.back();
+            else router.replace('/');
+          }
+        } else if (!had) setError(code);
         // Otherwise keep what is on screen; the next focus tries again.
       }
     },
-    [projectId, taskId, request, showToast, t],
+    [projectId, key, cached, showToast, t],
   );
 
-  const reload = useCallback(() => load(false), [load]);
+  const reload = useCallback(() => load(false, true), [load]);
 
   useFocusEffect(
     useCallback(() => {
-      void reload();
-    }, [reload]),
+      void load(false, false);
+      return onReconnect(() => void load(false, true));
+    }, [load]),
   );
 
-  const setDetail = useCallback((next: TaskDetail) => {
-    ++latest.current;
-    hasData.current = true;
-    setDetailState(next);
-    setError(null);
-  }, []);
+  const setDetail = useCallback(
+    (next: TaskDetail) => {
+      // request() already did this for the write; again here for details from elsewhere (idempotent).
+      applyWrite(key, next);
+      setError(null);
+      setConfirmed(true);
+    },
+    [key],
+  );
 
   const onError = useCallback(
     (err: unknown) => {
@@ -84,11 +102,11 @@ export function useTaskDetail(projectId: string, taskId: string): TaskDetailStat
       const status = err instanceof ApiClientError ? err.status : 0;
       // A write's NOT_FOUND is often something inside the task (evidence someone removed, a checklist
       // item): reload quietly, which goes back only if the task itself is gone.
-      if (code === 'NOT_FOUND') void load(true);
+      if (code === 'NOT_FOUND') void load(true, true);
       else if (status === 409 || code === 'FORBIDDEN') void reload();
     },
     [load, reload, showToast, t],
   );
 
-  return { detail, error, reload, setDetail, onError };
+  return { detail, error: detail ? null : error, confirmed, reload, setDetail, onError };
 }

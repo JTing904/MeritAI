@@ -4,11 +4,17 @@ import type { MeData } from "../../../shared/types";
 import type { AppEnv } from "../app";
 import { destroyAllSessions, destroySession, requireUser, toMe } from "../lib/auth";
 import { readBody } from "../lib/body";
+import { conditional } from "../lib/etag";
 import { ok } from "../lib/http";
+import { meToken } from "../services/cache-tokens";
 
 export const meRoutes = new Hono<AppEnv>();
 
-meRoutes.get("/", async (c) => ok<MeData>(c, toMe(await requireUser(c))));
+/** Conditional (B2): the token hashes the answer itself, which the auth lookup already loaded. */
+meRoutes.get("/", async (c) => {
+  const me = toMe(await requireUser(c));
+  return conditional<MeData>(c, meToken(me), async () => me);
+});
 
 const MeUpdate = z
   .object({

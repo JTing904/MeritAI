@@ -11,7 +11,7 @@ import { sortLeaderFirst } from "./views";
 const STATUS_RANK = { DRAFT: 0, ACTIVE: 0, AWAITING_CONFIRM: 0, ENDED: 1 } as const;
 
 /** HomeData.dueSoon looks this far ahead: past the end of the device's week wherever the device is. */
-const DUE_SOON_MS = 8 * 24 * 60 * 60 * 1000;
+export const DUE_SOON_MS = 8 * 24 * 60 * 60 * 1000;
 /** Tasks the home line counts (过期 / 这周要交): not submitted, not finished. */
 const DUE_SOON_STATUSES = new Set(["TODO", "DOING", "FAIL"]);
 

@@ -23,6 +23,13 @@ export const zh = {
     options: '选项',
     cancel: '取消',
   },
+  offline: {
+    title: '没有网络',
+    body: 'MeritAI 要连上网络才能用。打开 Wi-Fi 或流动数据后，会自动进去。',
+    waiting: '正在等网络…',
+    bar: '没有网络 · 显示的是断网前的内容',
+    back: '已连上网络，内容已更新',
+  },
   startup: {
     unreachableTitle: '连不上服务器',
     unreachableBody: '你的登录还在。检查一下网络，或等服务器恢复后再试一次。',
@@ -81,6 +88,7 @@ export const zh = {
   },
   errors: {
     NETWORK: '连不上服务器，请检查网络。',
+    OFFLINE: '没有网络，连上再试',
     TIMEOUT: '网络太慢，请再试一次。',
     BAD_RESPONSE: '服务器回复看不懂，请稍后再试。',
     BAD_REQUEST: '请求有问题，请再试一次。',

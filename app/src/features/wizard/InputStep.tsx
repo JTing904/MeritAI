@@ -120,8 +120,10 @@ export function InputStep({
       setReading(null);
       const code = errorCode(err);
       // The file stays picked and the button reads 再试一次; other errors are toasted.
-      if (from && (code === 'NETWORK' || code === 'TIMEOUT' || code === 'RETRY')) setFileProblem({ reason: 'NETWORK', size: from.size, max: BRIEF_MAX_BYTES });
-      else show(t.errors[code]);
+      if (code === 'OFFLINE') show(t.errors.OFFLINE);
+      if (from && (code === 'NETWORK' || code === 'TIMEOUT' || code === 'RETRY' || code === 'OFFLINE')) {
+        setFileProblem({ reason: 'NETWORK', size: from.size, max: BRIEF_MAX_BYTES });
+      } else if (code !== 'OFFLINE') show(t.errors[code]);
     }
   };
 

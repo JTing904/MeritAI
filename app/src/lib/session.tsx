@@ -3,7 +3,11 @@ import type { LoginResult, MeData, MeUpdate } from '@shared/types';
 import { useToast } from '@/components/Toast';
 import { forgetTypedBriefs } from '@/features/wizard/typedBrief';
 import { useI18n } from '@/i18n';
-import { api, ApiClientError } from './api';
+import { api, ApiClientError, apiConditional } from './api';
+import { applyWrite, queryCache } from './cache';
+import type { Conditional, FetchOutcome } from './cacheCore';
+import { ME_KEY } from './cacheKeys';
+import { isOnline, onReconnect } from './network';
 import { clearUserPrefs, readPref, writePref } from './prefs';
 import { loadToken, saveToken } from './token';
 
@@ -20,6 +24,12 @@ type SessionValue = {
    * when it answered the token in use now: a late 401 for an old token never signs out a newer session.
    */
   request: <T>(path: string, init?: Parameters<typeof api>[1]) => Promise<T>;
+  /**
+   * A GET through the data cache (lib/cache.ts): answers from the cache when the path was fetched in the
+   * last 30 s and nothing changed it since (unless `force`), otherwise asks the server with the cached
+   * ETag. Screens read the data with useCached(path). The 401 rule of `request` applies.
+   */
+  cached: <T>(path: string, opts?: { force?: boolean }) => Promise<FetchOutcome<T>>;
   devSignIn: (userId: string) => Promise<void>;
   signOut: () => Promise<void>;
   /** Try the startup check again (from the "can't reach the server" screen). */
@@ -57,7 +67,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const lastUser = useRef<MeData | null>(null);
   if (user) lastUser.current = user;
 
-  const setSignedIn = useCallback((me: MeData) => {
+  /** Show this user. The data cache is opened for them first (their stored pages loaded), never another's. */
+  const setSignedIn = useCallback(async (me: MeData, etag: string | null = null) => {
+    if (queryCache.currentOwner !== me.id) {
+      if (queryCache.currentOwner) await queryCache.wipe();
+      await queryCache.open(me.id);
+    }
+    queryCache.set(ME_KEY, me, etag);
     setUser(me);
     setStatus('signedIn');
     void writePref(USER_CACHE, JSON.stringify(me));
@@ -67,6 +83,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const clear = useCallback(async () => {
     token.current = null;
     forgetTypedBriefs();
+    // The cache first (memory, and its pending writes), then every other meritai.* key of the user.
+    await queryCache.wipe();
     await Promise.all([saveToken(null), clearUserPrefs()]);
     setUser(null);
     setStatus('signedOut');
@@ -86,13 +104,39 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async <T,>(path: string, init: Parameters<typeof api>[1] = {}) => {
       const sent = token.current;
       try {
-        return await api<T>(path, { ...init, token: sent });
+        const result = await api<T>(path, { ...init, token: sent });
+        // A write: refresh the cache from its answer and mark what it may have changed (cacheKeys.writeEffect).
+        if ((init.method ?? 'GET') !== 'GET' && token.current === sent) applyWrite(path, result);
+        return result;
       } catch (err) {
         if (err instanceof ApiClientError && err.code === 'UNAUTHENTICATED') await expired(sent);
         throw err;
       }
     },
     [expired],
+  );
+
+  const conditional = useCallback(
+    async <T,>(path: string, etag: string | null): Promise<Conditional<T>> => {
+      const sent = token.current;
+      try {
+        return await apiConditional<T>(path, { token: sent, ifNoneMatch: etag });
+      } catch (err) {
+        if (err instanceof ApiClientError && err.code === 'UNAUTHENTICATED') await expired(sent);
+        throw err;
+      }
+    },
+    [expired],
+  );
+
+  const cached = useCallback(
+    <T,>(path: string, opts?: { force?: boolean }): Promise<FetchOutcome<T>> => {
+      // Offline with something to show: keep showing it (a pull still tries, and says 没有网络 if it fails).
+      const kept = queryCache.get<T>(path);
+      if (!isOnline() && kept && !opts?.force) return Promise.resolve({ data: kept.data, fromNetwork: false });
+      return queryCache.fetch<T>(path, (etag) => conditional<T>(path, etag), opts);
+    },
+    [conditional],
   );
 
   // Startup: restore the saved token. Only an UNAUTHENTICATED answer signs the device out; if the server
@@ -106,18 +150,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const saved = await loadToken();
       if (!saved) return !cancelled && setStatus('signedOut');
       token.current = saved;
+      // Signed in before on this device: show the app at once with the cached profile and pages, and
+      // check the profile (and the session) with the server behind it (a 304 when nothing changed).
+      const known = parseCachedUser(await readPref(USER_CACHE));
+      if (cancelled) return;
+      if (known) {
+        await queryCache.open(known.id);
+        if (cancelled) return;
+        setUser(queryCache.peek<MeData>(ME_KEY) ?? known);
+        setStatus('signedIn');
+      }
       try {
-        const me = await api<MeData>('/me', { token: saved, signal: ctrl.signal });
-        if (!cancelled) setSignedIn(me);
+        const etag = known ? (queryCache.get<MeData>(ME_KEY)?.etag ?? null) : null;
+        const res = await apiConditional<MeData>('/me', { token: saved, signal: ctrl.signal, ifNoneMatch: etag });
+        if (cancelled) return;
+        if (res.notModified) {
+          const me = queryCache.peek<MeData>(ME_KEY);
+          if (me) await setSignedIn(me, res.etag ?? etag);
+        } else await setSignedIn(res.data, res.etag);
       } catch (err) {
         if (cancelled) return;
         if (err instanceof ApiClientError && err.code === 'UNAUTHENTICATED') return void (await expired(saved));
-        const cached = parseCachedUser(await readPref(USER_CACHE));
-        if (cancelled) return;
-        if (cached) {
-          setUser(cached);
-          setStatus('signedIn');
-        } else setStatus('unreachable');
+        // Unreachable or erroring: keep the token and what is cached; with nothing cached, offer a retry.
+        if (!known) setStatus('unreachable');
       } finally {
         clearTimeout(timer);
       }
@@ -139,7 +194,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const res = await api<LoginResult>('/dev/login', { method: 'POST', body: { userId } });
       token.current = res.token;
       await saveToken(res.token);
-      setSignedIn(res.user);
+      await setSignedIn(res.user);
     },
     [setSignedIn],
   );
@@ -157,7 +212,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     async (patch: MeUpdate) => {
       if (user) setUser({ ...user, ...patch }); // optimistic
       try {
-        setSignedIn(await request<MeData>('/me', { method: 'PATCH', body: patch }));
+        await setSignedIn(await request<MeData>('/me', { method: 'PATCH', body: patch }));
       } catch (err) {
         if (user) setUser(user);
         throw err;
@@ -166,11 +221,28 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [request, setSignedIn, user],
   );
 
-  const refreshMe = useCallback(async () => setSignedIn(await request<MeData>('/me')), [request, setSignedIn]);
+  const refreshMe = useCallback(async () => {
+    const sent = token.current;
+    const { data } = await cached<MeData>(ME_KEY, { force: true });
+    if (sent && token.current === sent) await setSignedIn(data, queryCache.get<MeData>(ME_KEY)?.etag ?? null);
+  }, [cached, setSignedIn]);
+
+  // Back online after being offline: a start that couldn't reach the server tries again; a signed-in app
+  // checks the session and profile quietly.
+  const statusRef = useRef(status);
+  statusRef.current = status;
+  useEffect(
+    () =>
+      onReconnect(() => {
+        if (statusRef.current === 'unreachable') retry();
+        else if (statusRef.current === 'signedIn') void refreshMe().catch(() => {});
+      }),
+    [retry, refreshMe],
+  );
 
   const value = useMemo(
-    () => ({ status, user, lastUser: lastUser.current, request, devSignIn, signOut, retry, updateMe, refreshMe }),
-    [status, user, request, devSignIn, signOut, retry, updateMe, refreshMe],
+    () => ({ status, user, lastUser: lastUser.current, request, cached, devSignIn, signOut, retry, updateMe, refreshMe }),
+    [status, user, request, cached, devSignIn, signOut, retry, updateMe, refreshMe],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

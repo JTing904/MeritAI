@@ -274,6 +274,11 @@ model Project {
   /// Bumped on every change to packages, owners, members, or a task's package/owner/status/start/points,
   /// so a re-split preview can tell it went stale (STALE_PREVIEW).
   packagesVersion Int           @default(0)
+  /// Cache version (hardening B2): bumped by database triggers (migration cache_versions) on every write
+  /// to this row or to a row that belongs to the project (members, packages, features, milestones, tasks,
+  /// attempts, evidence, checklist items, grade changes, invites, swaps) and when a member's name changes.
+  /// Conditional GETs (lib/etag.ts) hash it into their ETag. Never written by the app.
+  version         Int           @default(0)
   /// 为所有人删除项目: hidden from everyone at once; the leader who did it (deletedById) can restore it
   /// until purgeAfter (deletedAt + 7 days), after which purgeDeletedProjects removes it for good.
   deletedAt       DateTime?

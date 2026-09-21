@@ -22,6 +22,13 @@ export const en: Messages = {
     options: 'Options',
     cancel: 'Cancel',
   },
+  offline: {
+    title: 'No network',
+    body: 'MeritAI needs a connection. Turn on Wi-Fi or mobile data and it will open by itself.',
+    waiting: 'Waiting for a network…',
+    bar: 'No network · showing what was here before',
+    back: 'Back online · updated',
+  },
   startup: {
     unreachableTitle: "Can't reach the server",
     unreachableBody: "You're still signed in. Check your connection, or try again once the server is back.",
@@ -80,6 +87,7 @@ export const en: Messages = {
   },
   errors: {
     NETWORK: "Can't reach the server. Check your connection.",
+    OFFLINE: "No network. Try again once you're connected",
     TIMEOUT: 'The network is too slow. Try again.',
     BAD_RESPONSE: "The server's reply didn't make sense. Try again later.",
     BAD_REQUEST: 'Something was wrong with that request. Try again.',

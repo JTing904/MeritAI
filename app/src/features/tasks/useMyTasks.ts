@@ -4,55 +4,57 @@ import type { MyTasksView } from '@shared/types';
 import { useToast } from '@/components/Toast';
 import { useI18n } from '@/i18n';
 import { errorCode, type ClientErrorCode } from '@/lib/api';
+import { hasCached, useCached } from '@/lib/cache';
+import { MY_TASKS_KEY } from '@/lib/cacheKeys';
+import { onReconnect } from '@/lib/network';
 import { useSession } from '@/lib/session';
 
-/** GET /api/tasks/mine, refetched every time the tab gains focus and on pull-to-refresh (as useHome). */
+/** GET /api/tasks/mine through the data cache, checked on focus and pull-to-refresh (as useHome). */
 export function useMyTasks() {
-  const { request } = useSession();
+  const { cached } = useSession();
   const { t } = useI18n();
   // show is stable; the object useToast returns is not (it would re-run the focus effect every render).
   const { show: showToast } = useToast();
-  const [data, setData] = useState<MyTasksView | null>(null);
+  const data = useCached<MyTasksView>(MY_TASKS_KEY);
   const [error, setError] = useState<ClientErrorCode | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  // Only the newest request may write state (a slow focus fetch must not overwrite a newer pull).
+  // Only the newest load may set the error / spinner.
   const latest = useRef(0);
-  const hasData = useRef(false);
 
   const load = useCallback(
-    async (pull = false) => {
+    async (mode: 'focus' | 'pull' | 'reload') => {
       const id = ++latest.current;
+      const pull = mode === 'pull';
       if (pull) setRefreshing(true);
       try {
-        const next = await request<MyTasksView>('/tasks/mine');
+        await cached<MyTasksView>(MY_TASKS_KEY, { force: mode !== 'focus' });
         if (id !== latest.current) return;
-        hasData.current = true;
-        setData(next);
         setError(null);
       } catch (err) {
         if (id !== latest.current) return;
         // With something already on screen, keep it and only say why the refresh failed.
-        if (!hasData.current) setError(errorCode(err));
+        if (!hasCached(MY_TASKS_KEY)) setError(errorCode(err));
         else if (pull) showToast(t.errors[errorCode(err)]);
       } finally {
         if (id === latest.current) setRefreshing(false);
       }
     },
-    [request, showToast, t],
+    [cached, showToast, t],
   );
 
   useFocusEffect(
     useCallback(() => {
-      void load();
+      void load('focus');
+      return onReconnect(() => void load('reload'));
     }, [load]),
   );
 
   const retry = useCallback(() => {
     setError(null);
-    void load();
+    void load('reload');
   }, [load]);
 
-  const refresh = useCallback(() => void load(true), [load]);
+  const refresh = useCallback(() => void load('pull'), [load]);
 
-  return { data, error, refreshing, refresh, retry };
+  return { data, error: data ? null : error, refreshing, refresh, retry };
 }

@@ -1,16 +1,20 @@
+import { Platform } from 'react-native';
 import type { ApiEnvelope, ErrorCode } from '@shared/api';
 import { APP_VERSION } from '@shared/constants';
 import { zh } from '@/i18n/zh';
+import type { Conditional } from './cacheCore';
+import { isOnline } from './network';
 
 /** Inlined at build time. On the tablet, `adb reverse tcp:3000 tcp:3000` makes localhost reach the PC. */
 export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000').replace(/\/$/, '');
 
 /**
  * Server codes plus the client's own: NETWORK (can't reach it), BAD_RESPONSE (not our JSON), TIMEOUT (too
- * slow). RETRY (a transient database error, retried once here) and UPDATE_REQUIRED (426: this build is too old)
- * are listed too so the app compiles whether or not shared/api.ts has them yet.
+ * slow), OFFLINE (the device has no network: a write is not sent at all, and a failed request made while
+ * offline reads as this). RETRY (a transient database error, retried once here) and UPDATE_REQUIRED (426:
+ * this build is too old) are listed too so the app compiles whether or not shared/api.ts has them yet.
  */
-export type ClientErrorCode = ErrorCode | 'NETWORK' | 'BAD_RESPONSE' | 'TIMEOUT' | 'RETRY' | 'UPDATE_REQUIRED';
+export type ClientErrorCode = ErrorCode | 'NETWORK' | 'BAD_RESPONSE' | 'TIMEOUT' | 'OFFLINE' | 'RETRY' | 'UPDATE_REQUIRED';
 
 export class ApiClientError extends Error {
   constructor(
@@ -34,6 +38,8 @@ export type RequestOptions = {
   timeoutMs?: number;
   /** Sent as Idempotency-Key on creates, so a retry of the same action can't create it twice (newIdempotencyKey). */
   idempotencyKey?: string;
+  /** GET only: the cached ETag. A 304 answer then means "unchanged" (apiConditional). */
+  ifNoneMatch?: string | null;
 };
 
 export const JSON_TIMEOUT_MS = 15_000;
@@ -86,13 +92,18 @@ export function newIdempotencyKey(): string {
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-async function once<T>(path: string, { method = 'GET', body, token, signal, timeoutMs, idempotencyKey }: RequestOptions): Promise<T> {
+async function once<T>(
+  path: string,
+  { method = 'GET', body, token, signal, timeoutMs, idempotencyKey, ifNoneMatch }: RequestOptions,
+): Promise<Conditional<T>> {
   const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
   const headers: Record<string, string> = { Accept: 'application/json', 'X-App-Version': APP_VERSION };
   // Multipart: let fetch set the Content-Type with its boundary.
   if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
+  // Only ever an ETag the server sent us (on the web that also means the server exposes and allows it).
+  if (ifNoneMatch && method === 'GET') headers['If-None-Match'] = ifNoneMatch;
 
   // One controller for the caller's signal and our timeout; the timer covers reading the body too.
   const ctrl = new AbortController();
@@ -113,6 +124,9 @@ async function once<T>(path: string, { method = 'GET', body, token, signal, time
         headers,
         body: body === undefined ? undefined : isForm ? (body as FormData) : JSON.stringify(body),
         signal: ctrl.signal,
+        // Web: the browser's HTTP cache stays out of it (lib/cache.ts keeps pages per user and sends the ETag
+        // itself). Not on native: RN's fetch polyfill would add a cache-busting query parameter.
+        ...(Platform.OS === 'web' ? { cache: 'no-store' as const } : {}),
       });
     } catch (err) {
       if (timedOut) throw new ApiClientError('TIMEOUT', `Request to ${path} timed out`);
@@ -120,6 +134,10 @@ async function once<T>(path: string, { method = 'GET', body, token, signal, time
       if (__DEV__ && !signal?.aborted) console.warn(`[api] ${method} ${path} failed:`, err);
       throw new ApiClientError('NETWORK', `Network request to ${API_URL} failed`);
     }
+
+    const etag = res.headers.get('ETag');
+    // Unchanged since the cached copy: an empty body, keep what we have.
+    if (res.status === 304) return { notModified: true, etag };
 
     let envelope: ApiEnvelope<T>;
     try {
@@ -140,7 +158,7 @@ async function once<T>(path: string, { method = 'GET', body, token, signal, time
       if (code === 'UPDATE_REQUIRED' || res.status === 426) flagUpdateRequired();
       throw new ApiClientError(code, envelope.error.message, res.status, envelope.error.details);
     }
-    return envelope.data;
+    return { notModified: false, data: envelope.data, etag };
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener('abort', onAbort);
@@ -152,6 +170,20 @@ async function once<T>(path: string, { method = 'GET', body, token, signal, time
  * X-App-Version and a timeout; a 503 RETRY (a transient database error: nothing was written) is sent once more.
  */
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const res = await apiConditional<T>(path, { ...options, ifNoneMatch: null });
+  if (res.notModified) throw new ApiClientError('BAD_RESPONSE', `Unexpected 304 for ${path}`, 304);
+  return res.data;
+}
+
+/**
+ * As api(), for a GET sent with the cached ETag (`ifNoneMatch`): resolves to `{ notModified: true }` on a
+ * 304, otherwise to the data and the response's ETag (null when the server sent none).
+ * With no network, a write (anything but GET) is not sent: it fails right away with OFFLINE.
+ */
+export async function apiConditional<T>(path: string, options: RequestOptions = {}): Promise<Conditional<T>> {
+  if ((options.method ?? 'GET') !== 'GET' && !isOnline()) {
+    throw new ApiClientError('OFFLINE', `No network: ${options.method} ${path} not sent`);
+  }
   try {
     return await once<T>(path, options);
   } catch (err) {
@@ -168,5 +200,7 @@ const KNOWN = new Set<string>(Object.keys(zh.errors));
 /** The error's code for `t.errors[...]`: always one the app has text for. */
 export function errorCode(err: unknown): ClientErrorCode {
   if (!(err instanceof ApiClientError)) return 'INTERNAL';
+  // Couldn't reach the server because the device has no network: say that (没有网络，连上再试).
+  if ((err.code === 'NETWORK' || err.code === 'TIMEOUT') && !isOnline()) return 'OFFLINE';
   return KNOWN.has(err.code) ? err.code : 'INTERNAL';
 }

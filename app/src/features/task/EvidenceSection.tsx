@@ -96,7 +96,9 @@ export function EvidenceSection({ ctx, onSubmitted }: { ctx: TaskCtx; onSubmitte
     const ok = await ctx.run('upload', `${ctx.base}/evidence/file`, { method: 'POST', body: evidenceForm(file), idempotencyKey: key }, {
       fail: (err) => {
         const code = errorCode(err);
-        if (!RETRYABLE.has(code)) return false; // toasted by onError; the file is dropped below
+        // No network: nothing was sent; say so, and keep the file for 再试一次 once it's back.
+        if (code === 'OFFLINE') ctx.toast(t.errors.OFFLINE);
+        else if (!RETRYABLE.has(code)) return false; // toasted by onError; the file is dropped below
         setPending({ file, key, phase: 'failed', error: code });
         return true;
       },

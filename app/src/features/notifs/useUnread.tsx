@@ -1,6 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState, Platform } from 'react-native';
 import type { UnreadCount } from '@shared/types';
+import { queryCache } from '@/lib/cache';
+import { UNREAD_KEY } from '@/lib/cacheKeys';
+import { isOnline, onReconnect } from '@/lib/network';
 import { useSession } from '@/lib/session';
 
 export type UnreadState = {
@@ -27,11 +30,12 @@ const UnreadContext = createContext<UnreadState>(NONE);
  * Keeps the unread count for the tab badge. Mounted once in the root layout, inside SessionProvider.
  * Fetched when someone signs in, every 5 minutes while the app is in the foreground (on the web: the tab is
  * visible and someone used it in the last 10 minutes), when it comes back, and whenever a screen calls
- * refresh(). Responses that already carry the count report() it instead.
+ * refresh(). Responses that already carry the count report() it instead. The last count is kept in the
+ * data cache (shown on the next start at once) and each fetch sends its ETag, so an unchanged count is a 304.
  */
 export function UnreadProvider({ children }: { children: ReactNode }) {
-  const { status, user, request } = useSession();
-  const [count, setCount] = useState(0);
+  const { status, user, cached } = useSession();
+  const [count, setCount] = useState(() => queryCache.peek<UnreadCount>(UNREAD_KEY)?.count ?? 0);
   const userId = status === 'signedIn' ? (user?.id ?? null) : null;
   // Only the newest answer may set the count (a slow poll must not undo a newer refresh or report).
   const latest = useRef(0);
@@ -43,20 +47,21 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
   const [owner, setOwner] = useState(userId);
   if (owner !== userId) {
     setOwner(userId);
-    setCount(0);
+    // The session opened the cache for the new user before showing them: this is their last count.
+    setCount(userId ? (queryCache.peek<UnreadCount>(UNREAD_KEY)?.count ?? 0) : 0);
     latest.current++;
     fetchedAt.current = 0;
   }
 
   const fetchCount = useCallback(
     (force: boolean) => {
-      if (!userId) return;
+      if (!userId || !isOnline()) return; // offline: the next poll or coming back online asks
       if (!force && Date.now() - fetchedAt.current < FRESH_MS) return;
       const id = ++latest.current;
       fetchedAt.current = Date.now(); // also keeps a burst of refresh() calls to one request
-      request<UnreadCount>('/notifications/unread-count').then(
-        (res) => {
-          if (id === latest.current) setCount(res.count);
+      cached<UnreadCount>(UNREAD_KEY, { force: true }).then(
+        ({ data }) => {
+          if (id === latest.current) setCount(data.count);
         },
         // Offline or a server hiccup: keep the last count; the next poll tries again.
         () => {
@@ -64,7 +69,7 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
         },
       );
     },
-    [userId, request],
+    [userId, cached],
   );
 
   const refresh = useCallback(() => fetchCount(false), [fetchCount]);
@@ -75,6 +80,7 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
       ++latest.current;
       fetchedAt.current = Date.now();
       setCount(n);
+      if (queryCache.peek<UnreadCount>(UNREAD_KEY)?.count !== n) queryCache.set<UnreadCount>(UNREAD_KEY, { count: n });
     },
     [userId],
   );
@@ -106,6 +112,7 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
 
     fetchCount(false);
     if (visible()) start();
+    const offReconnect = onReconnect(() => fetchCount(true));
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') resume();
       else stop();
@@ -127,6 +134,7 @@ export function UnreadProvider({ children }: { children: ReactNode }) {
     return () => {
       stop();
       sub.remove();
+      offReconnect();
       if (web) {
         document.removeEventListener('visibilitychange', onVisibility);
         activityEvents.forEach((e) => window.removeEventListener(e, onActivity));

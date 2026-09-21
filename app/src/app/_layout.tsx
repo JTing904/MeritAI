@@ -7,12 +7,14 @@ import { Linking, Platform, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Button } from '@/components/Button';
+import { NoNetworkScreen, useNetBarPhase, WithNetBar } from '@/components/NetStatus';
 import { headingLevel } from '@/components/Screen';
 import { ToastProvider } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
 import { UnreadProvider } from '@/features/notifs/useUnread';
 import { I18nProvider, useI18n } from '@/i18n';
 import { API_URL, isUpdateRequired, onUpdateRequired } from '@/lib/api';
+import { useNetwork } from '@/lib/network';
 import { SessionProvider, useSession } from '@/lib/session';
 import { ThemeProvider, useTheme } from '@/theme';
 import { loadWebFonts } from '@/theme/fonts';
@@ -81,6 +83,15 @@ function ThemedApp() {
   const { locale } = useI18n();
   const { status, user, updateMe } = useSession();
   const updateRequired = useUpdateRequired();
+  const net = useNetwork();
+  const barPhase = useNetBarPhase();
+  // Opening the app with no network: the no-network screen instead of the app until it's back. Once the
+  // app has been shown online, losing the network only shows the bar (the page stays as it was).
+  const [entered, setEntered] = useState(false);
+  const blocked = !entered && net.known && !net.online;
+  useEffect(() => {
+    if (!entered && net.known && net.online) setEntered(true);
+  }, [entered, net.known, net.online]);
 
   const navTheme = useMemo(() => {
     const base = dark ? DarkTheme : DefaultTheme;
@@ -92,10 +103,12 @@ function ThemedApp() {
     void SystemUI.setBackgroundColorAsync(c.paper).catch(() => {});
   }, [c.paper]);
 
-  // Keep the splash screen up until we know whether someone is signed in (no login-screen flash).
+  // Keep the splash screen up until we know whether someone is signed in (no login-screen flash) and
+  // whether there is a network (at most 1.5 s, lib/network.ts).
+  const ready = net.known && (status !== 'loading' || blocked);
   useEffect(() => {
-    if (status !== 'loading' || updateRequired) void SplashScreen.hideAsync().catch(() => {});
-  }, [status, updateRequired]);
+    if (ready || updateRequired) void SplashScreen.hideAsync().catch(() => {});
+  }, [ready, updateRequired]);
 
   // Push notifications use the language chosen on this device. Try once per (user, language);
   // a failure is retried on the next sign-in or language change, never in a loop.
@@ -108,41 +121,58 @@ function ThemedApp() {
     void updateMe({ locale }).catch(() => {});
   }, [status, user, locale, updateMe]);
 
-  if (updateRequired) return <UpdateRequired />;
-  if (status === 'loading') return <View style={{ flex: 1, backgroundColor: c.paper }} />;
-  if (status === 'unreachable') return <Unreachable />;
+  // Full-page states replace the navigator, so each carries its own status bar style.
+  const statusBar = <StatusBar style={dark ? 'light' : 'dark'} />;
+  const fullPage = updateRequired ? (
+    <UpdateRequired />
+  ) : blocked ? (
+    <NoNetworkScreen />
+  ) : !ready ? (
+    <View style={{ flex: 1, backgroundColor: c.paper }} />
+  ) : status === 'unreachable' ? (
+    <Unreachable />
+  ) : null;
+  if (fullPage)
+    return (
+      <>
+        {statusBar}
+        {fullPage}
+      </>
+    );
 
   return (
-    <NavThemeProvider value={navTheme}>
-      <StatusBar style={dark ? 'light' : 'dark'} />
-      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.paper } }}>
-        <Stack.Protected guard={status === 'signedIn'}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="new/index" />
-          <Stack.Screen name="new/[id]/index" />
-          <Stack.Screen name="new/[id]/basics" />
-          <Stack.Screen name="new/[id]/input" />
-          <Stack.Screen name="new/[id]/cant-read" />
-          <Stack.Screen name="new/[id]/plan" />
-          <Stack.Screen name="new/[id]/done" />
-          <Stack.Screen name="join/index" />
-          <Stack.Screen name="join/[code]" />
-          <Stack.Screen name="project/[id]/index" />
-          <Stack.Screen name="project/[id]/pick" />
-          <Stack.Screen name="project/[id]/settings" />
-          <Stack.Screen name="project/[id]/members" />
-          <Stack.Screen name="project/[id]/task/[taskId]" />
-          <Stack.Screen name="project/[id]/brief" />
-        </Stack.Protected>
-        {/* Developer pages exist only in development builds. */}
-        <Stack.Protected guard={__DEV__ && status === 'signedIn'}>
-          <Stack.Screen name="dev/gallery" />
-        </Stack.Protected>
-        <Stack.Protected guard={status === 'signedOut'}>
-          <Stack.Screen name="login" />
-        </Stack.Protected>
-      </Stack>
-    </NavThemeProvider>
+    <WithNetBar phase={barPhase}>
+      <NavThemeProvider value={navTheme}>
+        {statusBar}
+        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.paper } }}>
+          <Stack.Protected guard={status === 'signedIn'}>
+            <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="new/index" />
+            <Stack.Screen name="new/[id]/index" />
+            <Stack.Screen name="new/[id]/basics" />
+            <Stack.Screen name="new/[id]/input" />
+            <Stack.Screen name="new/[id]/cant-read" />
+            <Stack.Screen name="new/[id]/plan" />
+            <Stack.Screen name="new/[id]/done" />
+            <Stack.Screen name="join/index" />
+            <Stack.Screen name="join/[code]" />
+            <Stack.Screen name="project/[id]/index" />
+            <Stack.Screen name="project/[id]/pick" />
+            <Stack.Screen name="project/[id]/settings" />
+            <Stack.Screen name="project/[id]/members" />
+            <Stack.Screen name="project/[id]/task/[taskId]" />
+            <Stack.Screen name="project/[id]/brief" />
+          </Stack.Protected>
+          {/* Developer pages exist only in development builds. */}
+          <Stack.Protected guard={__DEV__ && status === 'signedIn'}>
+            <Stack.Screen name="dev/gallery" />
+          </Stack.Protected>
+          <Stack.Protected guard={status === 'signedOut'}>
+            <Stack.Screen name="login" />
+          </Stack.Protected>
+        </Stack>
+      </NavThemeProvider>
+    </WithNetBar>
   );
 }
 

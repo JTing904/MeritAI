@@ -4,7 +4,9 @@ import type { AppEnv } from "../app";
 import { requireActiveMember } from "../lib/access";
 import { requireUser } from "../lib/auth";
 import { readBody } from "../lib/body";
+import { conditional } from "../lib/etag";
 import { ok } from "../lib/http";
+import { myTasksToken, taskToken } from "../services/cache-tokens";
 import { loadBrief } from "../services/brief-view";
 import { replaceChecklist, tickItem } from "../services/checklist";
 import { myTasks } from "../services/my-tasks";
@@ -35,8 +37,13 @@ async function asMember(c: Ctx) {
 
 taskRoutes.get("/:id/tasks/:taskId", async (c) => {
   const user = await requireUser(c);
-  // The detail checks the membership against the members it loads (404 for anyone who can't see it).
-  return ok<TaskDetail>(c, await loadTaskDetail(c.var.db, c.req.param("id"), c.req.param("taskId"), { userId: user.id }));
+  const projectId = c.req.param("id");
+  const taskId = c.req.param("taskId");
+  const now = new Date();
+  // Conditional (B2). The detail checks the membership against the members it loads (404 for anyone
+  // who can't see it); the token is null for them.
+  const token = await taskToken(c.var.db, projectId, taskId, user, now);
+  return conditional<TaskDetail>(c, token, () => loadTaskDetail(c.var.db, projectId, taskId, { userId: user.id }, now));
 });
 
 taskRoutes.put("/:id/tasks/:taskId/checklist", async (c) => {
@@ -67,5 +74,6 @@ taskRoutes.get("/:id/brief", async (c) => {
 
 myTaskRoutes.get("/mine", async (c) => {
   const user = await requireUser(c);
-  return ok<MyTasksView>(c, await myTasks(c.var.db, user));
+  const now = new Date();
+  return conditional<MyTasksView>(c, await myTasksToken(c.var.db, user, now), () => myTasks(c.var.db, user, now));
 });

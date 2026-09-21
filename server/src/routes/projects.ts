@@ -6,12 +6,14 @@ import { assertDraft, requireActiveMember, requireLeader } from "../lib/access";
 import { requireUser } from "../lib/auth";
 import { readBody } from "../lib/body";
 import { AppError, notFound } from "../lib/errors";
+import { conditional } from "../lib/etag";
 import { ok } from "../lib/http";
 import { idempotent } from "../lib/idempotency";
 import { safeFileName } from "../lib/file-name";
 import { extractBriefText, MAX_BRIEF_BYTES } from "../lib/plan/extract";
 import { consumeRate, RATE_RULES } from "../lib/rate-limit";
 import { addActiveTask, updateActiveTask } from "../services/active-tasks";
+import { projectToken } from "../services/cache-tokens";
 import { applyBrief, briefFailure } from "../services/brief";
 import { deleteProject, restoreProject } from "../services/project-delete";
 import { createInvites } from "../services/invites";
@@ -65,8 +67,12 @@ projectRoutes.get("/:id/draft", async (c) => {
 
 projectRoutes.get("/:id", async (c) => {
   const user = await requireUser(c);
-  // The view checks the membership against the members it loads (404 for anyone who can't see it).
-  return ok<ProjectView>(c, await openProjectView(c.var.db, c.req.param("id"), user.id));
+  const projectId = c.req.param("id");
+  const now = new Date();
+  // Conditional (B2). The view checks the membership against the members it loads (404 for anyone who
+  // can't see it); the token is null for them, so a 404 is never cached.
+  const token = await projectToken(c.var.db, projectId, user, now);
+  return conditional<ProjectView>(c, token, () => openProjectView(c.var.db, projectId, user.id, now));
 });
 
 projectRoutes.patch("/:id", async (c) => {

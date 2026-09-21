@@ -47,9 +47,9 @@ Build & release
 - ☐ A34 Owner: two offline encrypted backups of the release keystore and its passwords; publish the certificate fingerprint.
 
 ## Phase B — request savings (decided 2026-09-19)
-- ☐ B1 Client cache with stale-while-revalidate; don't refetch data fetched in the last 30–60 s; update caches from mutation responses; offline read-only view with an offline banner.
-- ☐ B2 Cheap version checks → 304 before loading data (Project.version, per-user home/my-tasks version).
-- ☐ B3 Load test on the real hosting before release.
+- ☑ B1 Client cache with stale-while-revalidate; don't refetch data fetched in the last 30 s; update caches from mutation responses; kept until sign-out. Changed 2026-09-21: no offline reading — the app is blocked at launch without a network, and a banner shows when the connection drops mid-use (writes refused with 「没有网络，连上再试」).
+- ☑ B2 Cheap version checks → 304 before loading data: `Project.version` bumped by database triggers, ETag tokens in `services/cache-tokens.ts`; a 304 costs 3 queries instead of 9–20. Plus a general per-user / per-IP rate limit (600 / 1200 requests per 10 min).
+- ☐ B3 Load test on the real hosting before release (needs the Phase D deployment).
 
 ## Phase C — needs design/mockups first
 - ☐ C1 「加入要我同意」 toggle for leaders + pending join requests (mockup first).

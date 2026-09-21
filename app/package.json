@@ -7,6 +7,7 @@
     "@expo-google-fonts/dm-mono": "^0.4.2",
     "@expo-google-fonts/noto-sans-sc": "^0.4.3",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/netinfo": "12.0.1",
     "expo": "~57.0.24",
     "expo-build-properties": "~57.0.21",
     "expo-clipboard": "~57.0.2",
@@ -46,5 +47,6 @@
     "typecheck": "tsc --noEmit",
     "prebuild": "expo prebuild --platform android --clean"
   },
-  "private": true
+  "private": true,
+  "license": "UNLICENSED"
 }

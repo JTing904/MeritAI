@@ -4,6 +4,8 @@ import type { NotificationPage, NotificationView, UnreadCount } from '@shared/ty
 import { useToast } from '@/components/Toast';
 import { useI18n } from '@/i18n';
 import { errorCode, type ClientErrorCode } from '@/lib/api';
+import { queryCache } from '@/lib/cache';
+import { onReconnect } from '@/lib/network';
 import { useSession } from '@/lib/session';
 import { useUnread } from './useUnread';
 
@@ -22,18 +24,24 @@ function listPath(filter: NotifFilter, cursor: string | null) {
 }
 
 /**
- * The 通知 tab's list. Every time the tab gains focus (a new visit) it loads the first page and marks
- * everything up to its first item read (POST /notifications/read), then refreshes the badge. Items that
- * were unread keep their dot until the next visit.
+ * The 通知 tab's list. Every time the tab gains focus (a new visit) it shows the cached first page and
+ * checks it with the server (the data cache's rules; always when the badge counts a different number of
+ * unread), marks everything up to its first item read (POST /notifications/read), then refreshes the
+ * badge. Items that were unread keep their dot until the next visit. Later pages are not cached.
  */
 export function useNotifications() {
-  const { request } = useSession();
-  const { refresh: refreshBadge, report: reportBadge } = useUnread();
+  const { request, cached } = useSession();
+  const { count: badgeCount, refresh: refreshBadge, report: reportBadge } = useUnread();
+  const badge = useRef(badgeCount);
+  badge.current = badgeCount;
   const { t } = useI18n();
   // show is stable; the object useToast returns is not (it would re-run the focus effect every render).
   const { show: showToast } = useToast();
   const [filter, setFilterState] = useState<NotifFilter>('all');
-  const [list, setListState] = useState<List | null>(null);
+  const [list, setListState] = useState<List | null>(() => {
+    const page = queryCache.peek<NotificationPage>(listPath('all', null));
+    return page ? { filter: 'all', items: page.items, nextCursor: page.nextCursor } : null;
+  });
   const [error, setError] = useState<ClientErrorCode | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -66,11 +74,20 @@ export function useNotifications() {
   };
 
   const markRead = useCallback(
-    async (upToId: string) => {
+    async (which: NotifFilter, upToId: string) => {
       try {
         // The answer is the unread count left: the badge takes it without asking again.
         const left = await request<UnreadCount>('/notifications/read', { method: 'POST', body: { upToId } });
         reportBadge(left.count);
+        // The cached first page is read now too (everything up to its first item); the other filter's
+        // page has read rows as well: check it next time.
+        const key = listPath(which, null);
+        queryCache.update<NotificationPage>(key, (page) => ({
+          ...page,
+          unreadCount: left.count,
+          items: page.items.map((item) => (item.read ? item : { ...item, read: true })),
+        }));
+        queryCache.markStale((k) => k.startsWith('/notifications?') && k !== key);
       } catch {
         // Not fatal: the items stay unread and the next visit tries again.
         refreshBadge();
@@ -79,23 +96,33 @@ export function useNotifications() {
     [request, refreshBadge, reportBadge],
   );
 
+  const show = (which: NotifFilter, page: NotificationPage) => {
+    unreadPrefix.current = which === 'all' ? page.unreadCount : 0;
+    remember(page.items, 0);
+    setList({ filter: which, items: page.items, nextCursor: page.nextCursor });
+  };
+
   const loadFirst = useCallback(
-    async (which: NotifFilter, pull = false) => {
+    async (which: NotifFilter, force = false, pull = false) => {
       const id = ++latest.current;
+      const key = listPath(which, null);
       firstLoading.current = true;
       if (pull) setRefreshing(true);
+      // The copy from the last visit shows at once.
+      const kept = queryCache.peek<NotificationPage>(key);
+      if (kept && listRef.current?.filter !== which) show(which, kept);
+      // The badge counts unread rows the cached page doesn't have: something new arrived.
+      const behind = which === 'all' && kept !== undefined && kept.unreadCount !== badge.current;
       try {
-        const page = await request<NotificationPage>(listPath(which, null));
+        const { data: page, fromNetwork } = await cached<NotificationPage>(key, { force: force || pull || behind });
         if (id !== latest.current) return;
-        unreadPrefix.current = which === 'all' ? page.unreadCount : 0;
-        reportBadge(page.unreadCount); // every unread row, whichever filter
-        remember(page.items, 0);
-        setList({ filter: which, items: page.items, nextCursor: page.nextCursor });
+        if (fromNetwork) reportBadge(page.unreadCount); // every unread row, whichever filter
+        show(which, page);
         setError(null);
         moreFailedRef.current = false;
         setMoreFailed(false);
         const first = page.items[0];
-        if (first && page.items.some((item) => !item.read)) void markRead(first.id);
+        if (first && page.items.some((item) => !item.read)) void markRead(which, first.id);
       } catch (err) {
         if (id !== latest.current) return;
         // With something already on screen, keep it and only say why the refresh failed.
@@ -108,14 +135,15 @@ export function useNotifications() {
         }
       }
     },
-    // remember and setList only touch refs and a state setter, so they are left out.
-    [request, markRead, reportBadge, showToast, t],
+    // show, remember and setList only touch refs and a state setter, so they are left out.
+    [cached, markRead, reportBadge, showToast, t],
   );
 
   useFocusEffect(
     useCallback(() => {
       visit.current = new Set();
       void loadFirst(filterRef.current);
+      return onReconnect(() => void loadFirst(filterRef.current, true));
     }, [loadFirst]),
   );
 
@@ -168,12 +196,12 @@ export function useNotifications() {
     void loadMore();
   }, [loadMore]);
 
-  const refresh = useCallback(() => void loadFirst(filterRef.current, true), [loadFirst]);
+  const refresh = useCallback(() => void loadFirst(filterRef.current, true, true), [loadFirst]);
   /** Load the first page again without the pull spinner (after answering a swap). */
-  const reload = useCallback(() => loadFirst(filterRef.current), [loadFirst]);
+  const reload = useCallback(() => loadFirst(filterRef.current, true), [loadFirst]);
   const retry = useCallback(() => {
     setError(null);
-    void loadFirst(filterRef.current);
+    void loadFirst(filterRef.current, true);
   }, [loadFirst]);
 
   /** Show the grape dot: unread now, or unread when this visit began. */

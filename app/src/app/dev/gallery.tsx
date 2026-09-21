@@ -7,6 +7,7 @@ import { Card, List, Row, SectionHeader } from '@/components/Card';
 import { Chip } from '@/components/Chip';
 import { Seg, Toggle } from '@/components/Controls';
 import { Highlight } from '@/components/Highlight';
+import { NetBar, NoNetworkScreen } from '@/components/NetStatus';
 import { Rich } from '@/components/Rich';
 import { AppBar, Screen } from '@/components/Screen';
 import { Sheet, SheetOption } from '@/components/Sheet';
@@ -121,6 +122,15 @@ function Gallery() {
         <Txt v="body">正文 Body text 15px Noto Sans SC</Txt>
         <Txt v="meta">说明文字 meta text</Txt>
         <Txt v="mono">a1b2c3d · +42 −7</Txt>
+      </Card>
+
+      <SectionHeader title="没有网络" />
+      <Card style={{ gap: 12, padding: 0, overflow: 'hidden' }}>
+        <NetBar phase="off" />
+        <NetBar phase="back" />
+        <View style={{ height: 520 }}>
+          <NoNetworkScreen onRetry={() => toast.show(t.errors.OFFLINE)} />
+        </View>
       </Card>
 
       <Sheet visible={sheet} onClose={() => setSheet(false)} title="要做什么？">

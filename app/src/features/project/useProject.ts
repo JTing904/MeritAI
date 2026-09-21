@@ -4,14 +4,17 @@ import type { ProjectView } from '@shared/types';
 import { useToast } from '@/components/Toast';
 import { useI18n } from '@/i18n';
 import { ApiClientError, errorCode, type ClientErrorCode } from '@/lib/api';
+import { applyWrite, hasCached, queryCache, useCached } from '@/lib/cache';
+import { HOME_KEY, MY_TASKS_KEY, projectKey, underProject } from '@/lib/cacheKeys';
+import { onReconnect } from '@/lib/network';
 import { useSession } from '@/lib/session';
 
 export type ProjectState = {
-  /** Null until the first load succeeds. */
+  /** Null until there is something to show (the cached copy, or the first load). */
   project: ProjectView | null;
   /** Why the first load failed (null while loading and once something is shown): show it with 再试一次. */
   error: ClientErrorCode | null;
-  /** Fetches the project again (also runs whenever the screen regains focus). */
+  /** Fetches the project again (always asks the server; focus uses the cache's 30 s rule). */
   reload: () => Promise<void>;
   /** Shows the view a write returned (every M3 write answers with the fresh ProjectView). */
   setProject: (view: ProjectView) => void;
@@ -22,56 +25,79 @@ export type ProjectState = {
   onError: (err: unknown) => void;
 };
 
-/** GET /api/projects/:id for the project screens (project page, pick, settings, members, task). */
+/**
+ * The project, or the viewer, is gone (404) or no longer allowed (403): forget everything cached under it,
+ * and home / 我的任务 must be checked again.
+ */
+export function forgetProject(id: string) {
+  queryCache.drop(underProject(id));
+  queryCache.markStale((k) => k === HOME_KEY || k === MY_TASKS_KEY);
+}
+
+/**
+ * GET /api/projects/:id for the project screens (project page, pick, settings, members, task), through the
+ * data cache: every screen of the same project shares one copy, the last one shows at once, and it is
+ * checked with the server on focus (within 30 s only when a write changed something).
+ */
 export function useProject(id: string): ProjectState {
-  const { request } = useSession();
+  const { cached } = useSession();
   const { t } = useI18n();
   // show is stable; the object useToast returns is not.
   const { show: showToast } = useToast();
-  const [project, setProjectState] = useState<ProjectView | null>(null);
+  const key = projectKey(id);
+  const cachedView = useCached<ProjectView>(key);
   const [error, setError] = useState<ClientErrorCode | null>(null);
-  // Only the newest load (or write result) may set state: a slow focus reload must not undo a write.
-  const latest = useRef(0);
-  const hasData = useRef(false);
+  // Leaving or deleting the project drops it from the cache just before the screen closes: keep showing
+  // the last view meanwhile (not after a 404/403, which shows the error).
+  const last = useRef<{ key: string; view: ProjectView } | null>(null);
+  if (cachedView) last.current = { key, view: cachedView };
+  const project = cachedView ?? (!error && last.current?.key === key ? last.current.view : null);
 
-  // quiet: the caller already toasted NOT_FOUND (one failure, one toast).
-  const load = useCallback(async (quiet: boolean) => {
-    const reqId = ++latest.current;
-    if (!hasData.current) setError(null);
-    try {
-      const next = await request<ProjectView>(`/projects/${encodeURIComponent(id)}`);
-      if (reqId !== latest.current) return;
-      hasData.current = true;
-      setProjectState(next);
-      setError(null);
-    } catch (err) {
-      if (reqId !== latest.current) return;
-      const code = errorCode(err);
-      if (!hasData.current) setError(code);
-      else if (code === 'NOT_FOUND') {
-        // Removed from the project (or it was deleted) while looking at it.
-        if (!quiet) showToast(t.errors.NOT_FOUND);
-        // Pop back to the home already in the stack (replace would leave the dead project screens under it).
-        router.dismissTo('/');
+  // quiet: the caller already toasted NOT_FOUND (one failure, one toast). The cache keeps a slow load
+  // from undoing a write that answered meanwhile.
+  const load = useCallback(
+    async (quiet: boolean, force: boolean) => {
+      const had = hasCached(key);
+      if (!had) setError(null);
+      try {
+        await cached<ProjectView>(key, { force });
+        setError(null);
+      } catch (err) {
+        const code = errorCode(err);
+        if (code === 'NOT_FOUND' || code === 'FORBIDDEN') {
+          // Removed from the project (or it was deleted): nothing of it may stay on this device.
+          forgetProject(id);
+          // Going home keeps the last view on screen for the transition; otherwise say why it's gone.
+          if (!had || code !== 'NOT_FOUND') setError(code);
+          else {
+            if (!quiet) showToast(t.errors.NOT_FOUND);
+            // Pop back to the home already in the stack (replace would leave the dead project screens under it).
+            router.dismissTo('/');
+          }
+        } else if (!had) setError(code);
+        // Otherwise keep what is on screen; the next focus tries again.
       }
-      // Otherwise keep what is on screen; the next focus tries again.
-    }
-  }, [id, request, showToast, t]);
+    },
+    [id, key, cached, showToast, t],
+  );
 
-  const reload = useCallback(() => load(false), [load]);
+  const reload = useCallback(() => load(false, true), [load]);
 
   useFocusEffect(
     useCallback(() => {
-      void reload();
-    }, [reload]),
+      void load(false, false);
+      return onReconnect(() => void load(false, true));
+    }, [load]),
   );
 
-  const setProject = useCallback((view: ProjectView) => {
-    ++latest.current;
-    hasData.current = true;
-    setProjectState(view);
-    setError(null);
-  }, []);
+  const setProject = useCallback(
+    (view: ProjectView) => {
+      // request() already did this for the write; again here for views from elsewhere (idempotent).
+      applyWrite(key, view);
+      setError(null);
+    },
+    [key],
+  );
 
   const onError = useCallback(
     (err: unknown) => {
@@ -80,11 +106,11 @@ export function useProject(id: string): ProjectState {
       const status = err instanceof ApiClientError ? err.status : 0;
       // A write's NOT_FOUND is usually something inside the project (a member left, a re-split removed a
       // package, a task moved), not the project itself: reload, which goes home only if the project is gone.
-      if (code === 'NOT_FOUND') void load(true);
+      if (code === 'NOT_FOUND') void load(true, true);
       else if (status === 409 || code === 'FORBIDDEN') void reload();
     },
     [load, reload, showToast, t],
   );
 
-  return { project, error, reload, setProject, onError };
+  return { project, error: project ? null : error, reload, setProject, onError };
 }

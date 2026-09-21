@@ -54,7 +54,7 @@ export default function TaskScreen() {
   const { request } = useSession();
   const { show } = useToast();
   const { project, error: projectError, reload: reloadProject, setProject } = useProject(id);
-  const { detail, error: detailError, reload, setDetail, onError } = useTaskDetail(id, taskId);
+  const { detail, error: detailError, confirmed, reload, setDetail, onError } = useTaskDetail(id, taskId);
   const [busy, setBusyState] = useState<string | null>(null);
   // The same, synchronously: a second tap in the same frame must not start a second write.
   const busyRef = useRef<string | null>(null);
@@ -95,17 +95,17 @@ export default function TaskScreen() {
   );
 
   // Confetti when my task becomes DONE with 优秀 / 合格 while I'm looking (a load or a write); meetings
-  // fire it themselves on 我开完了.
+  // fire it themselves on 我开完了. Not for the copy kept from an earlier visit turning into today's.
   const previous = useRef<TaskDetail | null>(null);
   useEffect(() => {
     if (!detail) return;
     const before = previous.current;
     previous.current = detail;
-    if (!before || before.task.id !== detail.task.id) return;
+    if (!confirmed || !before || before.task.id !== detail.task.id) return;
     const mine = detail.owner !== null && detail.owner.memberId === detail.project.viewerMemberId;
     const good = detail.task.grade === 'EXCELLENT' || detail.task.grade === 'PASS';
     if (mine && good && before.task.status !== 'DONE' && detail.task.status === 'DONE') setBurst((n) => n + 1);
-  }, [detail]);
+  }, [detail, confirmed]);
 
   // ?grade=1: open the grading sheet once, and only while there is something to grade.
   useEffect(() => {

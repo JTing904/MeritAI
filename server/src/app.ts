@@ -10,8 +10,9 @@ import { isTooOld, minAppVersion } from "./lib/app-version";
 import { isTransientDbError } from "./lib/db-errors";
 import { assertNoDevLoginInProduction } from "./lib/dev-gate";
 import { AppError } from "./lib/errors";
+import { currentUser } from "./lib/auth";
 import { fail, ok } from "./lib/http";
-import { RateLimitedError } from "./lib/rate-limit";
+import { clientIp, consumeRate, generalCheck, generalLimitFromEnv, RateLimitedError, type GeneralLimit } from "./lib/rate-limit";
 import { apiSecurityHeaders, errorSummary, requestBodyLimit } from "./lib/security";
 import { devRoutes } from "./routes/dev";
 import { evidenceLinkRoutes, evidenceRoutes, fileRoutes } from "./routes/evidence";
@@ -42,6 +43,8 @@ export type AppDeps = {
   webOrigins?: string[];
   /** Oldest app version served (X-App-Version); default MIN_APP_VERSION from the environment, else 0.0.0. */
   minAppVersion?: string;
+  /** The general per-user / per-IP request limit; default from the environment (generalLimitFromEnv), null: off. */
+  generalLimit?: GeneralLimit | null;
 };
 
 export function createApp(deps: AppDeps) {
@@ -50,14 +53,15 @@ export function createApp(deps: AppDeps) {
   const app = new Hono<AppEnv>().basePath("/api");
   const origins = new Set(deps.webOrigins ?? []);
   const minVersion = minAppVersion(deps.minAppVersion ?? process.env.MIN_APP_VERSION);
+  const generalLimit = deps.generalLimit === undefined ? generalLimitFromEnv() : deps.generalLimit;
 
   app.use(
     "*",
     cors({
       origin: (origin) => (origins.has(origin) ? origin : null),
-      allowHeaders: ["Authorization", "Content-Type", "X-App-Version", "Idempotency-Key"],
+      allowHeaders: ["Authorization", "Content-Type", "X-App-Version", "Idempotency-Key", "If-None-Match"],
       allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      exposeHeaders: ["Retry-After", "X-Request-Id"],
+      exposeHeaders: ["Retry-After", "X-Request-Id", "ETag"],
       maxAge: 7200,
     }),
   );
@@ -83,6 +87,16 @@ export function createApp(deps: AppDeps) {
       // The health check reports db:false instead of failing; every other route needs the database.
       if (c.req.path !== "/api/health") throw err;
     }
+    await next();
+  });
+
+  // Every request counts against the general limit (one upsert): per user when signed in (the lookup is
+  // kept for the route), else per IP. Not the health check (uptime monitors), and never a preflight (the
+  // CORS middleware answered it already).
+  app.use("*", async (c, next) => {
+    if (!generalLimit || c.req.path === "/api/health") return next();
+    const user = await currentUser(c);
+    await consumeRate(c.var.db, [generalCheck(generalLimit, user ? { userId: user.id } : { ip: clientIp(c) })]);
     await next();
   });
 

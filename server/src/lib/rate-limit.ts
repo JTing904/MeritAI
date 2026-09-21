@@ -31,6 +31,42 @@ export const RATE_RULES = {
 
 export type RateCheck = { rule: RateRule; subject: string };
 
+/**
+ * The general limit on every request (REQUIREMENTS §13 「每个账号限速」): per signed-in user, else per
+ * client IP (set higher: a school network puts a whole class behind one address). A 304 counts like any
+ * other request. Null: off.
+ */
+export type GeneralLimit = { userMax: number; ipMax: number; windowSec: number };
+
+const positiveInt = (raw: string | undefined, fallback: number, name: string): number => {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const n = Number(raw);
+  if (Number.isInteger(n) && n > 0) return n;
+  console.error(`${name} must be a positive whole number, not ${JSON.stringify(raw)}; using ${fallback}`);
+  return fallback;
+};
+
+/**
+ * RATE_LIMIT_USER_MAX (default 600), RATE_LIMIT_IP_MAX (default 1200) per RATE_LIMIT_WINDOW_SEC
+ * (default 600 = 10 minutes); RATE_LIMIT_DISABLED=true turns the general limit off (the per-action
+ * limits in RATE_RULES stay).
+ */
+export function generalLimitFromEnv(env: NodeJS.ProcessEnv = process.env): GeneralLimit | null {
+  if (env.RATE_LIMIT_DISABLED?.trim().toLowerCase() === "true") return null;
+  return {
+    userMax: positiveInt(env.RATE_LIMIT_USER_MAX, 600, "RATE_LIMIT_USER_MAX"),
+    ipMax: positiveInt(env.RATE_LIMIT_IP_MAX, 1200, "RATE_LIMIT_IP_MAX"),
+    windowSec: positiveInt(env.RATE_LIMIT_WINDOW_SEC, 600, "RATE_LIMIT_WINDOW_SEC"),
+  };
+}
+
+/** The general check for this caller: one bucket, so one upsert per request. */
+export function generalCheck(limit: GeneralLimit, caller: { userId: string } | { ip: string }): RateCheck {
+  return "userId" in caller
+    ? { rule: { name: "all:u", max: limit.userMax, windowSec: limit.windowSec }, subject: caller.userId }
+    : { rule: { name: "all:ip", max: limit.ipMax, windowSec: limit.windowSec }, subject: caller.ip };
+}
+
 /** 429 RATE_LIMITED; the app shows it, and Retry-After says when to try again. */
 export class RateLimitedError extends AppError {
   constructor(readonly retryAfterSec: number) {
