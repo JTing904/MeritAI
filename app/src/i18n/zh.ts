@@ -158,6 +158,8 @@ export const zh = {
     DELETE_CONFIRM_MISMATCH: '项目简称打得不对，再看一下',
     DEADLINE_REQUIRED: '截止日期已经过了，先选一个今天之后的新截止日期再重新打开',
     DELAY_NOT_LATER: '新的日期要比现在的截止时间晚',
+    DELAY_IN_PAST: '新的日期要在现在之后，不然马上又算过期。',
+    DEADLINE_PASSED: '截止日期已过，不能再邀请新成员或加入。',
   },
 };
 

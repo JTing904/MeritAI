@@ -29,17 +29,16 @@ async function activeUserIds(tx: Tx, projectId: string, exceptMemberId: string |
 }
 
 /**
- * Ends a running project the caller locked: ENDED, endedAt = now, purgeAfter = now + 14 days (the earlier
- * date if it is also deleted for everyone). Pending swaps end as VOID (PROJECT_ENDED; nobody gets
+ * Ends a running project the caller locked (never one deleted for everyone: both callers exclude those):
+ * ENDED, endedAt = now, purgeAfter = now + 14 days. Pending swaps end as VOID (PROJECT_ENDED; nobody gets
  * SWAP_VOID). `leader` null: the tick ended it (endedAuto) and everyone hears it; else everyone but the
  * leader. One feed entry, one packages bump.
  */
 export async function endUnderLock(tx: Tx, project: Project, leader: Member | null, now: Date): Promise<void> {
   const keep = endedPurgeAt(now);
-  const purgeAfter = project.deletedAt !== null && project.purgeAfter !== null && project.purgeAfter < keep ? project.purgeAfter : keep;
   await tx.project.update({
     where: { id: project.id },
-    data: { status: "ENDED", endedAt: now, endedById: leader?.id ?? null, endedAuto: leader === null, awaitingSince: null, purgeAfter },
+    data: { status: "ENDED", endedAt: now, endedById: leader?.id ?? null, endedAuto: leader === null, awaitingSince: null, purgeAfter: keep },
   });
   await voidSwaps(tx, { projectId: project.id, all: true, reason: "PROJECT_ENDED", voidedById: leader?.id ?? null, now, notify: false });
   await notify(tx, {
@@ -145,6 +144,7 @@ export async function delayTask(
     const from = effectiveDue(task, project);
     const dueAt = resolveDueAt(input.dueAt, project);
     if (dueAt <= from) throw new AppError(400, "DELAY_NOT_LATER", "Pick a date later than the current due date");
+    if (dueAt <= now) throw new AppError(400, "DELAY_IN_PAST", "Pick a date after now");
 
     await tx.task.update({ where: { id: task.id }, data: { dueAt, leaderDueAt: dueAt } });
     await touchProject(tx, projectId);

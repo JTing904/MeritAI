@@ -1,7 +1,7 @@
 // Joining a project: by invite code (no approval) or by accepting an invite. Both use joinProject().
 import type { JoinPreview } from "../../../shared/types";
 import type { Member, Prisma, Project, User } from "../generated/prisma/client";
-import { isActiveMember } from "../lib/access";
+import { deadlinePassed, isActiveMember, projectEnded } from "../lib/access";
 import { pickMemberColor } from "../lib/colors";
 import type { Db } from "../lib/db";
 import { AppError, notFound } from "../lib/errors";
@@ -14,7 +14,6 @@ import { clock } from "../lib/clock";
 /** A team has at most this many active members (REQUIREMENTS §13); the next one to join gets TEAM_FULL. */
 export const MAX_ACTIVE_MEMBERS = 8;
 
-const projectEnded = () => new AppError(409, "PROJECT_ENDED", "The project has ended");
 
 /**
  * The project behind an invite code. Unknown, or the project was deleted for everyone →
@@ -31,6 +30,7 @@ export async function findProjectByCode(db: Tx, rawCode: string): Promise<Projec
     if (retired && retired.project.deletedAt === null) throw new AppError(410, "INVITE_CODE_EXPIRED", "This invite code was replaced");
     throw new AppError(404, "INVITE_CODE_INVALID", "No project has this invite code");
   }
+  if (project.status === "AWAITING_CONFIRM") throw deadlinePassed();
   if (project.status !== "ACTIVE") throw projectEnded();
   return project;
 }
@@ -83,6 +83,7 @@ export function invitesFor(user: Pick<User, "email" | "githubUsername">): Prisma
 export async function joinProject(tx: Tx, projectId: string, user: User, now = clock.now()): Promise<Member> {
   const project = await lockProject(tx, projectId);
   if (project.deletedAt !== null) throw notFound("Project");
+  if (project.status === "AWAITING_CONFIRM") throw deadlinePassed();
   if (project.status !== "ACTIVE") throw projectEnded();
 
   let member = await tx.member.findUnique({ where: { projectId_userId: { projectId, userId: user.id } } });

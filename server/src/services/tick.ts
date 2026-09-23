@@ -89,12 +89,13 @@ async function projectsWithUnsent(db: Db, planned: { projectId: string; key: str
 }
 
 /** User ids of the project's active members. */
-async function activeMembers(tx: Tx, projectId: string) {
-  return tx.member.findMany({
+async function activeUserIds(tx: Tx, projectId: string): Promise<string[]> {
+  const members = await tx.member.findMany({
     where: { projectId, leftAt: null, removed: false },
     orderBy: { joinedAt: "asc" },
-    include: { user: { select: { name: true, weeklyEnabled: true } } },
+    select: { userId: true },
   });
+  return members.map((m) => m.userId);
 }
 
 const iso = (d: Date) => d.toISOString();
@@ -224,8 +225,7 @@ export async function remindOverdue(db: Db, now: Date, stats?: TickStats): Promi
   return eachProject(db, await projectsWithUnsent(db, planned), "overdue", stats, async (tx, project) => {
     const rows = await taskRows(tx, from, now, project.id);
     if (rows.length === 0) return 0;
-    const members = await activeMembers(tx, project.id);
-    const userIds = members.map((m) => m.userId);
+    const userIds = await activeUserIds(tx, project.id);
     let sent = 0;
     for (const row of rows) {
       const plan = overduePlan(row);
@@ -282,8 +282,18 @@ type BlockedRow = {
   leaderUserId: string | null;
 };
 
-/** Unfinished tasks of ACTIVE projects whose unfinished prerequisite was due at or before `dueBy`. */
-async function blockedRows(db: Db | Tx, dueBy: Date, projectId?: string): Promise<BlockedRow[]> {
+/**
+ * Unfinished, not handed-in tasks of ACTIVE projects whose unfinished prerequisite was due in (since, dueBy].
+ * `prereqReviewing` picks prerequisites handed in and waiting for the leader (not a hold-up by their owner)
+ * or the others.
+ */
+async function blockedRows(
+  db: Db | Tx,
+  dueBy: Date,
+  since: Date,
+  prereqReviewing: boolean,
+  projectId?: string,
+): Promise<BlockedRow[]> {
   return db.$queryRaw<BlockedRow[]>`
     SELECT w."projectId", p."deadline",
       w."id" AS "waitingId", w."title" AS "waitingTitle", coalesce(w."dueAt", p."deadline") AS "waitingDue",
@@ -304,23 +314,33 @@ async function blockedRows(db: Db | Tx, dueBy: Date, projectId?: string): Promis
       LIMIT 1
     ) l ON true
     WHERE p."status" = 'ACTIVE' AND p."deletedAt" IS NULL AND l."userId" IS NOT NULL
-      AND w."status" NOT IN ('DONE', 'HALF') AND (w."grade" IS NULL OR w."grade" = 'FAIL')
+      AND w."status" NOT IN ('DONE', 'HALF', 'REVIEWING') AND (w."grade" IS NULL OR w."grade" = 'FAIL')
       AND q."status" NOT IN ('DONE', 'HALF') AND (q."grade" IS NULL OR q."grade" = 'FAIL')
+      AND ${prereqReviewing ? Prisma.sql`q."status" = 'REVIEWING'` : Prisma.sql`q."status" <> 'REVIEWING'`}
       AND coalesce(q."dueAt", p."deadline") <= ${dueBy}
+      AND coalesce(q."dueAt", p."deadline") > ${since}
       ${projectId ? Prisma.sql`AND w."projectId" = ${projectId}` : Prisma.empty}
     ORDER BY w."order", w."number"`;
 }
 
-const blockedKey = (row: BlockedRow) => `blocked3:${row.waitingId}:${row.prereqId}:${iso(row.prereqDue)}`;
+const blockedKey = (row: BlockedRow, reviewing: boolean) =>
+  `${reviewing ? "blocked3review" : "blocked3"}:${row.waitingId}:${row.prereqId}:${iso(row.prereqDue)}`;
+
+/** Prerequisites more than this late are not reminded about (a first deploy must not dig up old ones). */
+const BLOCKED_LOOKBACK_DAYS = 14;
 
 /** PREREQ_BLOCKED to the leader: the prerequisite is unfinished 3 days past its due. Returns the notifications sent. */
 export async function remindBlocked(db: Db, now: Date, stats?: TickStats): Promise<number> {
   const dueBy = new Date(now.getTime() - BLOCKED_DAYS * DAY_MS);
-  const planned = (await blockedRows(db, dueBy)).map((row) => ({ projectId: row.projectId, key: blockedKey(row) }));
+  const since = new Date(now.getTime() - BLOCKED_LOOKBACK_DAYS * DAY_MS);
+  const planned = [];
+  for (const reviewing of [false, true]) {
+    for (const row of await blockedRows(db, dueBy, since, reviewing)) planned.push({ projectId: row.projectId, key: blockedKey(row, reviewing) });
+  }
   return eachProject(db, await projectsWithUnsent(db, planned), "blocked", stats, async (tx, project) => {
     let sent = 0;
-    for (const row of await blockedRows(tx, dueBy, project.id)) {
-      if (!(await claimReminder(tx, blockedKey(row), project.id, now))) continue;
+    for (const reviewing of [false, true]) for (const row of await blockedRows(tx, dueBy, since, reviewing, project.id)) {
+      if (!(await claimReminder(tx, blockedKey(row, reviewing), project.id, now))) continue;
       await notify(tx, {
         userIds: [row.leaderUserId!],
         projectId: project.id,
@@ -337,6 +357,7 @@ export async function remindBlocked(db: Db, now: Date, stats?: TickStats): Promi
           prereqDueAt: iso(row.prereqDue),
           blockedDays: Math.floor((now.getTime() - row.prereqDue.getTime()) / DAY_MS),
           projectDeadline: iso(row.deadline),
+          awaitingGrade: reviewing,
         },
         now,
       });
@@ -502,7 +523,7 @@ export async function warnDeletion(db: Db, now: Date, stats?: TickStats): Promis
     if (project.status !== "ENDED" || project.deletedAt !== null || project.purgeAfter === null) return 0;
     const days = deleteWarning(project.purgeAfter, now);
     if (!days || !(await claimReminder(tx, keyOf(project.id, project.purgeAfter, days), project.id, now))) return 0;
-    const userIds = (await activeMembers(tx, project.id)).map((m) => m.userId);
+    const userIds = await activeUserIds(tx, project.id);
     await notify(tx, {
       userIds,
       projectId: project.id,

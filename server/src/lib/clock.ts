@@ -3,9 +3,10 @@
 // the reminders tick, swap expiry, the lifecycle, and the ETag tokens computed from them. Services still
 // take `now` as their last parameter (tests pass it explicitly); their default is clock.now() as well.
 //
-// Left on real time on purpose: sessions (lib/auth.ts), idempotency keys (lib/idempotency.ts) and rate
-// limits (lib/rate-limit.ts). Jumping the clock a week ahead must not sign everyone out, replay or
-// forget stored answers, or open or close rate windows.
+// Left on real time on purpose: sessions (lib/auth.ts), idempotency keys (lib/idempotency.ts), rate
+// limits (lib/rate-limit.ts) and signed file links (lib/storage.ts signs them, services/evidence.ts
+// checks them). Jumping the clock a week ahead must not sign everyone out, replay or forget stored
+// answers, open or close rate windows, or expire every file link at once.
 import { devLoginEnabled } from "./dev-gate";
 
 /** The offset stays within this much of real time. */

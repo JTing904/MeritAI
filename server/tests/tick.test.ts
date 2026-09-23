@@ -247,12 +247,48 @@ describe("blocked by a prerequisite (PREREQ_BLOCKED)", () => {
       prereqDueAt: prereqDue.toISOString(),
       blockedDays: 3,
       projectDeadline: project.deadline.toISOString(),
+      awaitingGrade: false,
     });
     expect(await remindBlocked(testDb, new Date(now.getTime() + DAY))).toBe(0);
 
     // Finished prerequisite: nothing more.
     await setDue(prereq.id, new Date(now.getTime() - 4 * DAY));
     await finishTask(prereq.id, "PASS");
+    expect(await remindBlocked(testDb, now)).toBe(0);
+  });
+
+  it("asks the leader to grade a prerequisite that is handed in, instead of offering a delay", async () => {
+    const t = await withPackages(3);
+    const [, b] = t.members;
+    const now = new Date();
+    const waiting = taskOf(t.view, 0, 2);
+    const prereq = taskOf(t.view, 0, 3);
+    await testDb.task.update({ where: { id: waiting.id }, data: { prereqTaskId: prereq.id, dueAt: new Date(now.getTime() + 2 * DAY) } });
+    await linkEvidence(b!.token, t.projectId, prereq.id, "https://example.com/done");
+    await submitAs(b!.token, t.projectId, prereq.id);
+    await setDue(prereq.id, new Date(now.getTime() - 3 * DAY - HOUR));
+
+    expect(await remindBlocked(testDb, now)).toBe(1);
+    const [n] = await notes("PREREQ_BLOCKED");
+    expect(n).toMatchObject({ userId: t.leader.user.id, audience: "ONLY_LEADER" });
+    expect(payloadOf<"PREREQ_BLOCKED">(n!)).toMatchObject({ prereqTaskId: prereq.id, awaitingGrade: true, blockedDays: 3 });
+    expect(await remindBlocked(testDb, new Date(now.getTime() + DAY))).toBe(0);
+  });
+
+  it("skips a waiting task that is handed in, and prerequisites more than 14 days late", async () => {
+    const t = await withPackages(3);
+    const [a] = t.members;
+    const now = new Date();
+    const waiting = taskOf(t.view, 0, 2);
+    const prereq = taskOf(t.view, 0, 3);
+    await testDb.task.update({ where: { id: waiting.id }, data: { prereqTaskId: prereq.id, dueAt: new Date(now.getTime() + 2 * DAY) } });
+
+    await setDue(prereq.id, new Date(now.getTime() - 15 * DAY));
+    expect(await remindBlocked(testDb, now)).toBe(0);
+
+    await setDue(prereq.id, new Date(now.getTime() - 4 * DAY));
+    await linkEvidence(a!.token, t.projectId, waiting.id, "https://example.com/mine");
+    await submitAs(a!.token, t.projectId, waiting.id);
     expect(await remindBlocked(testDb, now)).toBe(0);
   });
 });

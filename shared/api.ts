@@ -85,7 +85,11 @@ export type ErrorCode =
   /** 400: reopening a project whose deadline has passed needs a new deadline (after now). */
   | 'DEADLINE_REQUIRED'
   /** 400: 一键延后 must move the task's due date later than its current effective due. */
-  | 'DELAY_NOT_LATER';
+  | 'DELAY_NOT_LATER'
+  /** 400: 一键延后 must land after now (a past date would be overdue again at once). */
+  | 'DELAY_IN_PAST'
+  /** 409: invites and joins while the project waits for the leader to confirm it was handed in. */
+  | 'DEADLINE_PASSED';
 
 export type ApiError = { code: ErrorCode; message: string; details?: unknown };
 

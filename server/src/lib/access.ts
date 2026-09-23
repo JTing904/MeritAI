@@ -63,6 +63,8 @@ export function assertActive(project: Pick<Project, "status">): void {
 }
 
 export const projectEnded = () => new AppError(409, "PROJECT_ENDED", "The project has ended");
+/** Invites and joins while the project waits for the leader to confirm it was handed in. */
+export const deadlinePassed = () => new AppError(409, "DEADLINE_PASSED", "The deadline has passed");
 
 /** ACTIVE or AWAITING_CONFIRM: packages are handed out, tasks are worked on, reminders count. */
 export const isRunning = (project: Pick<Project, "status">): boolean =>

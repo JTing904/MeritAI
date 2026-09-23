@@ -119,7 +119,9 @@ describe("the deadline passes", () => {
     expect((await linkEvidence(a!.token, t.projectId, taskOf(t.view, 1, 2).id, "https://example.com/x")).status).toBe(201);
     expect((await call(`/api/projects/${t.projectId}`, { method: "PATCH", token: t.leader.token, body: { name: "改个名字" } })).status).toBe(200);
     const view = await viewAs(t.leader.token, t.projectId);
-    expect((await joinCode((await person(5)).token, view.inviteCode!)).error?.code).toBe("PROJECT_ENDED");
+    expect((await joinCode((await person(5)).token, view.inviteCode!)).error?.code).toBe("DEADLINE_PASSED");
+    const invite = await call(`/api/projects/${t.projectId}/invites`, { method: "POST", token: t.leader.token, body: { targets: "late@example.com" } });
+    expect(invite.error?.code).toBe("DEADLINE_PASSED");
   });
 
   it("goes back to ACTIVE when the leader pushes the deadline later, and reminds again at the new one", async () => {
@@ -386,6 +388,12 @@ describe("POST /api/projects/:id/tasks/:taskId/delay (一键延后)", () => {
 
     expect((await call(path_, { method: "POST", token: a!.token, body: { dueAt: to.toISOString() } })).error?.code).toBe("FORBIDDEN");
     expect((await call(path_, { method: "POST", token: t.leader.token, body: { dueAt: from.toISOString() } })).error?.code).toBe("DELAY_NOT_LATER");
+
+    // An overdue task can't be "delayed" to a date that has also passed (it would be overdue again at once).
+    const late = taskOf(t.view, 0, 3);
+    await testDb.task.update({ where: { id: late.id }, data: { dueAt: new Date(Date.now() - 5 * DAY) } });
+    const stillPast = { dueAt: new Date(Date.now() - 4 * DAY).toISOString() };
+    expect((await call(`/api/projects/${t.projectId}/tasks/${late.id}/delay`, { method: "POST", token: t.leader.token, body: stillPast })).error?.code).toBe("DELAY_IN_PAST");
     const { deadline } = await row(t.projectId);
     const tooLate = { dueAt: new Date(deadline.getTime() + DAY).toISOString() };
     expect((await call(path_, { method: "POST", token: t.leader.token, body: tooLate })).error?.code).toBe("DUE_AFTER_DEADLINE");

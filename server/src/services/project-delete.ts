@@ -5,15 +5,13 @@ import { deleteConfirmMatches, projectTag } from "../../../shared/format";
 import type { PersonRef } from "../../../shared/types";
 import type { Member } from "../generated/prisma/client";
 import { isActiveMember } from "../lib/access";
-import { endedPurgeAt } from "../lib/lifecycle";
+import { DAY_MS, endedPurgeAt } from "../lib/lifecycle";
 import type { Db } from "../lib/db";
 import { AppError, conflict, notFound } from "../lib/errors";
 import { getStorage } from "../lib/storage";
 import { bumpPackages, notify, recordEvent, voidSwaps } from "./notify";
 import { lockProject, memberUnderLock, TX_OPTIONS, type Tx } from "./tx";
 import { clock } from "../lib/clock";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 async function leaderRef(tx: Tx, member: Member): Promise<PersonRef> {
   const user = await tx.user.findUniqueOrThrow({ where: { id: member.userId }, select: { name: true } });

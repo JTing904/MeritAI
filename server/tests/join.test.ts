@@ -110,8 +110,9 @@ describe("GET /api/join/:code", () => {
     const ended = await createActive(leader.token);
     for (const status of ["AWAITING_CONFIRM", "ENDED"] as const) {
       await testDb.project.update({ where: { id: ended.basics.id }, data: { status } });
-      expect((await call(`/api/join/${ended.inviteCode}`, { token: joiner.token })).error?.code).toBe("PROJECT_ENDED");
-      expect((await joinCode(joiner.token, ended.inviteCode!)).error?.code).toBe("PROJECT_ENDED");
+      const code = status === "ENDED" ? "PROJECT_ENDED" : "DEADLINE_PASSED";
+      expect((await call(`/api/join/${ended.inviteCode}`, { token: joiner.token })).error?.code).toBe(code);
+      expect((await joinCode(joiner.token, ended.inviteCode!)).error?.code).toBe(code);
     }
   });
 

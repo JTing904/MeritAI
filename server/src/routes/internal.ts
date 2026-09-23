@@ -3,8 +3,7 @@ import { Hono } from "hono";
 import type { TickResult } from "../../../shared/types";
 import type { AppEnv } from "../app";
 import { clock } from "../lib/clock";
-import { notFound } from "../lib/errors";
-import { AppError } from "../lib/errors";
+import { AppError, notFound } from "../lib/errors";
 import { ok } from "../lib/http";
 import { runTick } from "../services/tick";
 

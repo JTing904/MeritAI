@@ -5,7 +5,7 @@ import type { Db } from "../lib/db";
 import { AppError, conflict, notFound } from "../lib/errors";
 import { invitesFor, joinProject } from "./join";
 import { lockAsMember, TX_OPTIONS } from "./tx";
-import { projectEnded } from "../lib/access";
+import { deadlinePassed, projectEnded } from "../lib/access";
 import { clock } from "../lib/clock";
 
 export const MAX_INVITES_PER_REQUEST = 20;
@@ -55,6 +55,7 @@ export async function createInvites(db: Db, projectId: string, inviter: User, ra
     // inviter is re-read under it (they may have left or been removed since the route checked).
     const { project } = await lockAsMember(tx, projectId, inviter.id);
     // Nobody joins a project past its deadline (joinProject refuses it too), so no invites either.
+    if (project.status === "AWAITING_CONFIRM") throw deadlinePassed();
     if (project.status !== "ACTIVE") throw projectEnded();
     let pendingCount = await tx.invite.count({ where: { projectId, status: "PENDING" } });
     const outcomes: InviteOutcome[] = [];

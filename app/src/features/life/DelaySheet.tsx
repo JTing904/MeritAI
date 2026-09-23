@@ -15,7 +15,7 @@ import { appNow } from '@/lib/lifecycle';
 import { useSession } from '@/lib/session';
 import { makeStyles } from '@/theme';
 import { DateBox } from './DateBox';
-import { daysBetween, plusDays } from './dates';
+import { daysBetween, endOfDayAfter, plusDays } from './dates';
 
 const useStyles = makeStyles((c) =>
   StyleSheet.create({
@@ -77,21 +77,28 @@ export function DelaySheet({
   const atDeadline = fromMs >= deadlineMs;
 
   const clamp = (iso: string) => (new Date(iso).getTime() > deadlineMs ? deadline : iso);
+  // An overdue task counts its +N from today (23:59), so the new date is never already past.
+  const [openedAt] = useState(appNow);
+  const overdue = fromMs <= openedAt.getTime();
+  const shift = (n: number) => (overdue ? endOfDayAfter(openedAt, n, tz) : plusDays(from, n, tz));
+  const shiftDays = (iso: string) => daysBetween(iso, overdue ? openedAt : from, tz);
   const chips = useMemo(() => [...new Set([1, blocked, 7].filter((n) => n > 0))].sort((a, b) => a - b), [blocked]);
-  const [picked, setPicked] = useState<string>(() => clamp(plusDays(from, blocked > 0 ? blocked : 1, tz)));
+  const [picked, setPicked] = useState<string>(() => clamp(shift(blocked > 0 ? blocked : 1)));
   const [pickerOpen, setPickerOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const later = daysBetween(picked, from, tz);
   const notLater = new Date(picked).getTime() <= fromMs;
+  const inPast = new Date(picked).getTime() <= appNow().getTime();
   const prereq = detail.prereq && !detail.prereq.finished ? detail.prereq : null;
   const self = detail.owner?.memberId === detail.project.viewerMemberId;
   const notified = detail.owner && detail.owner.active && !self ? detail.owner.name : null;
-  const fieldError = error ?? (notLater && !atDeadline ? t.errors.DELAY_NOT_LATER : null);
+  const fieldError =
+    error ?? (atDeadline ? null : notLater ? t.errors.DELAY_NOT_LATER : inPast ? t.errors.DELAY_IN_PAST : null);
 
   const confirm = async () => {
-    if (busy || notLater || atDeadline) return;
+    if (busy || notLater || inPast || atDeadline) return;
     setBusy(true);
     try {
       const body: DelayInput = { dueAt: picked };
@@ -104,7 +111,7 @@ export function DelaySheet({
       onClose();
     } catch (err) {
       const code = errorCode(err);
-      if (code === 'DELAY_NOT_LATER' || code === 'DUE_AFTER_DEADLINE') setError(t.errors[code]);
+      if (code === 'DELAY_NOT_LATER' || code === 'DELAY_IN_PAST' || code === 'DUE_AFTER_DEADLINE') setError(t.errors[code]);
       else {
         onError(err);
         onClose();
@@ -141,8 +148,8 @@ export function DelaySheet({
           </Field>
           <View style={s.chips} role="group" aria-label={k.chips}>
             {chips.map((n) => {
-              const target = plusDays(from, n, tz);
-              const on = picked === clamp(target) && later === n;
+              const target = shift(n);
+              const on = picked === clamp(target) && shiftDays(picked) === n;
               const beyond = new Date(target).getTime() > deadlineMs;
               return (
                 <Pressable
@@ -169,7 +176,7 @@ export function DelaySheet({
 
       <View style={{ gap: 10, marginTop: 6 }}>
         {atDeadline ? null : (
-          <Button title={k.confirm(dates.date(picked))} block loading={busy} disabled={notLater} onPress={confirm} />
+          <Button title={k.confirm(dates.date(picked))} block loading={busy} disabled={notLater || inPast} onPress={confirm} />
         )}
         <Button title={k.cancel} kind="soft" block onPress={onClose} />
       </View>

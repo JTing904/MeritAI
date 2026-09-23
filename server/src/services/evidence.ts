@@ -175,8 +175,11 @@ export async function deleteEvidence(
   }, TX_OPTIONS);
 }
 
-/** GET /api/evidence/:id/link: a member of the evidence's project (404 otherwise) gets a 10-minute signed URL. */
-export async function evidenceLink(db: Db, evidenceId: string, userId: string, now = clock.now()): Promise<EvidenceLink> {
+/**
+ * GET /api/evidence/:id/link: a member of the evidence's project (404 otherwise) gets a 10-minute signed URL.
+ * Real time, not the time machine's clock (lib/clock.ts): the storage signs `exp` with real time.
+ */
+export async function evidenceLink(db: Db, evidenceId: string, userId: string, now = new Date()): Promise<EvidenceLink> {
   const evidence = await db.evidence.findUnique({ where: { id: evidenceId }, include: { task: { select: { projectId: true } } } });
   if (!evidence) throw notFound("Evidence");
   await requireActiveMember(db, evidence.task.projectId, userId);
@@ -217,7 +220,8 @@ export async function signedFileResponse(
   db: Db,
   key: string,
   query: { exp?: string; sig?: string },
-  now = clock.now(),
+  // Real time: the link's `exp` was signed with real time (lib/storage.ts), not the time machine's clock.
+  now = new Date(),
 ): Promise<Response> {
   const missing = () => notFound("File");
   if (!isStorageKey(key) || !query.sig || !query.exp || !/^\d{1,12}$/.test(query.exp)) throw missing();

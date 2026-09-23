@@ -201,6 +201,9 @@ export const notifsEn: typeof notifsZh = {
   prereqBlocked: (waiting, prereq, days) => [
     `"${waiting}" has been held up by "${prereq}" for ${days === 1 ? '1 day' : `${days} days`}. Move it later?`,
   ],
+  prereqAwaitingGrade: (waiting, prereq, days) => [
+    `"${prereq}" was handed in but is still ungraded ${days === 1 ? '1 day' : `${days} days`} past its due date, and "${waiting}" is waiting for it.`,
+  ],
   weekly: (w) => {
     const bits: string[] = [];
     if (w.finished > 0) bits.push(`${w.finished === 1 ? '1 task' : `${w.finished} tasks`} finished (+${w.finishedPts} pts)`);

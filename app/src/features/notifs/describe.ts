@@ -376,6 +376,16 @@ export function describeNotification(n: NotificationView, copy: Copy, labels: La
       return { emoji: '👻', tint: 'sky', parts, actions: ['whatsapp'], href: taskHref(p.taskId), share: share(parts, '👻') };
     }
     case 'PREREQ_BLOCKED': {
+      if (p.awaitingGrade) {
+        const grade = taskHref(p.prereqTaskId, true);
+        return {
+          emoji: '📨',
+          tint: 'mint',
+          parts: copy.prereqAwaitingGrade(p.waitingTitle, p.prereqTitle, p.blockedDays),
+          actions: grade ? ['grade'] : [],
+          href: grade,
+        };
+      }
       const href = taskHref(p.waitingTaskId);
       const delay = taskWith(p.waitingTaskId, { delay: String(p.blockedDays) });
       return {

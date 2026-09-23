@@ -157,5 +157,7 @@ export const en: Messages = {
     DELETE_CONFIRM_MISMATCH: "That isn't the project's short name. Check it and try again",
     DEADLINE_REQUIRED: 'The deadline has passed. Pick a new one after today to reopen the project',
     DELAY_NOT_LATER: 'Pick a date later than the current due date',
+    DELAY_IN_PAST: "Pick a date after now, or it's overdue again straight away.",
+    DEADLINE_PASSED: "The deadline has passed, so nobody new can be invited or join.",
   },
 };

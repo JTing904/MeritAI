@@ -689,6 +689,8 @@ export type NotificationPayload =
       prereqDueAt: string;
       blockedDays: number;
       projectDeadline: string;
+      /** The prerequisite is handed in and waits for the leader's grade: the leader is asked to grade, not to delay. */
+      awaitingGrade?: boolean;
     }
   /**
    * To each active member with weeklyEnabled (GROUP, mine: false), Sunday 20:00 in the project zone (the

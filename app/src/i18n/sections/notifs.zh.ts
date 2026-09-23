@@ -275,6 +275,9 @@ export const notifsZh = {
   prereqBlocked: (waiting: string, prereq: string, days: number): InlinePart[] => [
     `「${waiting}」被「${prereq}」卡了 ${days} 天，要不要延后？`,
   ],
+  prereqAwaitingGrade: (waiting: string, prereq: string, days: number): InlinePart[] => [
+    `「${prereq}」已经交了，过了截止 ${days} 天还没评，「${waiting}」在等它。`,
+  ],
   weekly: (w: WeeklyText): InlinePart[] => {
     let line = w.finished > 0 ? `完成 ${w.finished} 个任务（+${w.finishedPts} 分），` : '';
     line += `全组 ${w.total} / 100 分`;
