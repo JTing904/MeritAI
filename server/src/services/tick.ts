@@ -19,6 +19,7 @@ import type { Db } from "../lib/db";
 import { autoEndAt, autoEndWarnAt, DAY_MS } from "../lib/lifecycle";
 import { earnedPoints, effectiveDue, isFinished, isOverdue } from "../lib/package-state";
 import { localDate, wallClock, zonedTime } from "../lib/plan/dates";
+import { drainAiJobs } from "./ai-jobs";
 import { endUnderLock } from "./lifecycle";
 import { expireSwaps, notify } from "./notify";
 import { purgeDeletedProjects } from "./project-delete";
@@ -568,6 +569,8 @@ const JOBS: [Exclude<keyof TickResult, "now" | "errors">, Job][] = [
   ["weekly", sendWeekly],
   ["deleteWarnings", warnDeletion],
   ["purged", (db, now) => purgeProjects(db, now)],
+  // M6: AI jobs that are due (and stale leases); the dev server and the schedule both get here.
+  ["aiJobs", (db, now) => drainAiJobs(db, now)],
 ];
 
 /**
@@ -588,6 +591,7 @@ export async function runTick(db: Db, now: Date): Promise<TickResult> {
     weekly: 0,
     deleteWarnings: 0,
     purged: 0,
+    aiJobs: 0,
     errors: 0,
   };
   for (const [name, job] of JOBS) {

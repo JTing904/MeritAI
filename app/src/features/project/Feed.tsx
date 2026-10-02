@@ -136,6 +136,7 @@ function sentence(
   f: Messages['project']['feed'],
   grades: Messages['labels']['grade'],
   date: (iso: string) => string,
+  ai: Messages['ai']['feed'],
 ): Inline[] {
   const person = (p: PersonRef): Who => ({ name: givenName(p.name), you: p.memberId === viewerId });
   const a: Who = item.actor ? person(item.actor) : { name: f.someone, you: false };
@@ -177,6 +178,8 @@ function sentence(
     case 'GRADED': {
       if (p.selfGraded) return f.GRADED_SELF(a, p.title);
       const owner = p.owner ? person(p.owner) : someone;
+      // M6: graded by the AI (no actor).
+      if (p.byAi) return ai.GRADED_AI(owner, p.title, grades[p.grade]);
       return p.outsideApp ? f.GRADED_OUTSIDE(a, owner, p.title, grades[p.grade]) : f.GRADED(a, owner, p.title, grades[p.grade]);
     }
     case 'OVERRIDDEN':
@@ -201,6 +204,8 @@ function sentence(
       return f.PROJECT_REOPENED(a, date(p.deadline));
     case 'TASK_DELAYED':
       return f.TASK_DELAYED(a, p.title, date(p.dueAt));
+    case 'CHOICE_CHANGED':
+      return ai.CHOICE_CHANGED(a, p.prompt, p.from.join(ai.labelSep), p.to.join(ai.labelSep));
   }
 }
 
@@ -240,7 +245,7 @@ export function FeedList({ project, feed }: { project: ProjectView; feed: FeedSt
           <View key={item.id} style={s.item}>
             {item.actor ? <Avatar name={item.actor.name} hl={item.actor.color} size="sm" decorative /> : <View style={s.noAvatar} />}
             <View style={s.body}>
-              <InlineText parts={sentence(item, project.viewerMemberId, f, t.labels.grade, dates.date)} v="small" />
+              <InlineText parts={sentence(item, project.viewerMemberId, f, t.labels.grade, dates.date, t.ai.feed)} v="small" />
               <Txt v="meta" size={11.5} style={{ marginTop: 2 }}>
                 {relativeTime(item.createdAt, t.labels.relative)}
               </Txt>

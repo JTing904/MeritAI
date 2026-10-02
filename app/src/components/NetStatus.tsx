@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
-import { SafeAreaInsetsContext, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useI18n } from '@/i18n';
 import { recheckNetwork, useNetwork } from '@/lib/network';
 import { makeStyles, useTheme } from '@/theme';
@@ -23,9 +23,15 @@ const useStyles = makeStyles((c) =>
       alignItems: 'center',
       justifyContent: 'center',
       gap: 8,
-      paddingVertical: 8,
-      paddingHorizontal: 16,
-      width: '100%',
+      paddingVertical: 7,
+      paddingHorizontal: 14,
+      borderRadius: 999,
+      maxWidth: '76%',
+      shadowColor: '#000',
+      shadowOpacity: 0.12,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 2 },
+      elevation: 3,
     },
     blocked: {
       flex: 1,
@@ -63,7 +69,7 @@ export function useNetBarPhase(): NetBarPhase | null {
 
 const LIVE = Platform.OS === 'web' ? ({ 'aria-live': 'polite' } as object) : ({ accessibilityLiveRegion: 'polite' } as const);
 
-/** The thin full-width bar: 没有网络 · 显示的是断网前的内容 / 已连上网络，内容已更新. */
+/** The small pill at the top centre: 没有网络 · 显示的是断网前的内容 / 已连上网络，内容已更新. */
 export function NetBar({ phase }: { phase: NetBarPhase }) {
   const s = useStyles();
   const { c } = useTheme();
@@ -80,21 +86,20 @@ export function NetBar({ phase }: { phase: NetBarPhase }) {
 }
 
 /**
- * Wraps the navigator: while the bar shows, it sits under the status bar and above every screen, and the
- * screens below get a top inset of 0 (the bar already cleared it). The tree keeps the same shape either
- * way, so showing the bar never remounts the screens.
+ * Wraps the navigator: the pill floats over the top centre of every screen, under the status bar, clear of
+ * the back and close buttons at the sides (2026-10-02: a full-width bar used to push the page down, so a
+ * tap landed on the wrong thing when it appeared). Taps go through it, and the screens never move.
  */
 export function WithNetBar({ children, phase }: { children: ReactNode; phase: NetBarPhase | null }) {
   const insets = useSafeAreaInsets();
-  const { c } = useTheme();
   return (
     <View style={{ flex: 1 }}>
+      {children}
       {phase && (
-        <View style={{ paddingTop: insets.top, backgroundColor: c.paper }}>
+        <View pointerEvents="none" style={{ position: 'absolute', top: insets.top + 6, left: 0, right: 0, zIndex: 10, alignItems: 'center' }}>
           <NetBar phase={phase} />
         </View>
       )}
-      <SafeAreaInsetsContext.Provider value={phase ? { ...insets, top: 0 } : insets}>{children}</SafeAreaInsetsContext.Provider>
     </View>
   );
 }

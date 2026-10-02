@@ -50,6 +50,18 @@ function asProjectView(v: unknown): { id: string; view: Obj } | null {
   return { id: v.basics.id, view };
 }
 
+/** A DraftView (the wizard's GET /projects/:id/draft), or the one inside a BriefResult. */
+function asDraftView(v: unknown): { id: string; view: Obj } | null {
+  if (isObj(v) && v.ok === true && isObj(v.draft)) return asDraftView(v.draft);
+  if (!isObj(v) || !isObj(v.basics) || typeof v.basics.id !== 'string') return null;
+  if ('viewerMemberId' in v || !Array.isArray(v.tasks) || !Array.isArray(v.questions) || !isObj(v.balance)) return null;
+  const { adjustedTasks: _moved, ...view } = v;
+  return { id: v.basics.id, view };
+}
+
+/** The wizard's draft (polled while the AI reads the brief). Memory only (not persistable). */
+export const draftKey = (projectId: string) => `${projectKey(projectId)}/draft`;
+
 /** A TaskDetail. */
 function asTaskDetail(v: unknown): { projectId: string; taskId: string } | null {
   if (!isObj(v) || !isObj(v.task) || !isObj(v.project) || !Array.isArray(v.attempts)) return null;
@@ -83,6 +95,16 @@ export function writeEffect(path: string, result: unknown): WriteEffect {
   if (bare === '/dev/time-machine') effect.stale.push(() => true);
   // Swaps and invites change the project and the notification cards that show them.
   if (/^\/(swaps|invites|join)\//.test(bare)) effect.stale.push(isNotificationsKey);
+
+  // M6: the AI key is on the account and every project the user leads uses it (ProjectView.ai, the task
+  // pages' AI lines): the profile is the answer; the projects are checked again.
+  if (bare === '/me/ai-key') {
+    effect.stale.push((k) => k.startsWith('/projects/'));
+    if (isObj(result) && typeof result.id === 'string') effect.set.push({ key: ME_KEY, data: result });
+  }
+
+  const draft = asDraftView(result);
+  if (draft) effect.set.push({ key: draftKey(draft.id), data: draft.view });
 
   const project = asProjectView(result);
   if (project) {

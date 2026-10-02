@@ -1,6 +1,6 @@
 // The task page's data (TaskDetail, M4 spec §7). Every task route answers with it.
 import { projectTag } from "../../../shared/format";
-import type { AttemptView, EvidenceView, TaskDetail, TaskPerson, TaskRef } from "../../../shared/types";
+import type { AiFailReason, AttemptView, EvidenceView, TaskDetail, TaskPerson, TaskRef } from "../../../shared/types";
 import type { Attempt, Evidence, GradeChange, Member, Prisma } from "../generated/prisma/client";
 import { canSee, isActiveMember } from "../lib/access";
 import { toLifecycle } from "../lib/lifecycle";
@@ -16,6 +16,8 @@ import {
 import { isFinished } from "../lib/package-state";
 import { sortLeaderFirst, toTaskView, type AttemptStat } from "./views";
 import { clock } from "../lib/clock";
+import { reviewsLeft } from "./ai-grade";
+import { leaderUser, projectAi } from "./ai-key";
 
 type Db = Prisma.TransactionClient;
 
@@ -24,7 +26,7 @@ const OWNER = { include: { user: { select: { name: true } } } } as const;
 
 type FullAttempt = Attempt & { evidence: Evidence[]; changes: GradeChange[] };
 
-const stat = (a: FullAttempt): AttemptStat => ({ no: a.no, status: a.status, late: a.late, _count: { evidence: a.evidence.length } });
+const stat = (a: FullAttempt): AttemptStat => ({ no: a.no, status: a.status, late: a.late, aiState: a.aiState, _count: { evidence: a.evidence.length } });
 
 function toEvidenceView(e: Evidence): EvidenceView {
   return {
@@ -69,6 +71,13 @@ function toAttemptView(a: FullAttempt, countingId: string | null): AttemptView {
       undoneAt: c.undoneAt?.toISOString() ?? null,
     })),
     counting: a.id === countingId,
+    aiState: a.aiState,
+    aiFailReason: (a.aiFailReason as AiFailReason | null) ?? null,
+    gradedByAi: a.gradedByAi,
+    aiProvider: a.aiProvider,
+    aiModel: a.aiModel,
+    aiReasons: a.aiReasons,
+    aiSuggestions: a.aiSuggestions,
   };
 }
 
@@ -161,6 +170,8 @@ export async function loadTaskDetail(
   });
 
   const prereq = task.prereqTask;
+  const leaderRow = await leaderUser(db, projectId);
+  const ai = await projectAi(db, projectId, leaderRow, now);
   return {
     task: toTaskView(task, project, now, task.attempts.map(stat)),
     project: {
@@ -174,7 +185,12 @@ export async function loadTaskDetail(
       leaderMemberId: leader?.id ?? null,
       leaderName: leader?.user.name ?? null,
       lifecycle: toLifecycle(project, (id) => project.members.find((m) => m.id === id)?.user.name),
+      ai,
     },
+    howto: task.howto,
+    howtoByAi: task.howtoByAi,
+    checklistByAi: task.checklistByAi,
+    aiReviewsLeftToday: await reviewsLeft(db, projectId, task.id, now),
     owner: owner ? person(owner) : null,
     packageIndex: task.package?.index ?? null,
     attempts,

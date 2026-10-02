@@ -14,6 +14,7 @@ import { useDates } from './dates';
 import { ErrorText, Field, Hint, Input, NoteBox } from './Field';
 import { FileChip } from './FileChip';
 import { blankRow, ManualEditor, manualTasks, manualTotal, rowsFromTasks, type ManualRow } from './ManualEditor';
+import { briefHref } from './briefResult';
 import { goStep, wizardHref } from './nav';
 import { Checks, DocScan, TotalChip } from './parts';
 import { hasTypedBrief, typedTaskCount, useTypedBrief } from './typedBrief';
@@ -83,6 +84,8 @@ export function InputStep({
   const abort = useRef<AbortController | null>(null);
 
   const hasTasks = draft.tasks.length > 0;
+  // M6: with the leader's working key the AI reads the brief instead of the free rules.
+  const aiReads = draft.ai.configured && draft.ai.status !== 'INVALID';
   const typedCount = typedTaskCount(text);
   const savedTasks = manualTasks(savedRows.current, t.wizard.manual);
   const currentTasks = manualTasks(rows, t.wizard.manual);
@@ -92,17 +95,13 @@ export function InputStep({
 
   const onResult = (res: BriefResult, from: PickedFile | null) => {
     if (res.ok) {
-      // The text now lives on the server as the plan's brief.
+      // The text now lives on the server as the plan's brief (M6: the AI reads it in the background).
       clearTyped();
       setDraft(res.draft);
-      return goStep(wizardHref.plan(id, { method: res.method, found: res.found }));
-    }
-    setReading(null);
-    if (res.reason === 'UNREADABLE' || res.reason === 'NO_STRUCTURE') {
-      return goStep(
-        wizardHref.cantRead(id, { reason: res.reason, file: res.fileName ?? from?.name, size: res.sizeBytes ?? from?.size, mime: from?.mimeType }),
-      );
-    }
+    } else setReading(null);
+    const next = briefHref(id, res, from);
+    if (next) return goStep(next);
+    if (res.ok || res.reason === 'UNREADABLE' || res.reason === 'NO_STRUCTURE') return;
     if (from) setFileProblem({ reason: res.reason, size: res.sizeBytes ?? from.size, max: res.maxBytes });
     else setTextError(res.reason === 'EMPTY' ? w.textEmpty : t.errors.VALIDATION);
   };
@@ -232,7 +231,7 @@ export function InputStep({
       <Button title={t.wizard.next} block onPress={() => goStep(wizardHref.plan(id))} />
     ) : (
       <Button
-        title={w.parse}
+        title={aiReads ? w.parseAi : w.parse}
         block
         disabled={!fresh || (mode === 'upload' && !!fileProblem && fileProblem.reason !== 'NETWORK')}
         onPress={mode === 'upload' ? parseFile : parseText}

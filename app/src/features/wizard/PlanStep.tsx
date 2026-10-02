@@ -6,6 +6,7 @@ import { Button } from '@/components/Button';
 import { Card } from '@/components/Card';
 import { ConfirmSheet } from '@/components/ConfirmSheet';
 import { Icon } from '@/components/Icon';
+import { SwipeDelete } from '@/components/SwipeDelete';
 import { useToast } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
 import { useI18n } from '@/i18n';
@@ -14,7 +15,7 @@ import { useSession } from '@/lib/session';
 import { makeStyles, useTheme } from '@/theme';
 import { useDates } from './dates';
 import { Hint, NoteBox } from './Field';
-import { goStep, wizardHref } from './nav';
+import { goStep, wizardHref, type PlanFound } from './nav';
 import { DashedLine, KindTile, TextLink, TotalChip } from './parts';
 import { TaskEditSheet } from './TaskEditSheet';
 import { SubLine, useWizardClose, WizardScreen, WizardTitle } from './WizardScreen';
@@ -59,7 +60,7 @@ export function PlanStep({
 }: {
   draft: DraftView;
   setDraft: (d: DraftView) => void;
-  found?: { method: 'SCORES' | 'LIST'; found: number } | null;
+  found?: PlanFound | null;
 }) {
   const s = useStyles();
   const { c } = useTheme();
@@ -123,14 +124,25 @@ export function PlanStep({
       // Already confirmed (e.g. a double tap that reached the server twice): show the result.
       if (code === 'NOT_A_DRAFT') return goStep(wizardHref.done(id));
       show(t.errors[code]);
+      // M6: a 选择题 isn't answered yet: go and answer it.
+      if (code === 'CHOICES_REQUIRED') goStep(wizardHref.choices(id));
     } finally {
       setBusy(false);
     }
   };
 
+  const removeTask = async (task: TaskView) => {
+    try {
+      setDraft(await request<DraftView>(`/projects/${id}/tasks/${task.id}`, { method: 'DELETE' }));
+      show(w.deleted(task.title));
+    } catch (err) {
+      show(t.errors[errorCode(err)]);
+    }
+  };
+
   const row = (task: TaskView) => (
+    <SwipeDelete key={task.id} label={w.swipeDelete} onDelete={() => void removeTask(task)}>
     <Pressable
-      key={task.id}
       onPress={() => setEditing({ task, featureId: task.featureId })}
       role="button"
       aria-label={`${task.title}, ${w.rowMeta(formatPoints(task.points), dates.short(task.dueAt ?? deadline))}`}
@@ -146,12 +158,13 @@ export function PlanStep({
       </View>
       <Icon name="chevron" size={20} color={c.muted} />
     </Pressable>
+    </SwipeDelete>
   );
 
   return (
     <WizardScreen
       step={5}
-      onBack={() => goStep(wizardHref.input(id))}
+      onBack={() => goStep(draft.questions.length > 0 ? wizardHref.choices(id, draft.questions.length - 1) : wizardHref.input(id))}
       onClose={close.requestClose}
       footer={
         <>
@@ -169,10 +182,15 @@ export function PlanStep({
       {rules ? (
         <>
           <NoteBox tone="warn">{w.rulesWarn}</NoteBox>
-          {found ? <NoteBox tone="good">{found.method === 'SCORES' ? w.foundScores(found.found) : w.foundList(found.found)}</NoteBox> : null}
+          {found && found.method !== 'AI' ? <NoteBox tone="good">{found.method === 'SCORES' ? w.foundScores(found.found) : w.foundList(found.found)}</NoteBox> : null}
         </>
       ) : (
-        <SubLine>{byFeature ? w.subFeatures : !planSource || planSource === 'MANUAL' ? w.subManual : w.subEdit}</SubLine>
+        <>
+          <SubLine>
+            {byFeature ? w.subFeatures : planSource === 'AI' ? t.ai.plan.sub : !planSource || planSource === 'MANUAL' ? w.subManual : w.subEdit}
+          </SubLine>
+          {found?.method === 'AI' ? <NoteBox tone="good">{t.ai.plan.found(found.found)}</NoteBox> : null}
+        </>
       )}
 
       {milestones.length > 0 ? (

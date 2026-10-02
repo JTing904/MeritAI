@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import type { BriefResult, DraftView, InviteOutcome, ProjectView } from "../../../shared/types";
+import type { BriefResult, DraftView, InviteOutcome, ProjectView, RechoosePreview } from "../../../shared/types";
 import type { AppEnv } from "../app";
 import { assertDraft, requireActiveMember, requireLeader } from "../lib/access";
 import { requireUser } from "../lib/auth";
@@ -13,7 +13,10 @@ import { safeFileName } from "../lib/file-name";
 import { extractBriefText, MAX_BRIEF_BYTES } from "../lib/plan/extract";
 import { consumeRate, RATE_RULES } from "../lib/rate-limit";
 import { addActiveTask, updateActiveTask } from "../services/active-tasks";
-import { projectToken } from "../services/cache-tokens";
+import { draftToken, projectToken } from "../services/cache-tokens";
+import { aiCanReadBrief, BRIEF_FILE_TYPES, briefWithRules, retryBriefAnalysis, startBriefAnalysis } from "../services/ai-brief";
+import { applyRechoose, previewRechoose, setDraftChoices } from "../services/choices";
+import { detectEvidenceType, SNIFF_BYTES } from "../lib/evidence-types";
 import { applyBrief, briefFailure } from "../services/brief";
 import { deleteProject, restoreProject } from "../services/project-delete";
 import { endProject, reopenProject } from "../services/lifecycle";
@@ -23,6 +26,8 @@ import {
   ActiveTaskPatchSchema,
   ActiveTaskSchema,
   BriefTextSchema,
+  ChoicesSchema,
+  RechooseSchema,
   DeleteProjectSchema,
   InviteSchema,
   ManualPlanSchema,
@@ -60,12 +65,18 @@ projectRoutes.post("/", idempotent, async (c) => {
   return ok<DraftView>(c, await loadDraftView(c.var.db, id), 201);
 });
 
+// Conditional (M6: the wizard polls it while the AI reads the brief). The token is null for anyone but the
+// draft's leader, whose request then fails below uncached.
 projectRoutes.get("/:id/draft", async (c) => {
   const user = await requireUser(c);
-  const { project, member } = await requireActiveMember(c.var.db, c.req.param("id"), user.id);
-  if (member.role !== "LEADER") throw notFound("Project");
-  assertDraft(project);
-  return ok<DraftView>(c, await loadDraftView(c.var.db, project.id));
+  const now = clock.now();
+  const token = await draftToken(c.var.db, c.req.param("id"), user, now);
+  return conditional<DraftView>(c, token, async () => {
+    const { project, member } = await requireActiveMember(c.var.db, c.req.param("id"), user.id);
+    if (member.role !== "LEADER") throw notFound("Project");
+    assertDraft(project);
+    return loadDraftView(c.var.db, project.id, now);
+  });
 });
 
 projectRoutes.get("/:id", async (c) => {
@@ -141,10 +152,13 @@ projectRoutes.post(
   async (c) => {
     const { project } = await leaderOf(c);
     const isMultipart = (c.req.header("Content-Type") ?? "").toLowerCase().startsWith("multipart/form-data");
+    // M6: with the leader's AI key the AI reads the brief instead of the free rules (in the background).
+    const ai = await aiCanReadBrief(c.var.db, project.id);
     if (!isMultipart) {
       const { text } = await readBody(c, BriefTextSchema);
       const size = Buffer.byteLength(text, "utf8");
       if (size > MAX_BRIEF_BYTES) return ok<BriefResult>(c, briefFailure("TOO_LARGE", null, size));
+      if (ai && text.trim()) return ok<BriefResult>(c, await startBriefAnalysis(c.var.db, project.id, { text, fileName: null, file: null }));
       // Typed in 「打字描述」: one line = one task when there are no scores or list markers.
       return ok<BriefResult>(c, await applyBrief(c.var.db, project.id, { text, fileName: null, sizeBytes: null, typed: true }));
     }
@@ -154,11 +168,56 @@ projectRoutes.post(
     if (!(file instanceof File)) throw new AppError(400, "VALIDATION", 'Send the brief as the multipart field "file"');
     const fileName = safeFileName(form.fileName, file.name);
     if (file.size > MAX_BRIEF_BYTES) return ok<BriefResult>(c, briefFailure("TOO_LARGE", fileName, file.size));
-    const extracted = await extractBriefText(new Uint8Array(await file.arrayBuffer()), fileName, file.type);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const extracted = await extractBriefText(bytes, fileName, file.type);
+    if (ai && extracted.ok) return ok<BriefResult>(c, await startBriefAnalysis(c.var.db, project.id, { text: extracted.text, fileName, file: null }));
+    if (ai && !extracted.ok && extracted.reason === "UNREADABLE") {
+      // A photo or a scanned PDF: the AI gets the file itself.
+      const type = detectEvidenceType(bytes.subarray(0, SNIFF_BYTES), fileName);
+      if (type && BRIEF_FILE_TYPES[type.mimeType]) {
+        return ok<BriefResult>(c, await startBriefAnalysis(c.var.db, project.id, { text: null, fileName, file: { bytes, mimeType: type.mimeType } }));
+      }
+    }
     if (!extracted.ok) return ok<BriefResult>(c, briefFailure(extracted.reason, fileName, file.size));
     return ok<BriefResult>(c, await applyBrief(c.var.db, project.id, { text: extracted.text, fileName, sizeBytes: file.size }));
   },
 );
+
+// M6 wizard: 再试一次 (a new AI reading of the saved brief) and 改用免费规则拆 (the free rules on it).
+projectRoutes.post("/:id/brief/retry", async (c) => {
+  const { user, project } = await leaderOf(c);
+  assertDraft(project);
+  await consumeRate(c.var.db, [{ rule: RATE_RULES.briefUser, subject: user.id }]);
+  await retryBriefAnalysis(c.var.db, project.id);
+  return ok<DraftView>(c, await loadDraftView(c.var.db, project.id));
+});
+
+projectRoutes.post("/:id/brief/rules", async (c) => {
+  const { project } = await leaderOf(c);
+  assertDraft(project);
+  return ok<BriefResult>(c, await briefWithRules(c.var.db, project.id));
+});
+
+// M6 选择题: the draft's answers (「确认，拆任务」), then 改选 in a running project (preview first).
+projectRoutes.put("/:id/choices", async (c) => {
+  const { project } = await leaderOf(c);
+  const { answers } = await readBody(c, ChoicesSchema);
+  await setDraftChoices(c.var.db, project.id, answers);
+  return ok<DraftView>(c, await loadDraftView(c.var.db, project.id));
+});
+
+projectRoutes.post("/:id/choices/:questionId/preview", async (c) => {
+  const { user, project } = await leaderOf(c);
+  const { picks } = await readBody(c, RechooseSchema);
+  return ok<RechoosePreview>(c, await previewRechoose(c.var.db, project.id, c.req.param("questionId"), user.id, picks));
+});
+
+projectRoutes.post("/:id/choices/:questionId", async (c) => {
+  const { user, project } = await leaderOf(c);
+  const input = await readBody(c, RechooseSchema);
+  await applyRechoose(c.var.db, project.id, c.req.param("questionId"), user.id, input);
+  return ok<ProjectView>(c, await loadViewFor(c.var.db, project.id, user.id));
+});
 
 projectRoutes.put("/:id/tasks", async (c) => {
   const { project } = await leaderOf(c);

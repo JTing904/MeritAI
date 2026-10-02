@@ -1,7 +1,7 @@
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import type { HealthData } from '@shared/api';
 import { Avatar } from '@/components/Avatar';
 import { Button } from '@/components/Button';
@@ -13,6 +13,7 @@ import { Icon } from '@/components/Icon';
 import { PageTitle, Screen } from '@/components/Screen';
 import { useToast } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
+import { AiKeyCard } from '@/features/ai/KeyCard';
 import { TimeMachine } from '@/features/life/TimeMachine';
 import { useI18n, type Locale } from '@/i18n';
 import { api, API_URL, errorCode } from '@/lib/api';
@@ -47,8 +48,15 @@ export default function MeScreen() {
   const { t, locale, setLocale } = useI18n();
   const { c, mode, setMode } = useTheme();
   const me = useMe();
-  const { updateMe, signOut } = useSession();
   const toast = useToast();
+  const { updateMe, signOut, refreshMe } = useSession();
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    void refreshMe()
+      .catch((err) => toast.show(t.errors[errorCode(err)]))
+      .finally(() => setRefreshing(false));
+  }, [refreshMe, toast, t]);
   const server = useServerHealth();
   const [confirmOut, setConfirmOut] = useState(false);
 
@@ -63,7 +71,11 @@ export default function MeScreen() {
   }[server.state];
 
   return (
-    <Screen bottomInset={false}>
+    <Screen
+      bottomInset={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={c.grape} colors={[c.grape]} progressBackgroundColor={c.card} />
+      }>
       <PageTitle>{t.me.title}</PageTitle>
 
       <View style={styles.head}>
@@ -77,6 +89,9 @@ export default function MeScreen() {
           )}
         </View>
       </View>
+
+      {/* M6: the account's AI key (every project the user leads uses it). */}
+      <AiKeyCard />
 
       <List>
         <View style={styles.col}>

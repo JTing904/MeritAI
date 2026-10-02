@@ -9,6 +9,8 @@ import { MAX_TASKS, type ActiveTaskPatchBody, type TaskBody } from "./schemas";
 import { resolveDueAt } from "./tasks";
 import { assertPointsTotal, lockAsMember, TOTAL_POINTS, touchProject, TX_OPTIONS, type Tx } from "./tx";
 import { clock } from "../lib/clock";
+import { kickAiJobs } from "./ai-job-store";
+import { maybeEnqueueHowto } from "./ai-howto";
 
 /** Feature and milestone ids must belong to this project. */
 async function assertRefs(tx: Tx, projectId: string, input: Pick<TaskBody, "featureId" | "milestoneId">) {
@@ -43,7 +45,7 @@ async function rescale(tx: Tx, tasks: { id: string; points: number }[], total: n
  * the total stays exactly 1000.
  */
 export async function addActiveTask(db: Db, projectId: string, userId: string, input: TaskBody, now = clock.now()): Promise<void> {
-  await db.$transaction(async (tx) => {
+  const howto = await db.$transaction(async (tx) => {
     const { project, member: leader } = await lockAsMember(tx, projectId, userId, { leader: true });
     if (!Number.isInteger(input.points) || input.points < 1 || input.points > 999) {
       throw new AppError(400, "VALIDATION", "Points must be between 0.1 and 99.9");
@@ -102,7 +104,10 @@ export async function addActiveTask(db: Db, projectId: string, userId: string, i
     });
     await bumpPackages(tx, projectId);
     await assertPointsTotal(tx, projectId);
+    // M6: with the leader's key, the AI writes its 怎么做 and checklist (light model).
+    return maybeEnqueueHowto(tx, projectId, created.id, now);
   }, TX_OPTIONS);
+  if (howto) kickAiJobs(db);
 }
 
 /**

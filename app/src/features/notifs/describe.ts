@@ -3,6 +3,7 @@ import { formatPoints, formatTotal } from '@shared/planning';
 import type { Grade, NotificationView } from '@shared/types';
 import type { Messages } from '@/i18n/zh';
 import type { InlinePart } from '@/i18n/sections/home.zh';
+import { resetClock } from '@/features/ai/models';
 import { dayDiff, dueLabel } from '@/lib/time';
 import type { Highlighter } from '@/theme/tokens';
 
@@ -19,7 +20,12 @@ export type NotifAction =
   | 'move'
   | 'end'
   | 'viewProject'
-  | 'whatsapp';
+  | 'whatsapp'
+  // M6
+  | 'checkKey'
+  | 'changeKey'
+  | 'viewReasons'
+  | 'viewPackages';
 
 /** Buttons drawn as the soft (secondary) kind; the others are primary (NotifsM5 mockup). */
 export const SOFT_ACTIONS: ReadonlySet<NotifAction> = new Set([
@@ -29,6 +35,9 @@ export const SOFT_ACTIONS: ReadonlySet<NotifAction> = new Set([
   'move',
   'viewProject',
   'whatsapp',
+  'checkKey',
+  'viewReasons',
+  'viewPackages',
 ]);
 
 export type NotifLook = {
@@ -49,6 +58,10 @@ export type NotifLook = {
 
 type Copy = Messages['notifs'];
 type Labels = Messages['labels'];
+type AiCopy = Messages['ai'];
+
+/** The 我 page (the AI key card): 检查 key / 换 key. */
+const ME_HREF: Href = '/me';
 
 /** The parts as plain text (no bold): what 发到 WhatsApp sends. */
 const plain = (parts: InlinePart[]) => parts.map((p) => (typeof p === 'string' ? p : p.b)).join('');
@@ -122,7 +135,7 @@ function swapRequestParts(n: NotificationView, p: Extract<NotificationView['payl
  * Emoji, tint, text, buttons and tap target of one notification (M3 and M4 spec §8, M5 spec §5). Null for a
  * type this version of the app doesn't know (an older APK talking to a newer server): the list skips it.
  */
-export function describeNotification(n: NotificationView, copy: Copy, labels: Labels): NotifLook | null {
+export function describeNotification(n: NotificationView, copy: Copy, labels: Labels, ai: AiCopy): NotifLook | null {
   const tag = n.projectTag ?? '';
   const id = n.projectId;
   const open = n.projectOpen && id !== null;
@@ -267,6 +280,20 @@ export function describeNotification(n: NotificationView, copy: Copy, labels: La
     }
     case 'GRADED': {
       const href = taskHref(p.taskId);
+      if (p.byAi) {
+        // M6 (NotifsM6): the AI graded it. 看理由 for 拿一半 / 不通过, 打开任务 otherwise.
+        const redoAi = p.grade === 'HALF' || p.grade === 'FAIL';
+        const parts = ai.notifs.graded({
+          title: p.title,
+          grade: p.grade,
+          no: p.attemptNo,
+          pts: formatPoints(p.points),
+          earned: formatPoints(p.earned),
+          counting: p.counting,
+          reasons: p.reasonsCount ?? 0,
+        });
+        return { ...gradeTile(p.grade), parts, actions: href ? [redoAi ? 'viewReasons' : 'openTask'] : [], href };
+      }
       const text = {
         title: p.title,
         grade: p.grade,
@@ -453,6 +480,71 @@ export function describeNotification(n: NotificationView, copy: Copy, labels: La
         parts: copy.taskDelayed(p.title, monthDay(p.dueAt, labels), p.prereq?.title ?? null),
         actions: href ? ['openTask'] : [],
         href,
+      };
+    }
+    // ─── M6: AI ───
+    case 'AI_REVIEW_FAILED': {
+      const grade = taskHref(p.taskId, true);
+      const provider = p.provider ? ai.provider[p.provider] : 'AI';
+      const who = p.submitter?.name ?? null;
+      const f = ai.notifs.reviewFailed;
+      let parts: InlinePart[];
+      let tile: Pick<NotifLook, 'emoji' | 'tint'> = { emoji: '📨', tint: 'lemon' };
+      const keyTrouble = p.reason === 'QUOTA' || p.reason === 'INVALID' || p.reason === 'NO_KEY';
+      switch (p.reason) {
+        case 'QUOTA':
+          parts = f.QUOTA(provider, who, p.title);
+          tile = { emoji: '⏳', tint: 'lemon' };
+          break;
+        case 'INVALID':
+          parts = f.INVALID(provider, who, p.title);
+          tile = { emoji: '❌', tint: 'gum' };
+          break;
+        case 'NO_KEY':
+          parts = f.NO_KEY(who, p.title);
+          tile = { emoji: '❌', tint: 'gum' };
+          break;
+        case 'LINKS_ONLY':
+          parts = f.LINKS_ONLY(p.title);
+          break;
+        case 'UNREADABLE':
+          parts = f.UNREADABLE(who, p.title);
+          break;
+        case 'TASK_LIMIT':
+        case 'PROJECT_LIMIT':
+          parts = f.LIMIT(who, p.title);
+          break;
+        default:
+          parts = f.OTHER(who, p.title);
+      }
+      const actions: NotifAction[] = [];
+      if (grade) actions.push('grade');
+      if (keyTrouble) actions.push('checkKey');
+      return { ...tile, parts, actions, href: grade, to: keyTrouble ? { checkKey: ME_HREF } : undefined };
+    }
+    case 'AI_KEY_PROBLEM': {
+      const provider = ai.provider[p.provider];
+      if (p.problem === 'QUOTA') {
+        const when = p.provider === 'GEMINI' || !p.resetsAt ? ai.me.backGemini : ai.me.backAt(resetClock(p.resetsAt));
+        return { emoji: '⏳', tint: 'lemon', parts: ai.notifs.keyQuota(provider, when), actions: ['checkKey'], href: ME_HREF, to: { checkKey: ME_HREF } };
+      }
+      return {
+        emoji: '❌',
+        tint: 'gum',
+        parts: ai.notifs.keyInvalid(provider, ai.company[p.provider]),
+        actions: ['changeKey'],
+        href: ME_HREF,
+        to: { changeKey: ME_HREF },
+      };
+    }
+    case 'CHOICE_CHANGED': {
+      const sep = ai.notifs.labelSep;
+      return {
+        emoji: '🔀',
+        tint: 'lemon',
+        parts: ai.notifs.choiceChanged(p.prompt, p.from.join(sep), p.to.join(sep), p.removedTitles.length, p.addedTitles.length),
+        actions: projectHref ? ['viewPackages'] : [],
+        href: projectHref,
       };
     }
     default:

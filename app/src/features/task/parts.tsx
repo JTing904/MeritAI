@@ -29,14 +29,17 @@ const useStyles = makeStyles((c) =>
   }),
 );
 
-/** A card's title (`.ws-h`: 14.5 / 900) with an optional link on the right. */
-export function CardHead({ title, action }: { title: string; action?: ReactNode }) {
+/** A card's title (`.ws-h`: 14.5 / 900) with an optional tag after it (M6 「✨ AI 写的」) and a link on the right. */
+export function CardHead({ title, action, tag }: { title: string; action?: ReactNode; tag?: ReactNode }) {
   const s = useStyles();
   return (
     <View style={s.cardHead}>
-      <Txt v="text" size={14.5} weight={900} style={{ flexShrink: 1 }}>
-        {title}
-      </Txt>
+      <View style={{ flexShrink: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+        <Txt v="text" size={14.5} weight={900} style={{ flexShrink: 1 }}>
+          {title}
+        </Txt>
+        {tag}
+      </View>
       {action}
     </View>
   );

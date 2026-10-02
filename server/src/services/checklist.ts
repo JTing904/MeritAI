@@ -32,6 +32,8 @@ export async function replaceChecklist(
     if (kept.some((id) => !existing.has(id))) throw new AppError(400, "VALIDATION", "Unknown checklist item");
 
     await tx.checklistItem.deleteMany({ where: { taskId, id: { notIn: kept } } });
+    // M6: an edit by a person takes 「✨ AI 写的」 away.
+    await tx.task.update({ where: { id: taskId }, data: { checklistByAi: false } });
     for (const [order, item] of input.items.entries()) {
       if (item.id) {
         await tx.checklistItem.update({ where: { id: item.id }, data: { text: item.text, order } });

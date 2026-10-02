@@ -7,7 +7,6 @@ import { AvatarStack } from '@/components/Avatar';
 import { Button, LinkButton } from '@/components/Button';
 import { Card, List } from '@/components/Card';
 import { Chip } from '@/components/Chip';
-import { Seg } from '@/components/Controls';
 import { DevNote } from '@/components/DevNote';
 import { Icon } from '@/components/Icon';
 import { AppBar, Screen } from '@/components/Screen';
@@ -21,9 +20,10 @@ import { activeMembers, peopleLabel } from '@/features/members/format';
 import { InviteCodeBox } from '@/features/members/InvitePanel';
 import { LoadState } from '@/features/members/LoadState';
 import { ProjectInfoSheet } from '@/features/members/ProjectInfoSheet';
+import { ProjectAiCard } from '@/features/ai/ProjectAiCard';
 import { useProject } from '@/features/project/useProject';
 import { useDates, zoneName } from '@/features/wizard/dates';
-import { Field, Hint, Input } from '@/features/wizard/Field';
+import { Hint } from '@/features/wizard/Field';
 import { useI18n } from '@/i18n';
 import { isEnded, isLive } from '@/lib/lifecycle';
 import { useSession } from '@/lib/session';
@@ -33,8 +33,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, paddingHorizontal: 14 },
   grow: { flex: 1, minWidth: 0, gap: 1 },
   emoji: { fontSize: 20, lineHeight: 26 },
-  // Mockup-only controls that later milestones build: visible but not usable yet.
-  inert: { opacity: 0.55, pointerEvents: 'none' },
 });
 
 /** How many avatars the 成员 row shows (the rest are on the members screen). */
@@ -160,6 +158,9 @@ function Settings({
         </Card>
       ) : null}
 
+      {/* M6: everyone sees which AI the project uses (the leader's key); hidden once ENDED. */}
+      {ended ? null : <ProjectAiCard project={project} />}
+
       {leader ? <LeaderOnly project={project} setProject={setProject} onError={onError} /> : null}
 
       {editing && leader && !ended ? (
@@ -170,7 +171,8 @@ function Settings({
 }
 
 /**
- * AI key and integrations exactly as the mockup, disabled until their milestones (hidden once ENDED); the
+ * Integrations exactly as the mockup, disabled until their milestones (hidden once ENDED; the AI card is
+ * above, M6); the
  * 结束项目 card (M5: EndSheet; 重新打开 when ENDED); then the working 删除项目 card (为所有人删除项目).
  */
 function LeaderOnly({
@@ -193,32 +195,6 @@ function LeaderOnly({
     <>
       {ended ? null : (
         <>
-          <Card style={{ gap: 10 }}>
-            <Txt v="body" weight={700}>
-              {s.ai}
-            </Txt>
-            <View style={styles.inert}>
-              <Seg
-                label={s.aiProviders}
-                value="gemini"
-                onChange={() => {}}
-                disabled
-                options={[
-                  { value: 'gemini', label: 'Gemini' },
-                  { value: 'claude', label: 'Claude' },
-                  { value: 'openai', label: 'OpenAI' },
-                ]}
-              />
-            </View>
-            <Field label={s.aiKey('Gemini')} small={s.aiKeySmall}>
-              <View style={styles.inert}>
-                <Input label={s.aiKey('Gemini')} placeholder={s.aiKeyPlaceholder} editable={false} aria-disabled />
-              </View>
-            </Field>
-            <Hint>{s.aiHint}</Hint>
-          </Card>
-          <DevNote milestone="M6" />
-
           <List>
             <View style={styles.row}>
               <Txt style={styles.emoji} aria-hidden>

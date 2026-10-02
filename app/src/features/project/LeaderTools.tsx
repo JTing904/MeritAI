@@ -11,6 +11,7 @@ import { useI18n } from '@/i18n';
 import { errorCode } from '@/lib/api';
 import { isLive } from '@/lib/lifecycle';
 import { makeStyles, useTheme } from '@/theme';
+import { RechooseSheet } from '@/features/ai/RechooseSheet';
 import { AddTaskSheet } from './AddTaskSheet';
 import { ResplitSheet } from './ResplitSheet';
 
@@ -32,7 +33,7 @@ export type LeaderToolsProps = {
 };
 
 /**
- * 组长工具 card: 加任务 / 重新分包 (+ their sheets). Only the leader of a running project sees it
+ * 组长工具 card: 加任务 / 重新分包 / M6 改选 (+ their sheets). Only the leader of a running project sees it
  * (renders nothing otherwise), on the project page and on the pick screen.
  */
 export function LeaderTools({ project, onChange, variant, onError }: LeaderToolsProps) {
@@ -41,7 +42,7 @@ export function LeaderTools({ project, onChange, variant, onError }: LeaderTools
   const { t } = useI18n();
   const lt = t.project.tools;
   const { show } = useToast();
-  const [open, setOpen] = useState<'add' | 'resplit' | null>(null);
+  const [open, setOpen] = useState<'add' | 'resplit' | 'rechoose' | null>(null);
 
   if (project.viewerRole !== 'LEADER' || !isLive(project.basics.status)) return null;
 
@@ -70,6 +71,16 @@ export function LeaderTools({ project, onChange, variant, onError }: LeaderTools
         icon={<Icon name="shuffle" size={16} color={c.ink} />}
         onPress={() => setOpen('resplit')}
       />
+      {/* M6: 改选 a 选择题 the AI found (only projects that have any). */}
+      {project.choices.length > 0 ? (
+        <Button
+          title={t.ai.rechoose.tool}
+          kind="soft"
+          small
+          icon={<Icon name="sparkle" size={16} color={c.ink} />}
+          onPress={() => setOpen('rechoose')}
+        />
+      ) : null}
       {variant === 'project' ? (
         <Txt v="meta" style={{ flexBasis: '100%' }}>
           {lt.hint}
@@ -78,6 +89,7 @@ export function LeaderTools({ project, onChange, variant, onError }: LeaderTools
 
       {open === 'add' ? <AddTaskSheet project={project} onClose={close} onChange={onChange} onError={fail} /> : null}
       {open === 'resplit' ? <ResplitSheet project={project} onClose={close} onChange={onChange} onError={fail} /> : null}
+      {open === 'rechoose' ? <RechooseSheet project={project} onClose={close} onChange={onChange} onError={fail} /> : null}
     </Card>
   );
 }

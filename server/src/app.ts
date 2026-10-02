@@ -9,6 +9,7 @@ import type { Db } from "./lib/db";
 import { isTooOld, minAppVersion } from "./lib/app-version";
 import { isTransientDbError } from "./lib/db-errors";
 import { assertNoDevLoginInProduction } from "./lib/dev-gate";
+import { assertAiConfig } from "./lib/ai";
 import { AppError } from "./lib/errors";
 import { currentUser } from "./lib/auth";
 import { fail, ok } from "./lib/http";
@@ -51,6 +52,8 @@ export type AppDeps = {
 export function createApp(deps: AppDeps) {
   // Every entry point (dev server, Vercel, tests) builds the app here: refuse to run with dev login in production.
   assertNoDevLoginInProduction();
+  // M6: no AI_MOCK and a real AI_KEY_SECRET in production.
+  assertAiConfig();
   const app = new Hono<AppEnv>().basePath("/api");
   const origins = new Set(deps.webOrigins ?? []);
   const minVersion = minAppVersion(deps.minAppVersion ?? process.env.MIN_APP_VERSION);

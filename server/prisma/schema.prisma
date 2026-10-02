@@ -147,6 +147,10 @@ enum NotificationType {
   PROJECT_REOPENED
   PROJECT_DELETE_SOON
   TASK_DELAYED
+  // M6: AI
+  AI_REVIEW_FAILED
+  AI_KEY_PROBLEM
+  CHOICE_CHANGED
 }
 
 /// Entries of the project feed (动态).
@@ -176,6 +180,7 @@ enum ActivityType {
   PROJECT_ENDED
   PROJECT_REOPENED
   TASK_DELAYED
+  CHOICE_CHANGED
 }
 
 /// The leader's grade of an attempt (M4). SELF: a meeting task its owner marked done.
@@ -200,6 +205,55 @@ enum EvidenceKind {
   LINK
 }
 
+// ─── M6: AI ───────────────────────────────────────────────────────────────────
+
+/// Which AI service a leader's key belongs to (REQUIREMENTS §13 「AI（M6）」). Claude and OpenAI are 测试版.
+enum AiProvider {
+  GEMINI
+  CLAUDE
+  OPENAI
+}
+
+/// What the last call with the key said. QUOTA counts only for the usage day it was set on (lib/ai/usage.ts).
+enum AiKeyStatus {
+  OK
+  INVALID
+  QUOTA
+}
+
+/// An attempt's AI review. SKIPPED: the daily AI review limit was reached, so the leader grades it.
+enum AiState {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+enum AiJobKind {
+  BRIEF
+  HOWTO
+  GRADE
+}
+
+enum AiJobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum ChoiceType {
+  PICK_N
+  METHOD
+}
+
+enum AiLevel {
+  LOW
+  MID
+  HIGH
+}
+
 model User {
   id             String   @id @default(cuid())
   name           String
@@ -212,6 +266,17 @@ model User {
   weeklyEnabled  Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  /// M6: the account's AI key (one per account; every project this user leads uses it). The key itself is
+  /// only stored encrypted (lib/ai/crypto.ts: AES-256-GCM with AI_KEY_SECRET) and never leaves the server.
+  aiProvider         AiProvider?
+  aiKeyCipher        String?
+  aiKeyLast4         String?
+  aiKeyStatus        AiKeyStatus?
+  aiKeyCheckedAt     DateTime?
+  /// 「我已满 18 岁」 ticked when the key was saved.
+  aiAdultConfirmedAt DateTime?
+  /// AI_KEY_PROBLEM goes out once per usage day and problem: "<QUOTA|INVALID>:<usage day>" of the last one sent.
+  aiKeyNotice        String?
 
   sessions        Session[]
   accounts        AuthAccount[]
@@ -220,6 +285,7 @@ model User {
   sentInvites     Invite[]       @relation("InviteSender")
   notifications   Notification[]
   idempotencyKeys IdempotencyKey[]
+  aiUsage         AiUsage[]
 }
 
 /// A signed-in device. Only the SHA-256 hash of the bearer token is stored.
@@ -284,6 +350,10 @@ model Project {
   /// UTF-8 bytes of briefText; null when there is none. Lists use it instead of loading the text.
   briefBytes      Int?
   briefFileName   String?
+  /// M6: a brief the free rules can't read (a photo or scanned PDF) kept for the AI (storage key
+  /// "<projectId>/brief/<id>.<ext>"), and its sniffed type. Deleted with the project's files.
+  briefFileKey    String?
+  briefFileMime   String?
   inviteCode      String?       @unique
   /// "owner/name" when a GitHub repo is connected (M8).
   repoFullName    String?
@@ -328,6 +398,8 @@ model Project {
   notifications      Notification[]
   activity           ActivityEvent[]
   reminders          ReminderLog[]
+  aiJobs             AiJob[]
+  choiceQuestions    ChoiceQuestion[]
 
   @@index([createdById])
   @@index([purgeAfter])
@@ -460,10 +532,18 @@ model Task {
   startedById    String?
   /// The due date the leader set by hand; a later deadline change gives it back (never past the deadline).
   leaderDueAt    DateTime?
+  /// M6 怎么做: 2–8 short steps. `howtoByAi` / `checklistByAi`: written by the AI and not edited since
+  /// (「✨ AI 写的」); a leader or owner edit clears the flag.
+  howto          String[]   @default([])
+  howtoByAi      Boolean    @default(false)
+  checklistByAi  Boolean    @default(false)
+  /// M6: the 选择题 option this task was generated from (改选 deletes and regenerates these).
+  choiceOptionId String?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 
   project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  choiceOption ChoiceOption?   @relation(fields: [choiceOptionId], references: [id], onDelete: SetNull)
   feature      Feature?        @relation(fields: [featureId], references: [id], onDelete: SetNull)
   milestone    Milestone?      @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
   package      Package?        @relation(fields: [packageId], references: [id], onDelete: SetNull)
@@ -483,6 +563,7 @@ model Task {
   @@index([startedById])
   @@index([featureId])
   @@index([milestoneId])
+  @@index([choiceOptionId])
 }
 
 /// One submission round of a task (第 N 次). At most one attempt per task is not GRADED; the services
@@ -514,6 +595,16 @@ model Attempt {
   meetingSummary String?
   attendeeIds    String[]      @default([])
   absentIds      String[]      @default([])
+  /// M6 AI review: null when the AI wasn't asked (no key, leader's own task, meeting). The score itself is
+  /// never stored; `grade` holds its band. gradeNote = the AI's summary. aiFailReason: AiFailReason
+  /// (shared/types.ts) when FAILED or SKIPPED.
+  aiState        AiState?
+  aiFailReason   String?
+  gradedByAi     Boolean       @default(false)
+  aiProvider     AiProvider?
+  aiModel        String?
+  aiReasons      String[]      @default([])
+  aiSuggestions  String[]      @default([])
   createdAt      DateTime      @default(now())
 
   task        Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
@@ -734,4 +825,88 @@ model IdempotencyKey {
 
   @@id([userId, key])
   @@index([createdAt])
+}
+
+// ─── M6: AI ───────────────────────────────────────────────────────────────────
+
+/// Model calls made with a key per usage day (Pacific date for Gemini, UTC otherwise) and model: each Gemini
+/// model has its own free daily quota (lib/ai/usage.ts). The column is named "tier" in the database.
+model AiUsage {
+  userId String
+  day    String
+  /// The model id the calls went to, e.g. "gemini-3.8-flash".
+  model  String @map("tier")
+  count  Int    @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, day, model])
+}
+
+/// Background AI work (services/ai-jobs.ts). Enqueued in the write's transaction, run after the commit and by
+/// the tick. `dedupeKey` makes enqueueing idempotent; `payload` holds what the job was made for (e.g. the
+/// attempt's submittedAt), `result` the outcome or, while running, its progress.
+model AiJob {
+  id         String      @id @default(cuid())
+  kind       AiJobKind
+  projectId  String
+  taskId     String?
+  attemptId  String?
+  dedupeKey  String      @unique
+  status     AiJobStatus @default(QUEUED)
+  tries      Int         @default(0)
+  runAfter   DateTime    @default(now())
+  leaseUntil DateTime?
+  error      String?
+  payload    Json?
+  result     Json?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([status, runAfter])
+  @@index([projectId, kind, createdAt])
+  @@index([taskId])
+}
+
+/// A 选择题 found in the brief (任选几题 / 选一种做法).
+model ChoiceQuestion {
+  id        String     @id @default(cuid())
+  projectId String
+  prompt    String
+  /// The brief's own words, when the AI quoted them.
+  quote     String?
+  type      ChoiceType
+  pickCount Int
+  order     Int
+
+  project Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  options ChoiceOption[]
+
+  @@index([projectId])
+}
+
+model ChoiceOption {
+  id          String   @id @default(cuid())
+  questionId  String
+  /// "A", "B", … (assigned by the server in the AI's order).
+  key         String
+  label       String
+  summary     String
+  hours       Float
+  material    AiLevel
+  difficulty  AiLevel
+  pros        String[] @default([])
+  cons        String[] @default([])
+  recommended Boolean  @default(false)
+  picked      Boolean  @default(false)
+  /// The tasks this option makes (ChoiceTaskTemplate[], services/choices.ts), points already in tenths.
+  tasksJson   Json
+  order       Int
+
+  question ChoiceQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  tasks    Task[]
+
+  @@unique([questionId, key])
 }

@@ -44,6 +44,18 @@ export async function extractBriefText(bytes: Uint8Array, fileName: string, mime
   }
 }
 
+/**
+ * A BMP file: "BM", then the file size (little-endian) and a header size a real BMP has. "BM" alone is
+ * not enough — a text brief can start with a course code like "BMCS2203".
+ */
+function isBmp(bytes: Uint8Array): boolean {
+  if (bytes.byteLength < 26 || bytes[0] !== 0x42 || bytes[1] !== 0x4d) return false;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const size = view.getUint32(2, true);
+  const header = view.getUint32(14, true);
+  return size === bytes.byteLength && [12, 40, 52, 56, 64, 108, 124].includes(header);
+}
+
 /** File type from the content first (a renamed file still opens), then the extension, then the MIME type. */
 function detectKind(bytes: Uint8Array, fileName: string, mimeType: string): Kind {
   const ext = /\.([a-z0-9]+)$/i.exec(fileName.trim())?.[1]?.toLowerCase() ?? "";
@@ -53,7 +65,7 @@ function detectKind(bytes: Uint8Array, fileName: string, mimeType: string): Kind
   const startsWith = (sig: number[]) => sig.every((b, i) => bytes[i] === b);
 
   if (ascii(0, 1024).includes("%PDF-")) return "pdf";
-  if (startsWith([0x89, 0x50, 0x4e, 0x47]) || startsWith([0xff, 0xd8, 0xff]) || ascii(0, 4) === "GIF8" || ascii(0, 2) === "BM") return "image";
+  if (startsWith([0x89, 0x50, 0x4e, 0x47]) || startsWith([0xff, 0xd8, 0xff]) || ascii(0, 4) === "GIF8" || isBmp(bytes)) return "image";
   if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") return "image";
   if (ascii(4, 8) === "ftyp" && /^(heic|heix|hevc|hevx|mif1|msf1|avif)$/.test(ascii(8, 12))) return "image";
   if (startsWith([0x49, 0x49, 0x2a, 0x00]) || startsWith([0x4d, 0x4d, 0x00, 0x2a])) return "image";
@@ -94,6 +106,9 @@ type WorkerResult =
   | { kind: "html"; html: string }
   | { kind: "raw"; text: string };
 
+/** What the worker parses: briefs (pdf, docx) and, since M6, evidence for the AI (pptx, xlsx too). */
+type WorkerKind = "pdf" | "docx" | "pptx" | "xlsx";
+
 /** Heap and time one extraction may use; a file that needs more is reported UNREADABLE. */
 export const EXTRACT_LIMITS = { heapMb: 256, timeoutMs: 20_000 };
 /** Extractions running at once; the rest wait, so a burst of uploads can't hold N × 256 MB. */
@@ -103,8 +118,8 @@ const waiting: (() => void)[] = [];
 
 const WORKER_URL = new URL("./extract-worker.mjs", import.meta.url);
 
-/** Parses a PDF or .docx in a worker thread (extract-worker.mjs); rejects on a crash, the heap limit or the timeout. */
-async function inWorker(kind: "pdf" | "docx", bytes: Uint8Array): Promise<WorkerResult> {
+/** Parses a PDF, .docx, .pptx or .xlsx in a worker thread (extract-worker.mjs); rejects on a crash, the heap limit or the timeout. */
+async function inWorker(kind: WorkerKind, bytes: Uint8Array): Promise<WorkerResult> {
   if (running >= MAX_RUNNING) await new Promise<void>((resolve) => waiting.push(resolve));
   running++;
   try {
@@ -115,7 +130,7 @@ async function inWorker(kind: "pdf" | "docx", bytes: Uint8Array): Promise<Worker
   }
 }
 
-function runWorker(kind: "pdf" | "docx", bytes: Uint8Array): Promise<WorkerResult> {
+function runWorker(kind: WorkerKind, bytes: Uint8Array): Promise<WorkerResult> {
   // A copy the worker owns (moved, not cloned); the caller keeps its own bytes.
   const copy = new Uint8Array(bytes);
   return new Promise((resolve, reject) => {
@@ -353,4 +368,36 @@ function htmlToText(html: string): string {
   }
   flush();
   return out.join("\n");
+}
+
+// ─── Evidence for the AI (M6 spec §6) ─────────────────────────────────────────
+
+/**
+ * Text of an evidence file the AI can't take as a file: Word (.docx), PowerPoint (.pptx), Excel (.xlsx)
+ * and CSV. Same worker, heap, time and zip limits as briefs. Embedded images are not read. Legacy
+ * .doc / .ppt / .xls and anything else → UNSUPPORTED_TYPE; a broken or hostile file → UNREADABLE.
+ */
+export async function extractEvidenceText(bytes: Uint8Array, ext: string): Promise<Extracted> {
+  if (bytes.byteLength > MAX_BRIEF_BYTES) return { ok: false, reason: "TOO_LARGE" };
+  if (bytes.byteLength === 0) return { ok: false, reason: "EMPTY" };
+  try {
+    switch (ext) {
+      case "docx":
+        return await readDocx(bytes);
+      case "csv":
+        return readPlainText(bytes);
+      case "pptx":
+      case "xlsx": {
+        if (!zipWithinLimits(bytes)) return { ok: false, reason: "UNREADABLE" };
+        const result = await inWorker(ext, bytes);
+        if (result.kind !== "raw") throw new Error("unexpected worker result");
+        const text = tidy(result.text);
+        return text ? { ok: true, text } : { ok: false, reason: "EMPTY" };
+      }
+      default:
+        return { ok: false, reason: "UNSUPPORTED_TYPE" };
+    }
+  } catch {
+    return { ok: false, reason: "UNREADABLE" };
+  }
 }

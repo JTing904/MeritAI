@@ -9,6 +9,7 @@ import {
   rescaleToFull,
   type PlanUnit,
 } from "../../shared/planning";
+import { orderByCopies } from "../src/services/projects";
 
 /** Small deterministic PRNG so the property checks are reproducible. */
 function rng(seed: number) {
@@ -378,5 +379,24 @@ describe("previewBalance", () => {
     const preview = previewBalance(plan, 2);
     expect(preview).toMatchObject({ spread: 0, balanced: true });
     expect(preview.packagePoints).toEqual([500, 500]);
+  });
+});
+
+describe("orderByCopies (task package n holds the copies numbered n)", () => {
+  const pkgs = (...ids: string[][]) => ids.map((taskIds) => ({ taskIds }));
+  const features = new Map<string, string | null>([
+    ["a3", "组员 3"], ["b3", "组员 3"], ["a1", "组员 1"], ["a2", "个人方案 2"], ["g1", "市场分析"], ["g2", null],
+  ]);
+
+  it("puts the package with copy n at position n", () => {
+    const ordered = orderByCopies(pkgs(["a3", "b3", "g1"], ["a1"], ["a2", "g2"]), features);
+    expect(ordered.map((p) => p.taskIds[0])).toEqual(["a1", "a2", "a3"]);
+  });
+
+  it("keeps the order when a package mixes numbers or has none", () => {
+    const mixed = pkgs(["a3", "a1"], ["a2"], ["g1"]);
+    expect(orderByCopies(mixed, features)).toBe(mixed);
+    const none = pkgs(["g1"], ["g2"]);
+    expect(orderByCopies(none, features)).toBe(none);
   });
 });

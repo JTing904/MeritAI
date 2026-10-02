@@ -30,7 +30,12 @@ export type TaskDetailState = {
    * screen go back.
    */
   onError: (err: unknown) => void;
+  /** M6: an attempt waits for the AI (the page polls every 5 s meanwhile). */
+  aiBusy: boolean;
 };
+
+/** How often the task page asks again while the AI reviews a hand-in (M6). */
+const AI_POLL_MS = 5000;
 
 /** GET /api/projects/:id/tasks/:taskId for the task page, through the data cache (useProject's rules, for one task). */
 export function useTaskDetail(projectId: string, taskId: string): TaskDetailState {
@@ -85,6 +90,17 @@ export function useTaskDetail(projectId: string, taskId: string): TaskDetailStat
     }, [load]),
   );
 
+  // M6: while the AI reviews an attempt (QUEUED / RUNNING), ask again every 5 s (a 304 when nothing moved);
+  // it stops once the result is in, and while the screen is out of view.
+  const aiBusy = !!detail?.attempts.some((a) => a.aiState === 'QUEUED' || a.aiState === 'RUNNING');
+  useFocusEffect(
+    useCallback(() => {
+      if (!aiBusy) return;
+      const timer = setInterval(() => void load(true, true), AI_POLL_MS);
+      return () => clearInterval(timer);
+    }, [aiBusy, load]),
+  );
+
   const setDetail = useCallback(
     (next: TaskDetail) => {
       // request() already did this for the write; again here for details from elsewhere (idempotent).
@@ -108,5 +124,5 @@ export function useTaskDetail(projectId: string, taskId: string): TaskDetailStat
     [load, reload, showToast, t],
   );
 
-  return { detail, error: detail ? null : error, confirmed, reload, setDetail, onError };
+  return { detail, error: detail ? null : error, confirmed, reload, setDetail, onError, aiBusy };
 }

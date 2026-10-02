@@ -161,3 +161,12 @@ export const TimeMachineSchema = z.union([
   z.object({ advanceMs: z.number().finite() }).strict(),
   z.object({ reset: z.literal(true) }).strict(),
 ]);
+
+// ─── M6: AI ───────────────────────────────────────────────────────────────────
+
+/** PUT /projects/:id/choices: option keys per question id (counts are checked in the service: CHOICE_COUNT). */
+export const ChoicesSchema = z.object({ answers: z.record(z.string().min(1), z.array(z.string().min(1).max(4)).max(20)) });
+/** POST /projects/:id/choices/:questionId(/preview). */
+export const RechooseSchema = z.object({ picks: z.array(z.string().min(1).max(4)).max(20), version: z.number().int().optional() });
+/** PUT …/tasks/:taskId/howto (lengths are checked in the service, as VALIDATION). */
+export const HowtoSchema = z.object({ steps: z.array(z.string().max(1000)).max(20) });

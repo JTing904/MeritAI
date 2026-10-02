@@ -33,10 +33,15 @@ export type TaskChip = { key: StatusKey; label: string; emoji: string; tone: Chi
 /**
  * A task's status as a chip (M4): the COUNTING grade decides (status / grade), never an attempt being
  * looked at. DONE shows the grade word (优秀 / 合格 / 完成). Tiles use `emoji`; the task page's head chip
- * shows `label` alone, except REVIEWING (📨 等组长审核) and OVERDUE (🐢 已过期), which keep their emoji.
+ * shows `label` alone, except REVIEWING (📨 等组长审核, M6 ✨ AI 审核中) and OVERDUE (🐢 已过期), which keep their emoji.
  */
-export function taskChip(task: Pick<TaskView, 'status' | 'overdue' | 'grade'>, t: Pick<Messages, 'labels'>): TaskChip {
+export function taskChip(
+  task: Pick<TaskView, 'status' | 'overdue' | 'grade'> & { aiReviewing?: boolean },
+  t: Pick<Messages, 'labels' | 'ai'>,
+): TaskChip {
   const key = displayStatus(task);
+  // M6: the AI is reviewing the hand-in: 「✨ AI 审核中」 (when it can't, it reads 📨 等组长审核 as before).
+  if (key === 'REVIEWING' && task.aiReviewing) return { key, label: t.ai.reviewing.chip, emoji: t.ai.reviewing.emoji, tone: 'grape' };
   const label = key === 'DONE' && task.grade ? t.labels.grade[task.grade] : t.labels.status[key];
   return { key, label, emoji: t.labels.statusEmoji[key], tone: TONE[key] };
 }

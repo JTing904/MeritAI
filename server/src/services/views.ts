@@ -1,6 +1,7 @@
 // Turns database rows into the API shapes in shared/types.ts.
 import { packageCount, previewBalance } from "../../../shared/planning";
 import type {
+  AiFailReason,
   DraftView,
   FeatureView,
   MemberView,
@@ -30,6 +31,9 @@ import {
 } from "../lib/package-state";
 import { expireDueSwaps } from "./notifications";
 import { clock } from "../lib/clock";
+import { toAnalysis } from "./ai-brief";
+import { leaderUser, projectAi } from "./ai-key";
+import { questionsOf, toChoiceViews } from "./choices";
 
 type Db = Prisma.TransactionClient;
 
@@ -56,11 +60,11 @@ export function toBasics(p: Project, packages?: number): ProjectBasics {
 }
 
 /** What a TaskView needs from each of the task's attempts (ATTEMPT_STATS selects it). */
-export type AttemptStat = Pick<Attempt, "no" | "status" | "late"> & { _count: { evidence: number } };
+export type AttemptStat = Pick<Attempt, "no" | "status" | "late"> & Partial<Pick<Attempt, "aiState" | "aiFailReason">> & { _count: { evidence: number } };
 
 /** Prisma select for AttemptStat (plus submittedAt, for 待我审核). */
 export const ATTEMPT_STATS = {
-  select: { id: true, no: true, status: true, late: true, submittedAt: true, _count: { select: { evidence: true } } },
+  select: { id: true, no: true, status: true, late: true, submittedAt: true, aiState: true, aiFailReason: true, _count: { select: { evidence: true } } },
   orderBy: { no: "asc" },
 } as const;
 
@@ -102,6 +106,7 @@ export function toTaskView(t: Task, project: Pick<Project, "deadline">, now: Dat
     attemptCount: attempts.filter((a) => a.status === "GRADED" || a._count.evidence > 0).length,
     evidenceCount: current?._count.evidence ?? 0,
     hasEvidence: attempts.some((a) => a._count.evidence > 0),
+    aiReviewing: current?.status === "PENDING" && (current.aiState === "QUEUED" || current.aiState === "RUNNING"),
   };
 }
 
@@ -122,6 +127,12 @@ export function sortLeaderFirst<T extends Pick<Member, "role">>(members: T[]): T
 const TASK_ORDER = [{ order: "asc" as const }, { number: "asc" as const }];
 
 export async function loadDraftView(db: Db, projectId: string, now = clock.now()): Promise<DraftView> {
+  // M6: the leader's key, the AI's reading of the brief and the 选择题 it found.
+  const [leader, job, questions] = await Promise.all([
+    leaderUser(db, projectId),
+    db.aiJob.findFirst({ where: { projectId, kind: "BRIEF" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] }),
+    questionsOf(db, projectId),
+  ]);
   const project = await db.project.findUnique({
     where: { id: projectId },
     include: {
@@ -143,6 +154,9 @@ export async function loadDraftView(db: Db, projectId: string, now = clock.now()
       project.tasks.map((t) => ({ points: t.points, group: t.featureId })),
       packageCount(project.teamSize, project.leaderManages),
     ),
+    analysis: toAnalysis(job, leader?.aiProvider ?? null, now),
+    questions: toChoiceViews(questions, project.tasks, () => undefined, false),
+    ai: await projectAi(db, projectId, leader, now),
   };
 }
 
@@ -192,6 +206,7 @@ export async function loadProjectView(
   if (!project || !me || !canSee(project, me)) throw notFound("Project");
   // Only a running project (ACTIVE or AWAITING_CONFIRM) hands out packages.
   const running = isRunning(project);
+  const [leader, questions] = await Promise.all([leaderUser(db, projectId), questionsOf(db, projectId)]);
 
   const members: MemberView[] = sortLeaderFirst(project.members).map((m) => {
     const owned = project.tasks.filter((t) => t.ownerId === m.id);
@@ -264,18 +279,22 @@ export async function loadProjectView(
     pendingReviews: me.role === "LEADER" ? pendingReviews(project.tasks, project) : [],
     briefAvailable: (project.briefBytes ?? 0) > 0,
     briefFileName: project.briefFileName,
+    ai: await projectAi(db, projectId, leader, now),
+    choices: toChoiceViews(questions, project.tasks, (id) => project.members.find((m) => m.id === id)?.user.name, running),
   };
 }
 
 /** 待我审核: every PENDING attempt of the project, oldest submitted first. */
 function pendingReviews(
-  tasks: (Task & { attempts: (AttemptStat & { submittedAt: Date | null })[] })[],
+  tasks: (Task & { attempts: (AttemptStat & { submittedAt: Date | null; aiState: Attempt["aiState"]; aiFailReason: string | null })[] })[],
   project: Pick<Project, "deadline">,
 ): PendingReview[] {
   const rows: (PendingReview & { at: number })[] = [];
   for (const t of tasks) {
     for (const a of t.attempts) {
       if (a.status !== "PENDING" || a.submittedAt === null) continue;
+      // M6: still with the AI (「✨ AI 审核中」); it reaches 待我审核 only if the AI can't grade it.
+      if (a.aiState === "QUEUED" || a.aiState === "RUNNING") continue;
       rows.push({
         taskId: t.id,
         title: t.title,
@@ -285,6 +304,7 @@ function pendingReviews(
         evidenceCount: a._count.evidence,
         late: a.late,
         dueAt: effectiveDue(t, project).toISOString(),
+        aiFailReason: a.aiState === "FAILED" || a.aiState === "SKIPPED" ? ((a.aiFailReason as AiFailReason | null) ?? null) : null,
         at: a.submittedAt.getTime(),
       });
     }

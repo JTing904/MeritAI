@@ -188,3 +188,21 @@ describe("file types and limits", () => {
     expect(await reason(new Uint8Array(MAX_BRIEF_BYTES).fill(0x41), "brief.txt")).toBe("ok");
   });
 });
+
+describe("text that starts like an image signature", () => {
+  it("reads a text brief starting with a course code like BMCS2203 (not a BMP)", async () => {
+    const text = "BMCS2203 软件工程 小组作业（总分 100 分）\n一、案例分析（30 分）\n二、书面报告（70 分）\n";
+    const out = await extractBriefText(new TextEncoder().encode(text), "brief.txt", "text/plain");
+    expect(out.ok).toBe(true);
+  });
+
+  it("still treats a real BMP as an image", async () => {
+    const bmp = new Uint8Array(62);
+    const view = new DataView(bmp.buffer);
+    bmp[0] = 0x42; bmp[1] = 0x4d;
+    view.setUint32(2, bmp.byteLength, true);
+    view.setUint32(14, 40, true);
+    const out = await extractBriefText(bmp, "scan.bmp", "image/bmp");
+    expect(out).toEqual({ ok: false, reason: "UNREADABLE" });
+  });
+});

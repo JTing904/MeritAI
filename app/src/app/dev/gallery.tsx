@@ -1,4 +1,5 @@
 import { Redirect } from 'expo-router';
+import type { ChoiceOptionView } from '@shared/types';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { Avatar, AvatarStack } from '@/components/Avatar';
@@ -14,6 +15,10 @@ import { Sheet, SheetOption } from '@/components/Sheet';
 import { useToast } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
 import { WhatsAppGlyph } from '@/components/WhatsAppGlyph';
+import { ChoiceCard } from '@/features/ai/ChoiceCard';
+import { modelName } from '@/features/ai/models';
+import { AiTag, ErrCard, ErrList, PrivacyLine, UseBar } from '@/features/ai/parts';
+import { AiDocScan, AiScanCard } from '@/features/ai/Scan';
 import { FrozenLine } from '@/features/life/LifecycleCard';
 import { useI18n } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -21,6 +26,33 @@ import { HIGHLIGHTERS } from '@/theme/tokens';
 
 // Developer page: every shared component in both themes, to compare against the prototype on a real device.
 // Sample names below are placeholders for the check only. Development builds only (the route is also guarded).
+const SAMPLE_OPTION: ChoiceOptionView = {
+  key: 'A',
+  label: 'Carousell',
+  summary: '马来西亚最多人用，公开资料和评测都多。',
+  hours: 8,
+  material: 'HIGH',
+  difficulty: 'LOW',
+  pros: [],
+  cons: [],
+  recommended: true,
+  picked: false,
+  taskCount: 2,
+  points: 90,
+  taskIds: [],
+  lockedBy: null,
+};
+
+const SAMPLE_METHOD: ChoiceOptionView = {
+  ...SAMPLE_OPTION,
+  key: 'B',
+  label: 'Agile（Scrum）',
+  summary: '每两周做出一个能用的版本，再接着改。',
+  hours: 140,
+  pros: ['老师中途检查有东西看', '做错了早发现、早改'],
+  cons: ['每周要开一次短会', '每轮都要重新排任务'],
+};
+
 export default function GalleryRoute() {
   return __DEV__ ? <Gallery /> : <Redirect href="/" />;
 }
@@ -106,6 +138,32 @@ function Gallery() {
         </View>
         <FrozenLine />
       </Card>
+
+      <SectionHeader title="M6 · AI" />
+      <AiDocScan />
+      <AiScanCard title={t.ai.reviewing.title} hint={t.ai.reviewing.hintMine} />
+      <Card style={{ gap: 12 }}>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+          <AiTag />
+          <Chip tone="grape">
+            {t.ai.reviewing.emoji} {t.ai.reviewing.chip}
+          </Chip>
+          <Chip tone="grape">{t.ai.choice.recommended}</Chip>
+        </View>
+        <PrivacyLine>{t.ai.project.privacy.GEMINI}</PrivacyLine>
+        <UseBar label={t.ai.me.usageGood} count={t.ai.me.usageCount(4, 80)} ratio={4 / 80} />
+        <UseBar label={t.ai.me.usageLight} count={t.ai.me.usageCount(8, 500)} ratio={8 / 500} color={c.hl.mint.base} />
+        <Txt v="meta">
+          {['gemini-3.8-flash', 'gemini-flash-lite-latest', 'claude-haiku-4-5', 'gpt-5-mini', 'mock-model'].map((m) => modelName(m, null)).join(' · ')}
+        </Txt>
+      </Card>
+      <ErrCard tone="warn" title={t.ai.me.quotaTitle}>
+        <ErrList label={t.ai.me.nowLabel} lines={t.ai.me.quotaNow(t.ai.me.backGemini)} />
+      </ErrCard>
+      <ChoiceCard option={SAMPLE_OPTION} method={false} on onPress={() => toast.show('A')} />
+      <ChoiceCard option={{ ...SAMPLE_OPTION, key: 'B', recommended: false }} method={false} on locked mark={{ text: t.ai.rechoose.locked('张博文'), tone: 'default' }} />
+      <ChoiceCard option={{ ...SAMPLE_OPTION, key: 'D', recommended: false }} method={false} on={false} dropped mark={{ text: t.ai.rechoose.drop, tone: 'bad' }} onPress={() => {}} />
+      <ChoiceCard option={SAMPLE_METHOD} method on onPress={() => {}} />
 
       <SectionHeader title="列表" />
       <List>

@@ -1,6 +1,7 @@
 // Chinese copy (primary; taken verbatim from the approved prototype where it exists).
 // en.ts must have exactly the same shape; a missing English string is a type error.
 // Feature copy lives in ./sections/<feature>.zh.ts so features can grow independently.
+import { aiZh } from './sections/ai.zh';
 import { gradeZh } from './sections/grade.zh';
 import { homeZh } from './sections/home.zh';
 import { joinZh } from './sections/join.zh';
@@ -55,6 +56,7 @@ export const zh = {
   task: taskZh,
   grade: gradeZh,
   life: lifeZh,
+  ai: aiZh,
   me: {
     title: '我',
     appearance: '外观',
@@ -160,6 +162,13 @@ export const zh = {
     DELAY_NOT_LATER: '新的日期要比现在的截止时间晚',
     DELAY_IN_PAST: '新的日期要在现在之后，不然马上又算过期。',
     DEADLINE_PASSED: '截止日期已过，不能再邀请新成员或加入。',
+    AI_ADULT_REQUIRED: '先勾选「我满 18 岁，也知道上面这些」才能保存 key',
+    AI_KEY_INVALID: '这把 key 用不了，检查一下有没有复制完整',
+    AI_UNAVAILABLE: '现在连不上 AI 服务，稍后再试',
+    NO_AI_KEY: '组长还没有可用的 AI key，先去「我」页填一把',
+    CHOICE_COUNT: '选的数量不对，要刚好选够才行',
+    CHOICE_LOCKED: '有人已经开始做这个选项的任务了，不能换掉',
+    CHOICES_REQUIRED: '还有选择题没确认，先选好再分包',
   },
 };
 

@@ -208,10 +208,10 @@ function PackageCard({
                 <Pressable
                   onPress={() => router.push({ pathname: '/project/[id]/task/[taskId]', params: { id, taskId: task.id } })}
                   role="button"
-                  aria-label={`${t.labels.status[status]} · ${task.title} · ${points}`}
+                  aria-label={`${task.aiReviewing && status === 'REVIEWING' ? t.ai.reviewing.chip : t.labels.status[status]} · ${task.title} · ${points}`}
                   style={({ pressed }) => [s.miniMain, pressed && s.miniPressed]}>
                   <Txt v="small" size={14} aria-hidden>
-                    {t.labels.statusEmoji[status]}
+                    {task.aiReviewing && status === 'REVIEWING' ? t.ai.reviewing.emoji : t.labels.statusEmoji[status]}
                   </Txt>
                   <Txt v="small" style={s.miniTitle}>
                     {task.title}

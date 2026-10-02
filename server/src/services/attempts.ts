@@ -10,6 +10,8 @@ import { personRef, startUnderLock, WITH_NAME } from "./packages";
 import type { MeetingDoneBody } from "./schemas";
 import { lockAsMember, TX_OPTIONS, type Tx } from "./tx";
 import { clock } from "../lib/clock";
+import { kickAiJobs } from "./ai-job-store";
+import { decideAiReview, enqueueGrade, tellLeaderFailed } from "./ai-grade";
 
 export const alreadyReviewing = () =>
   new AppError(409, "ALREADY_REVIEWING", "Already submitted and waiting for review. Withdraw it to make changes");
@@ -88,7 +90,7 @@ export async function undoStart(db: Db, projectId: string, taskId: string, userI
  * (the leader hears SUBMITTED); the leader's own task is graded PASS at once (合格（组长自评）).
  */
 export async function submitAttempt(db: Db, projectId: string, taskId: string, userId: string, now = clock.now()): Promise<void> {
-  await db.$transaction(async (tx) => {
+  const queued = await db.$transaction(async (tx) => {
     const { project, member } = await lockAsMember(tx, projectId, userId);
     const task = await taskUnderLock(tx, projectId, taskId);
     assertOwner(task, member, "Only the task's owner can hand it in");
@@ -102,6 +104,16 @@ export async function submitAttempt(db: Db, projectId: string, taskId: string, u
     const due = effectiveDue(task, project);
     const late = isLate(now, due);
     const selfGraded = member.role === "LEADER";
+    // M6: another member's work goes to the AI when the leader has a key (ai-grade.ts decides).
+    const ai = selfGraded ? ({ kind: "leader" } as const) : await decideAiReview(tx, project, task, evidence, now);
+    const aiData =
+      ai.kind === "queued"
+        ? { aiState: "QUEUED" as const, aiFailReason: null }
+        : ai.kind === "skipped"
+          ? { aiState: "SKIPPED" as const, aiFailReason: ai.reason }
+          : ai.kind === "failed"
+            ? { aiState: "FAILED" as const, aiFailReason: ai.reason }
+            : { aiState: null, aiFailReason: null };
     const { count } = await tx.attempt.updateMany({
       where: { id: open.id, status: "DRAFT" },
       data: {
@@ -110,10 +122,11 @@ export async function submitAttempt(db: Db, projectId: string, taskId: string, u
         late,
         ...(selfGraded
           ? { status: "GRADED", grade: "PASS", selfGraded: true, gradedById: member.id, gradedAt: now }
-          : { status: "PENDING" }),
+          : { status: "PENDING", ...aiData }),
       },
     });
     if (count !== 1) throw alreadyReviewing();
+    if (ai.kind === "queued") await enqueueGrade(tx, projectId, task.id, open, now);
     const { after, becameFinished } = await recomputeTask(tx, task.id, now);
     if (becameFinished) await finishedEffects(tx, after, userId, now);
 
@@ -135,7 +148,9 @@ export async function submitAttempt(db: Db, projectId: string, taskId: string, u
       });
     } else {
       const leader = await tx.member.findFirst({ where: { projectId, role: "LEADER" } });
-      if (leader && isActiveMember(leader) && leader.id !== member.id) {
+      if (ai.kind === "failed") await tellLeaderFailed(tx, projectId, task, open.no, ai.reason, now);
+      // While the AI reviews it the leader isn't asked; a failed review tells the leader itself (AI_REVIEW_FAILED).
+      if (ai.kind !== "queued" && ai.kind !== "failed" && leader && isActiveMember(leader) && leader.id !== member.id) {
         await notify(tx, {
           userIds: [leader.userId],
           projectId,
@@ -157,7 +172,9 @@ export async function submitAttempt(db: Db, projectId: string, taskId: string, u
       await recordEvent(tx, { projectId, actorId: member.id, type: "SUBMITTED", payload: { taskId: task.id, title: task.title, attemptNo: open.no }, now });
     }
     await bumpPackages(tx, projectId);
+    return ai.kind === "queued";
   }, TX_OPTIONS);
+  if (queued) kickAiJobs(db);
 }
 
 /**
@@ -173,7 +190,7 @@ export async function withdrawAttempt(db: Db, projectId: string, taskId: string,
     if (!pending) throw notReviewing();
     const { count } = await tx.attempt.updateMany({
       where: { id: pending.id, status: "PENDING" },
-      data: { status: "DRAFT", submittedAt: null, submittedById: null, late: false },
+      data: { status: "DRAFT", submittedAt: null, submittedById: null, late: false, aiState: null, aiFailReason: null },
     });
     if (count !== 1) throw notReviewing();
     await recomputeTask(tx, task.id, now);

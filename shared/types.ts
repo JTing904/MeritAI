@@ -1,6 +1,6 @@
 // Response and request shapes shared by the server and the app.
 // Dates are ISO 8601 strings. Contribution points are integers in TENTHS (125 = 12.5 分).
-import type { Highlighter, Locale } from './constants';
+import type { AiProviderName, Highlighter, Locale } from './constants';
 
 // ─── Accounts (M1) ────────────────────────────────────────────────────────────
 
@@ -16,6 +16,8 @@ export type MeData = {
   locale: Locale;
   pushEnabled: boolean;
   weeklyEnabled: boolean;
+  /** M6: the account's AI key, masked (never the key itself); null when none is saved. */
+  ai: MeAi | null;
 };
 
 export type MeUpdate = Partial<Pick<MeData, 'locale' | 'pushEnabled' | 'weeklyEnabled'>>;
@@ -113,6 +115,8 @@ export type TaskView = {
   briefExcerpt: string | null;
   /** A part made by 「把大任务拆开」. */
   briefSplit: boolean;
+  /** M6: the current attempt waits for the AI's review (AiState QUEUED or RUNNING): 「✨ AI 审核中」. */
+  aiReviewing: boolean;
 };
 
 /**
@@ -147,6 +151,12 @@ export type DraftView = {
   balance: BalanceView;
   /** Only in the response of a PATCH that changed the deadline: the tasks whose due date moved. */
   adjustedTasks?: AdjustedTask[];
+  /** M6: the AI reading the brief (wizard step 3); null when the AI wasn't asked (no key, rules, manual). */
+  analysis: BriefAnalysis | null;
+  /** M6: the 选择题 the AI found (wizard step 4, one screen per question); [] without any. */
+  questions: ChoiceQuestionView[];
+  /** M6: the leader's key as this project uses it (the leader is the viewer here). */
+  ai: ProjectAi;
 };
 
 /** Task create/update in a draft or (leader) in an active project. Points in tenths. */
@@ -183,6 +193,12 @@ export type BriefFailure =
   | 'EMPTY';
 
 export type BriefResult =
+  /**
+   * M6: the leader has an AI key, so the brief was saved and the AI reads it in the background:
+   * `draft.analysis.status` is 'running'. Poll GET /projects/:id/draft (ETag) every 2 s until it is
+   * 'done' (tasks and questions filled in) or 'failed' (offer 再试一次 / 改用免费规则拆 / 手动建任务).
+   */
+  | { ok: true; source: 'AI'; method: 'AI'; found: 0; draft: DraftView }
   | {
       ok: true;
       source: PlanSource;
@@ -321,6 +337,10 @@ export type ProjectView = {
   briefAvailable: boolean;
   /** The uploaded brief's file name (null when typed or none). */
   briefFileName: string | null;
+  /** M6: the AI this project uses (the current leader's key). */
+  ai: ProjectAi;
+  /** M6: the 选择题 and what was picked (改选 in the leader tools); [] without any. */
+  choices: ChoiceQuestionView[];
 };
 
 /** Home screen project card. */
@@ -509,7 +529,11 @@ export type NotificationType =
   | 'PROJECT_ENDED'
   | 'PROJECT_REOPENED'
   | 'PROJECT_DELETE_SOON'
-  | 'TASK_DELAYED';
+  | 'TASK_DELAYED'
+  // M6 (AI)
+  | 'AI_REVIEW_FAILED'
+  | 'AI_KEY_PROBLEM'
+  | 'CHOICE_CHANGED';
 
 /** 全组都收到 / 只有你收到 / 只有组长收到 / 只有你和组长收到. */
 export type NotificationAudience = 'GROUP' | 'ONLY_YOU' | 'ONLY_LEADER' | 'YOU_AND_LEADER';
@@ -584,7 +608,10 @@ export type NotificationPayload =
       dueAt: string;
       late: boolean;
     }
-  /** To the owner. `counting` false: a worse re-grade; the task still earns `earned` from an earlier attempt. */
+  /**
+   * To the owner. `counting` false: a worse re-grade; the task still earns `earned` from an earlier attempt.
+   * M6 `byAi`: the AI graded it (「AI 评了你的『{title}』：…」); `reasonsCount`: its reasons (「有 3 条理由…」).
+   */
   | {
       type: 'GRADED';
       taskId: string;
@@ -594,6 +621,8 @@ export type NotificationPayload =
       points: number;
       earned: number;
       counting: boolean;
+      byAi?: boolean;
+      reasonsCount?: number;
     }
   | {
       type: 'GRADED_OUTSIDE';
@@ -735,6 +764,40 @@ export type NotificationPayload =
       dueAt: string;
       fromDueAt: string;
       prereq: { taskId: string; title: string } | null;
+    }
+  // ─── M6 ───
+  /**
+   * To the leader (ONLY_LEADER), once per attempt the AI couldn't grade: it is in 待我审核 now. 「去评级」
+   * (and 「检查 key」 for QUOTA / INVALID). QUOTA: 「你的 {provider} key 今天的额度用完了，{submitter} 的『{title}』改由你评。」
+   * INVALID: 「…key 不能用了…」; LINKS_ONLY: 「『{title}』只交了链接，AI 看不了，改由你评。」; others: 「AI 这次没审成…」.
+   */
+  | {
+      type: 'AI_REVIEW_FAILED';
+      taskId: string;
+      title: string;
+      attemptNo: number;
+      submitter: PersonRef | null;
+      reason: AiFailReason;
+      provider: AiProviderName | null;
+    }
+  /**
+   * To the key's owner (ONLY_YOU, projectId null: 「所有你当组长的项目」), at most once per usage day and
+   * problem. QUOTA: 「你的 {provider} key 今天的额度用完了」 (`resetsAt`: when it comes back, 「下午 3 点左右」);
+   * INVALID: 「你的 {provider} key 不能用了，去『我』页换一把」. Button 「检查 key」 / 「换 key」 → 我 page.
+   */
+  | { type: 'AI_KEY_PROBLEM'; provider: AiProviderName; problem: 'QUOTA' | 'INVALID'; resetsAt: string | null }
+  /**
+   * To every active member but the leader (GROUP): 「组长改选了『{prompt}』：{from} 换成 {to}。」 (labels
+   * joined with 「、」/ ", "). `removedTitles` / `addedTitles`: the tasks deleted and generated. 「看任务包」.
+   */
+  | {
+      type: 'CHOICE_CHANGED';
+      questionId: string;
+      prompt: string;
+      from: string[];
+      to: string[];
+      removedTitles: string[];
+      addedTitles: string[];
     };
 
 export type NotificationView = {
@@ -790,7 +853,8 @@ export type ActivityType =
   | 'PROJECT_RESTORED'
   | 'PROJECT_ENDED'
   | 'PROJECT_REOPENED'
-  | 'TASK_DELAYED';
+  | 'TASK_DELAYED'
+  | 'CHOICE_CHANGED';
 
 /** What a feed entry says, by type (who did it is ActivityView.actor). Snapshotted when it happened. */
 export type ActivityPayload =
@@ -821,6 +885,8 @@ export type ActivityPayload =
       attemptNo: number;
       selfGraded: boolean;
       outsideApp: boolean;
+      /** M6: graded by the AI (the actor is null then). */
+      byAi?: boolean;
     }
   | {
       type: 'OVERRIDDEN';
@@ -853,7 +919,9 @@ export type ActivityPayload =
   /** The actor (the leader) reopened it; `deadline` as it is after reopening. */
   | { type: 'PROJECT_REOPENED'; deadline: string }
   /** The actor (the leader) moved the task's due date later (一键延后). */
-  | { type: 'TASK_DELAYED'; taskId: string; title: string; dueAt: string; fromDueAt: string };
+  | { type: 'TASK_DELAYED'; taskId: string; title: string; dueAt: string; fromDueAt: string }
+  /** M6: the actor (the leader) 改选 a 选择题 (option labels). */
+  | { type: 'CHOICE_CHANGED'; questionId: string; prompt: string; from: string[]; to: string[] };
 
 export type ActivityView = {
   id: string;
@@ -885,6 +953,8 @@ export type PendingReview = {
   evidenceCount: number;
   late: boolean;
   dueAt: string;
+  /** M6: the AI tried and couldn't grade it (FAILED) or wasn't asked because a daily limit was reached (SKIPPED); else null. */
+  aiFailReason: AiFailReason | null;
 };
 
 export type EvidenceView = {
@@ -930,6 +1000,22 @@ export type AttemptView = {
   meeting: { summary: string; attendeeMemberIds: string[]; absentMemberIds: string[] } | null;
   changes: GradeChangeView[];
   counting: boolean;
+  // M6: the AI review of this attempt. aiState null: the AI wasn't asked (no key, the leader's own task,
+  // a meeting). QUEUED / RUNNING: 「✨ AI 审核中」 (poll the task every 5 s). DONE: graded by the AI
+  // (gradedByAi; gradeNote = its summary). FAILED: the leader grades it (aiFailReason says why).
+  // SKIPPED: a daily limit was reached, so it went to the leader (「今天 AI 审核次数用完了，改由组长评」).
+  aiState: AiState | null;
+  aiFailReason: AiFailReason | null;
+  /**
+   * The grade came from the AI (a later 推翻评级 shows in `changes`). Byline 「AI 审核 · {aiModel}」, e.g.
+   * 「AI 审核 · gemini-3.8-flash」: the model that graded it (grading walks a chain of models, smartest first).
+   */
+  gradedByAi: boolean;
+  aiProvider: AiProviderName | null;
+  aiModel: string | null;
+  /** 理由 (2–4 for 拿一半 / 不通过) and 怎么改才能拿满, in the project language. */
+  aiReasons: string[];
+  aiSuggestions: string[];
 };
 
 export type ChecklistItemView = { id: string; text: string; done: boolean; order: number };
@@ -955,7 +1041,18 @@ export type TaskDetail = {
     leaderName: string | null;
     /** M5: ENDED → the task page shows the frozen note instead of actions (the leader may still grade a PENDING attempt). */
     lifecycle: ProjectLifecycle;
+    /** M6: for the privacy line under 交证据 and the 「AI 审核」 byline. */
+    ai: ProjectAi;
   };
+  /** M6 怎么做 (2–8 steps; [] when none). `howtoByAi` / `checklistByAi`: 「✨ AI 写的」 (gone once edited). */
+  howto: string[];
+  howtoByAi: boolean;
+  checklistByAi: boolean;
+  /**
+   * M6: AI reviews this task has left today (of AI_REVIEWS_PER_TASK_DAY, also capped by what the project
+   * has left); null when the project has no usable key (then the leader grades).
+   */
+  aiReviewsLeftToday: number | null;
   owner: TaskPerson | null;
   packageIndex: number | null;
   /** Oldest first. */
@@ -1070,6 +1167,8 @@ export type TickResult = {
   deleteWarnings: number;
   /** Projects deleted for good (ended or deleted for everyone). */
   purged: number;
+  /** M6: AI jobs run (the tick also drains jobs that were due and recovers stale ones). */
+  aiJobs: number;
   /** Jobs or projects that failed (logged on the server); the others still ran. */
   errors: number;
 };
@@ -1089,3 +1188,180 @@ export type TimeMachineState = { offsetMs: number; now: string; realNow: string;
  * 「到下个周日 20:05」: the app computes advanceMs from TimeMachineState.now in the device zone.
  */
 export type TimeMachineInput = { offsetMs: number } | { advanceMs: number } | { reset: true };
+
+// ─── AI (M6) ──────────────────────────────────────────────────────────────────
+// The key lives on the leader's account (「我」 page); every project they lead uses it. Nobody, not even
+// its owner, ever gets the key back: only its provider and last 4 characters.
+
+/** What the last call with the key said. QUOTA only lasts until the usage day resets (the server reports OK after). */
+export type AiKeyStatus = 'OK' | 'INVALID' | 'QUOTA';
+
+/**
+ * Calls made with the key today (all projects). `limit` null: no daily limit known (Claude, OpenAI).
+ * `good`: the grading chain summed (Gemini: 3.8 → 3.7 → 3.6 → 3.5 Flash, each ≈20 a day, used smartest
+ * first); `light`: the light model (reading briefs, 怎么做, and grading's last resort); `models`: each
+ * model, chain order then the light one.
+ */
+export type AiUsageToday = {
+  good: { used: number; limit: number | null };
+  light: { used: number; limit: number | null };
+  models: { model: string; tier: 'good' | 'light'; used: number; limit: number | null }[];
+  /** When the counts go back to 0 (Gemini: midnight Pacific ≈ 「每天下午 3 点左右」 in Malaysia; others: midnight UTC). */
+  resetsAt: string;
+};
+
+/** GET /api/me → ai. */
+export type MeAi = {
+  provider: AiProviderName;
+  /** Last 4 characters of the key (「AIza••••••••3kQ」: the app draws the dots). */
+  last4: string;
+  status: AiKeyStatus;
+  /** When the key was saved or last used. */
+  checkedAt: string | null;
+  /** Null only in the login response (the app reloads /api/me). */
+  usageToday: AiUsageToday | null;
+};
+
+/**
+ * PUT /api/me/ai-key: checks the key with one cheap call and saves it (replacing any earlier one); answers
+ * with MeData. `adult` must be true (AI_ADULT_REQUIRED). Refused key → 400 AI_KEY_INVALID (nothing saved);
+ * provider unreachable → 503 AI_UNAVAILABLE. 10 tries per hour (429 RATE_LIMITED). DELETE /api/me/ai-key
+ * removes it (MeData).
+ */
+export type AiKeyInput = { provider: AiProviderName; key: string; adult: boolean };
+
+/**
+ * The AI a project uses = its current leader's key. `configured` false (provider null): free rules, the
+ * leader grades. `status` INVALID: the leader grades until a new key is saved. `reviewsToday`: AI reviews
+ * started today in this project, of `reviewsLimit` (AI_REVIEWS_PER_PROJECT_DAY).
+ */
+export type ProjectAi = {
+  provider: AiProviderName | null;
+  configured: boolean;
+  status: AiKeyStatus | null;
+  leaderName: string | null;
+  reviewsToday: number;
+  reviewsLimit: number;
+};
+
+export type AiState = 'QUEUED' | 'RUNNING' | 'DONE' | 'FAILED' | 'SKIPPED';
+
+/**
+ * Why the AI didn't grade (or read the brief). QUOTA: the key's daily quota is used up; INVALID: the key was
+ * refused; NO_KEY: the leader has no key any more; ERROR: the service kept failing (after 3 tries) or
+ * answered nonsense; LINKS_ONLY: only links were handed in (the server never opens links); UNREADABLE: none
+ * of the files could be read; TASK_LIMIT / PROJECT_LIMIT: today's 3 per task / 30 per project were used
+ * (SKIPPED); CANCELLED: the leader switched to the free rules (brief only).
+ */
+export type AiFailReason =
+  | 'QUOTA'
+  | 'INVALID'
+  | 'NO_KEY'
+  | 'ERROR'
+  | 'LINKS_ONLY'
+  | 'UNREADABLE'
+  | 'TASK_LIMIT'
+  | 'PROJECT_LIMIT'
+  | 'CANCELLED';
+
+/**
+ * Wizard step 3: the AI reading the brief (DraftView.analysis). The steps are 读文件 (READ) → 找出要做的事
+ * (TASKS) → 认出选择题 (CHOICES) → 估工作量和截止日期 (ESTIMATE). READ is done once the brief is saved (the
+ * file was read on upload); the model does the other three in one call, so TASKS shows 'running' and the
+ * rest 'waiting' until it answers, then all are 'done' with their counts. `waitingUntil`: the job waits for
+ * the key's per-minute limit. Failed: `error` = QUOTA / INVALID / NO_KEY / ERROR / CANCELLED; offer 再试一次
+ * (POST …/brief/retry), 改用免费规则拆 (POST …/brief/rules) or 手动建任务 (PUT …/tasks).
+ */
+export type BriefAnalysis = {
+  status: 'running' | 'done' | 'failed';
+  provider: AiProviderName | null;
+  steps: BriefAnalysisStep[];
+  error: AiFailReason | null;
+  waitingUntil: string | null;
+  /** Filled when done: 「找出要做的事：14 件」, 「认出 2 道选择题」, 「约 150 小时」. */
+  taskCount: number | null;
+  questionCount: number | null;
+  totalHours: number | null;
+  /** Lines of text read from the brief (null for a photo or scanned PDF, which goes to the AI as a file). */
+  lines: number | null;
+};
+
+export type BriefAnalysisStep = { key: 'READ' | 'TASKS' | 'CHOICES' | 'ESTIMATE'; state: 'waiting' | 'running' | 'done' };
+
+/**
+ * A 选择题. PICK_N: 「5 个案例任选 2 个」 (pick exactly `pickCount`); METHOD: 「选一种做法」 (pickCount 1,
+ * options have pros / cons columns). `quote`: the brief's own words (原文：「…」).
+ */
+export type ChoiceQuestionView = {
+  id: string;
+  type: 'PICK_N' | 'METHOD';
+  prompt: string;
+  quote: string | null;
+  pickCount: number;
+  order: number;
+  options: ChoiceOptionView[];
+};
+
+export type ChoiceLevel = 'LOW' | 'MID' | 'HIGH';
+
+/**
+ * One option. `hours`: estimated work (「约 8 小时」); `material`: 资料多少; `difficulty`: 难度;
+ * `recommended`: 「✨ AI 推荐」 (only workload, material and difficulty count). `picked`: chosen now.
+ * `points`: tenths its tasks are worth on the plan's scale (before confirming rescales everything).
+ * `taskIds`: its tasks in the project (picked options only). `lockedBy`: in a running project, who started
+ * or finished one of its tasks (「🔒 张博文 已开始，不能换掉」); null otherwise.
+ */
+export type ChoiceOptionView = {
+  key: string;
+  label: string;
+  summary: string;
+  hours: number;
+  material: ChoiceLevel;
+  difficulty: ChoiceLevel;
+  pros: string[];
+  cons: string[];
+  recommended: boolean;
+  picked: boolean;
+  taskCount: number;
+  points: number;
+  taskIds: string[];
+  lockedBy: PersonRef | null;
+};
+
+/**
+ * PUT /api/projects/:id/choices (draft, leader; 「确认，拆任务」): every question's picks, exactly `pickCount`
+ * each (400 CHOICE_COUNT). Replaces the tasks of the options picked before with the new picks' tasks;
+ * answers with the DraftView. Confirming the plan (POST …/confirm) needs every question answered (409
+ * CHOICES_REQUIRED).
+ */
+export type ChoicesInput = { answers: Record<string, string[]> };
+
+/**
+ * 改选 (leader, ACTIVE / AWAITING_CONFIRM): POST /api/projects/:id/choices/:questionId/preview answers with
+ * RechoosePreview; POST /api/projects/:id/choices/:questionId applies it (answers with the ProjectView).
+ * `picks`: exactly pickCount option keys (CHOICE_COUNT); an option whose tasks started can't be dropped
+ * (409 CHOICE_LOCKED). `version`: the preview's; a change in between → 409 STALE_PREVIEW.
+ */
+export type RechooseInput = { picks: string[]; version?: number };
+
+/**
+ * What 改选 would do (RechooseSheet). `removeTasks`: the dropped options' tasks, deleted (all unstarted);
+ * `addTasks`: the new options' tasks, put where the dropped ones were (same package and owner; the lightest
+ * package when those had none). Points in tenths after the rescale (the whole project stays at 1000).
+ */
+export type RechoosePreview = {
+  questionId: string;
+  prompt: string;
+  pickCount: number;
+  /** Option keys picked now and after. */
+  from: string[];
+  to: string[];
+  removeTasks: { taskId: string; title: string; points: number; packageIndex: number | null; ownerMemberId: string | null }[];
+  addTasks: { title: string; points: number; packageIndex: number | null; ownerMemberId: string | null }[];
+  /** True when `to` equals `from` (applying changes nothing). */
+  unchanged: boolean;
+  version: number;
+};
+
+/** PUT /api/projects/:id/tasks/:taskId/howto (leader or owner; ≤ 8 steps of ≤ 200 characters). Clears 「✨ AI 写的」. Answers with the TaskDetail. */
+export type HowtoInput = { steps: string[] };

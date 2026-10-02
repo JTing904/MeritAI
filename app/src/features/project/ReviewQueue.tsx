@@ -7,6 +7,7 @@ import { Button } from '@/components/Button';
 import { Chip } from '@/components/Chip';
 import { Icon } from '@/components/Icon';
 import { Txt } from '@/components/Txt';
+import { fallbackKey } from '@/features/ai/models';
 import { useI18n } from '@/i18n';
 import { dateTimeLabel } from '@/lib/time';
 import { makeStyles, useTheme } from '@/theme';
@@ -95,6 +96,8 @@ function ReviewRow({ project, review }: { project: ProjectView; review: PendingR
         <View style={s.title}>
           <Txt v="rowTitle">{review.title}</Txt>
           {review.late ? <Chip tone="bad">{q.late}</Chip> : null}
+          {/* M6: the AI couldn't grade it (or today's reviews were used up). */}
+          {review.aiFailReason ? <Chip tone="warn">{t.ai.fallback.chip[fallbackKey(review.aiFailReason)]}</Chip> : null}
         </View>
         <Txt v="meta">{meta}</Txt>
       </View>

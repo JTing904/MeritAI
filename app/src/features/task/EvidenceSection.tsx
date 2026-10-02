@@ -4,6 +4,7 @@ import type { EvidenceView } from '@shared/types';
 import { Button } from '@/components/Button';
 import { SectionHeader } from '@/components/Card';
 import { Icon, type IconName } from '@/components/Icon';
+import { PrivacyLine } from '@/features/ai/parts';
 import { Txt } from '@/components/Txt';
 import { useI18n } from '@/i18n';
 import { errorCode, newIdempotencyKey, type ClientErrorCode } from '@/lib/api';
@@ -76,6 +77,7 @@ function Tile({ icon, title, sub, onPress, disabled }: { icon: IconName; title: 
  */
 export function EvidenceSection({ ctx, onSubmitted }: { ctx: TaskCtx; onSubmitted: (selfGraded: boolean) => void }) {
   const s = useStyles();
+  const { c } = useTheme();
   const { t } = useI18n();
   const k = t.task.evidence;
   const { request } = useSession();
@@ -90,6 +92,11 @@ export function EvidenceSection({ ctx, onSubmitted }: { ctx: TaskCtx; onSubmitte
   const resubmission = detail.attempts.some((a) => a.status === 'GRADED');
   const no = draft?.no ?? detail.attempts.reduce((m, a) => Math.max(m, a.no), 0) + 1;
   const locked = busy !== null || pending !== null;
+  // M6: a member's hand-in goes to the AI when the leader's key works and today's reviews aren't used up.
+  const ai = detail.project.ai;
+  const aiProvider = !ctx.leader && ctx.task.kind !== 'MEETING' && ai.configured ? ai.provider : null;
+  const aiUsable = aiProvider !== null && ai.status !== 'INVALID' && detail.aiReviewsLeftToday !== null;
+  const aiGrades = aiUsable && (detail.aiReviewsLeftToday ?? 0) > 0;
 
   const send = async (file: PickedFile, key: string) => {
     setPending({ file, key, phase: 'uploading' });
@@ -145,7 +152,8 @@ export function EvidenceSection({ ctx, onSubmitted }: { ctx: TaskCtx; onSubmitte
     void ctx.run('submit', `${ctx.base}/submit`, { method: 'POST' }, {
       done: (d) => {
         const self = d.current === null && d.task.status === 'DONE';
-        ctx.toast(self ? k.selfGraded : k.submitted);
+        const toAi = d.current?.aiState === 'QUEUED' || d.current?.aiState === 'RUNNING';
+        ctx.toast(self ? k.selfGraded : toAi ? t.ai.evidence.submitted : k.submitted);
         onSubmitted(self);
       },
     });
@@ -157,6 +165,7 @@ export function EvidenceSection({ ctx, onSubmitted }: { ctx: TaskCtx; onSubmitte
         action={<Txt v="meta">{resubmission ? k.countNo(no, count, max) : k.count(count, max)}</Txt>}
       />
       <View style={s.list}>
+        {aiProvider ? <PrivacyLine>{t.ai.evidence.privacy[aiProvider]}</PrivacyLine> : null}
         {items.map((e) => (
           <EvidenceRow
             key={e.id}
@@ -209,14 +218,23 @@ export function EvidenceSection({ ctx, onSubmitted }: { ctx: TaskCtx; onSubmitte
       </View>
       <View style={{ gap: 6 }}>
         <Button
-          title={ctx.leader ? k.submitSelf : k.submit}
+          title={ctx.leader ? k.submitSelf : aiGrades ? t.ai.evidence.submit : k.submit}
+          icon={aiGrades ? <Icon name="sparkle" size={18} color={c.onGrape} /> : undefined}
           block
           loading={busy === 'submit'}
           disabled={items.length === 0 || (locked && busy !== 'submit')}
           onPress={submit}
         />
         <Txt v="meta" center>
-          {items.length === 0 ? k.submitHintEmpty : ctx.leader ? k.submitHintSelf : k.submitHint}
+          {items.length === 0
+            ? k.submitHintEmpty
+            : ctx.leader
+              ? k.submitHintSelf
+              : aiGrades
+                ? t.ai.evidence.submitHint(detail.aiReviewsLeftToday ?? 0)
+                : aiUsable
+                  ? t.ai.evidence.limitHint
+                  : k.submitHint}
         </Txt>
       </View>
       {linkOpen ? <LinkSheet ctx={ctx} onClose={() => setLinkOpen(false)} /> : null}

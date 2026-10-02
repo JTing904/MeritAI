@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { View } from 'react-native';
 import { Card } from '@/components/Card';
 import { SheetOption } from '@/components/Sheet';
@@ -62,7 +63,10 @@ export function CantReadStep({
         </Txt>
       </Card>
       <View style={{ gap: 10 }}>
-        <SheetOption emoji="🔑" title={w.optKey} sub={w.optKeySub} onPress={() => show(w.optKeySoon)} />
+        <SheetOption emoji="🔑" title={w.optKey} sub={w.optKeySub} onPress={() => {
+            show(w.optKeyAfter);
+            router.navigate('/me');
+          }} />
         <SheetOption emoji="⌨️" title={w.optText} sub={w.optTextSub} onPress={() => goStep(wizardHref.input(id, 'text'))} />
         <SheetOption emoji="✍️" title={w.optManual} sub={w.optManualSub} onPress={() => goStep(wizardHref.input(id, 'manual'))} />
       </View>

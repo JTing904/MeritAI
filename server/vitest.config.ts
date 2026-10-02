@@ -8,7 +8,9 @@ export default defineConfig({
     // Tests never talk to real outside services. vitest applies `env` after the shell environment, so
     // UPLOAD_DIR falls back here only when unset: parallel suites each pass their own (.uploads-test-<role>).
     env: {
-      AI_PROVIDER: "none",
+      // M6: every AI key uses the mock provider (lib/ai/mock.ts), and AI jobs run only when a test drains them.
+      AI_MOCK: "1",
+      AI_JOB_KICK: "off",
       DEV_LOGIN: "true",
       // Dev login also needs an explicit development environment (lib/dev-gate.ts).
       APP_ENV: "development",

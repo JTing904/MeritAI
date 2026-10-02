@@ -89,7 +89,22 @@ export type ErrorCode =
   /** 400: 一键延后 must land after now (a past date would be overdue again at once). */
   | 'DELAY_IN_PAST'
   /** 409: invites and joins while the project waits for the leader to confirm it was handed in. */
-  | 'DEADLINE_PASSED';
+  | 'DEADLINE_PASSED'
+  // AI (M6)
+  /** 400: PUT /me/ai-key without ticking 「我已满 18 岁」 (`adult: true`). */
+  | 'AI_ADULT_REQUIRED'
+  /** 400: the provider refused the key (nothing was saved). */
+  | 'AI_KEY_INVALID'
+  /** 503: the provider couldn't be reached to check the key; try again (nothing was saved). */
+  | 'AI_UNAVAILABLE'
+  /** 409: the leader (the current one) has no usable AI key for this (retrying the AI analysis). */
+  | 'NO_AI_KEY'
+  /** 400: a 选择题 needs exactly `pickCount` options (details: { questionId, pickCount }). */
+  | 'CHOICE_COUNT'
+  /** 409: 改选 would drop an option whose tasks someone started or finished (details: { optionKeys }). */
+  | 'CHOICE_LOCKED'
+  /** 409: confirming a plan whose 选择题 aren't all answered yet (details: { questionIds }). */
+  | 'CHOICES_REQUIRED';
 
 export type ApiError = { code: ErrorCode; message: string; details?: unknown };
 

@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import type { TaskDetail, TickInput } from '@shared/types';
 import { Card } from '@/components/Card';
+import { AiTag } from '@/features/ai/parts';
 import { Txt } from '@/components/Txt';
 import { isFinished } from '@/features/project/parts';
 import { useI18n } from '@/i18n';
@@ -53,11 +54,13 @@ export function Checklist({
     }
   };
 
-  const hint = mine ? k.hintOwner : leader ? k.hintLeader : k.hintOthers;
+  // M6: written by the AI (until someone edits it): the tag, and the hint says the AI grades against it.
+  const byAi = detail.checklistByAi && items.length > 0;
+  const hint = byAi ? t.ai.checklistHint : mine ? k.hintOwner : leader ? k.hintLeader : k.hintOthers;
 
   return (
     <Card style={{ gap: 10 }}>
-      <CardHead title={k.title} action={canEdit ? <TextLink title={k.edit} onPress={onEdit} disabled={ctx.busy !== null} /> : undefined} />
+      <CardHead title={k.title} tag={byAi ? <AiTag /> : undefined} action={canEdit ? <TextLink title={k.edit} onPress={onEdit} disabled={ctx.busy !== null} /> : undefined} />
       {items.length === 0 ? (
         <Txt v="meta">{k.empty}</Txt>
       ) : (

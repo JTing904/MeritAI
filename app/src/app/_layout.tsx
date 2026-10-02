@@ -152,6 +152,8 @@ function ThemedApp() {
             <Stack.Screen name="new/[id]/basics" />
             <Stack.Screen name="new/[id]/input" />
             <Stack.Screen name="new/[id]/cant-read" />
+            <Stack.Screen name="new/[id]/reading" />
+            <Stack.Screen name="new/[id]/choices" />
             <Stack.Screen name="new/[id]/plan" />
             <Stack.Screen name="new/[id]/done" />
             <Stack.Screen name="join/index" />

@@ -5,7 +5,7 @@
 type Env = Record<string, string | undefined>;
 
 /** Where this process runs: production when NODE_ENV or APP_ENV says so, or on Vercel (previews too). */
-function isProductionLike(env: Env): boolean {
+export function isProductionLike(env: Env = process.env): boolean {
   return env.NODE_ENV === "production" || env.APP_ENV === "production" || !!env.VERCEL;
 }
 

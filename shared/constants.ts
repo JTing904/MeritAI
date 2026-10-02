@@ -65,5 +65,26 @@ export const EVIDENCE_EXTENSIONS = [
 ] as const;
 export type EvidenceExtension = (typeof EVIDENCE_EXTENSIONS)[number];
 
+// ─── M6: AI ───────────────────────────────────────────────────────────────────
+
+export const AI_PROVIDERS = ['GEMINI', 'CLAUDE', 'OPENAI'] as const;
+export type AiProviderName = (typeof AI_PROVIDERS)[number];
+/** Claude and OpenAI are marked 测试版 in the app (not tried with a real key yet). */
+export const AI_BETA_PROVIDERS: readonly AiProviderName[] = ['CLAUDE', 'OPENAI'];
+/** AI reviews per task per usage day (「今天这个任务还能 AI 审核 N 次」). */
+export const AI_REVIEWS_PER_TASK_DAY = 3;
+/** AI reviews per project per usage day (「今天审核了 5 / 30 次」). */
+export const AI_REVIEWS_PER_PROJECT_DAY = 30;
+/** 怎么做: at most this many steps of at most AI_HOWTO_STEP_CHARS characters (PUT …/howto). */
+export const AI_HOWTO_MAX_STEPS = 8;
+export const AI_HOWTO_STEP_CHARS = 200;
+/** Where to get a free Gemini key (「怎么拿免费的 Gemini key」). */
+export const GEMINI_KEY_URL = 'https://aistudio.google.com/apikey';
+
 /** This app build's version, sent as X-App-Version on every request (the server answers 426 UPDATE_REQUIRED below its minimum). */
 export const APP_VERSION = '0.1.0';
+/**
+ * Bump whenever an API response shape changes (a field added, renamed or made required), so an app's
+ * saved copies of older responses are dropped instead of rendered with missing fields.
+ */
+export const API_SHAPE_VERSION = 6;

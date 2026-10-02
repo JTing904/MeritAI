@@ -1,3 +1,4 @@
+import { aiEn } from './sections/ai.en';
 import { gradeEn } from './sections/grade.en';
 import { homeEn } from './sections/home.en';
 import { joinEn } from './sections/join.en';
@@ -54,6 +55,7 @@ export const en: Messages = {
   task: taskEn,
   grade: gradeEn,
   life: lifeEn,
+  ai: aiEn,
   me: {
     title: 'Me',
     appearance: 'Appearance',
@@ -159,5 +161,12 @@ export const en: Messages = {
     DELAY_NOT_LATER: 'Pick a date later than the current due date',
     DELAY_IN_PAST: "Pick a date after now, or it's overdue again straight away.",
     DEADLINE_PASSED: "The deadline has passed, so nobody new can be invited or join.",
+    AI_ADULT_REQUIRED: "Tick \"I'm 18 or older and I understand the above\" before saving the key",
+    AI_KEY_INVALID: "This key doesn't work. Check that you copied all of it",
+    AI_UNAVAILABLE: "The AI service can't be reached right now. Try again later",
+    NO_AI_KEY: "The leader has no working AI key yet. Add one on the Me page first",
+    CHOICE_COUNT: 'Pick exactly the number of options asked for',
+    CHOICE_LOCKED: "Someone already started a task of this option, so it can't be swapped out",
+    CHOICES_REQUIRED: 'Answer the choice questions before splitting into packages',
   },
 };

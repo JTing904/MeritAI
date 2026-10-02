@@ -8,6 +8,7 @@ import { Icon } from '@/components/Icon';
 import { AppBar, Screen } from '@/components/Screen';
 import { useToast } from '@/components/Toast';
 import { Txt } from '@/components/Txt';
+import { canEditHowto, HowtoCard, HowtoEditSheet } from '@/features/ai/Howto';
 import { GradeSheet } from '@/features/grading/GradeSheet';
 import { OverrideSheet } from '@/features/grading/OverrideSheet';
 import { Confetti } from '@/features/pick/Confetti';
@@ -42,13 +43,14 @@ const styles = StyleSheet.create({
 const DEV_STATUSES: DevTaskStatusInput['status'][] = ['TODO', 'DOING', 'DONE', 'HALF'];
 
 type OpenSheet =
-  | { kind: 'edit' | 'prereq' | 'checklist' | 'move' }
+  | { kind: 'edit' | 'prereq' | 'checklist' | 'move' | 'howto' }
   | { kind: 'delay'; blockedDays?: number }
   | { kind: 'grade'; mode: 'pending' | 'outside' }
   | { kind: 'override'; attemptId: string };
 
 /**
- * 任务详情 (M4, boards 1–9): head → 作业要求（原文）→ 前置任务 → 清单 → 开始做 → 交证据 → 评级结果.
+ * 任务详情 (M4, boards 1–9): head → 作业要求（原文）→ 前置任务 → 怎么做 (M6) → 清单 → 开始做 → 交证据 → 评级结果.
+ * M6: while the AI reviews a hand-in the page asks for the task every 5 s (useTaskDetail).
  * What shows depends on who is looking (the owner, the leader, anyone else) and where the task is.
  * `?grade=1` (去评级, the review queue) opens the grading sheet once, only while an attempt waits for review.
  * M5: `?delay=<days>` (一键延后, PREREQ_BLOCKED) opens the DelaySheet and `?move=1` (移给谁,
@@ -68,7 +70,7 @@ export default function TaskScreen() {
   const { request } = useSession();
   const { show } = useToast();
   const { project, error: projectError, reload: reloadProject, setProject } = useProject(id);
-  const { detail, error: detailError, confirmed, reload, setDetail, onError } = useTaskDetail(id, taskId);
+  const { detail, error: detailError, confirmed, reload, setDetail, onError, aiBusy } = useTaskDetail(id, taskId);
   const [busy, setBusyState] = useState<string | null>(null);
   // The same, synchronously: a second tap in the same frame must not start a second write.
   const busyRef = useRef<string | null>(null);
@@ -121,11 +123,20 @@ export default function TaskScreen() {
     if (mine && good && before.task.status !== 'DONE' && detail.task.status === 'DONE') setBurst((n) => n + 1);
   }, [detail, confirmed]);
 
+  // M6: the AI's grade landed (the 5 s polling saw it): the project's chips and points follow.
+  const wasAiBusy = useRef(aiBusy);
+  useEffect(() => {
+    if (wasAiBusy.current && !aiBusy) void reloadProject();
+    wasAiBusy.current = aiBusy;
+  }, [aiBusy, reloadProject]);
+
   // ?grade=1: open the grading sheet once, and only while there is something to grade.
   useEffect(() => {
     if (!grade || !detail) return;
     router.setParams({ grade: undefined });
-    if (detail.current?.status === 'PENDING' && detail.project.viewerRole === 'LEADER') setSheet({ kind: 'grade', mode: 'pending' });
+    // Not while the AI is reviewing it (M6): its result comes in by itself.
+    const aiOnIt = detail.current?.aiState === 'QUEUED' || detail.current?.aiState === 'RUNNING';
+    if (detail.current?.status === 'PENDING' && detail.project.viewerRole === 'LEADER' && !aiOnIt) setSheet({ kind: 'grade', mode: 'pending' });
   }, [grade, detail]);
 
   // ?delay= / ?move=: once, and only while the leader can still do it.
@@ -248,6 +259,7 @@ export default function TaskScreen() {
         {ended ? <FrozenLine /> : null}
         <BriefExcerpt ctx={ctx} />
         <PrereqCard ctx={ctx} onChange={() => setSheet({ kind: 'prereq' })} onDelay={() => setSheet({ kind: 'delay' })} />
+        <HowtoCard ctx={ctx} onEdit={() => setSheet({ kind: 'howto' })} />
         <Checklist ctx={ctx} setDetail={setDetail} onEdit={() => setSheet({ kind: 'checklist' })} />
         {canStart ? (
           <View style={{ gap: 6 }}>
@@ -359,6 +371,7 @@ export default function TaskScreen() {
         />
       ) : null}
       {ctx && sheet?.kind === 'checklist' ? <ChecklistEditSheet ctx={ctx} onClose={() => setSheet(null)} /> : null}
+      {ctx && sheet?.kind === 'howto' && canEditHowto(ctx) ? <HowtoEditSheet ctx={ctx} onClose={() => setSheet(null)} /> : null}
       {ctx && sheet?.kind === 'grade' ? (
         <GradeSheet
           project={ctx.project}

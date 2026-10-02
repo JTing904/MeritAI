@@ -350,8 +350,8 @@ describe("GET /api/projects/:id (M4 fields)", () => {
 
     const lead = await viewAs(t.leader.token, t.projectId);
     expect(lead.pendingReviews).toEqual([
-      { taskId: b.id, title: b.title, ownerMemberId: linId, attemptNo: 2, submittedAt: new Date(now - 3 * HOUR).toISOString(), evidenceCount: 3, late: false, dueAt: t.view.basics.deadline },
-      { taskId: a.id, title: a.title, ownerMemberId: wangId, attemptNo: 1, submittedAt: new Date(now - HOUR).toISOString(), evidenceCount: 2, late: true, dueAt: due.toISOString() },
+      { taskId: b.id, title: b.title, ownerMemberId: linId, attemptNo: 2, submittedAt: new Date(now - 3 * HOUR).toISOString(), evidenceCount: 3, late: false, dueAt: t.view.basics.deadline, aiFailReason: null },
+      { taskId: a.id, title: a.title, ownerMemberId: wangId, attemptNo: 1, submittedAt: new Date(now - HOUR).toISOString(), evidenceCount: 2, late: true, dueAt: due.toISOString(), aiFailReason: null },
     ]);
     expect((await viewAs(lin.token, t.projectId)).pendingReviews).toEqual([]);
     expect((await viewAs(wang.token, t.projectId)).pendingReviews).toEqual([]);

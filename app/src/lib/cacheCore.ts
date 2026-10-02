@@ -5,6 +5,8 @@
 // live in memory and the persistable ones are also written to storage (namespaced by user), loaded on the
 // next start so a screen shows the last data on its first frame and revalidates behind it.
 
+import { API_SHAPE_VERSION } from '../../../shared/constants';
+
 /** The subset of AsyncStorage this cache uses. */
 export type CacheStorage = {
   getItem(key: string): Promise<string | null>;
@@ -61,7 +63,8 @@ export const DEFAULT_LIMITS: CacheLimits = {
 /** Every storage key starts with this; prefs.clearUserPrefs (sign-out) removes all `meritai.*` user keys. */
 export const CACHE_PREFIX = 'meritai.cache.';
 
-type Stored = { d: unknown; e: string | null; t: number };
+/** `v`: the API_SHAPE_VERSION the data was saved under; any other version is not shown. */
+type Stored = { d: unknown; e: string | null; t: number; v?: number };
 type IndexRow = [key: string, used: number];
 
 /** Pick what to persist: most recently used first, within the count and size budgets. Pure (tested). */
@@ -184,7 +187,7 @@ export class QueryCache {
         if (!value || this.entries.has(key)) return; // something newer arrived while loading
         try {
           const s = JSON.parse(value) as Stored;
-          if (!s || typeof s !== 'object' || !('d' in s)) return;
+          if (!s || typeof s !== 'object' || !('d' in s) || s.v !== API_SHAPE_VERSION) return;
           // Loaded from storage: show it, but always check with the server on the next show.
           this.entries.set(key, { data: s.d, etag: typeof s.e === 'string' ? s.e : null, at: s.t || 0, stale: true, used });
           this.persistedChars.set(key, value.length);
@@ -408,7 +411,7 @@ export class QueryCache {
       if (!this.persistable(key)) continue;
       let chars = this.persistedChars.get(key);
       if (chars === undefined || this.dirty.has(key)) {
-        const s = JSON.stringify({ d: e.data, e: e.etag, t: e.at } satisfies Stored);
+        const s = JSON.stringify({ d: e.data, e: e.etag, t: e.at, v: API_SHAPE_VERSION } satisfies Stored);
         serialized.set(key, s);
         chars = s.length;
       }

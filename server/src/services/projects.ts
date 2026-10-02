@@ -12,6 +12,7 @@ import { recordEvent } from "./notify";
 import type { ProjectBasicsBody, ProjectPatchBody } from "./schemas";
 import { assertPointsTotal, lockAsMember, lockDraft, lockProject, memberUnderLock, TOTAL_POINTS, TX_OPTIONS, type Tx } from "./tx";
 import { clock } from "../lib/clock";
+import { getStorage } from "../lib/storage";
 
 const deadlineInPast = () => new AppError(400, "DEADLINE_IN_PAST", "The deadline must be in the future");
 
@@ -142,6 +143,12 @@ export async function deleteDraft(db: Db, projectId: string): Promise<void> {
     await lockDraft(tx, projectId);
     await tx.project.delete({ where: { id: projectId } });
   }, TX_OPTIONS);
+  // M6: a brief photo kept for the AI lives in the project's storage folder.
+  try {
+    await getStorage().deletePrefix(projectId);
+  } catch (e) {
+    console.error("draft: could not delete its files", e);
+  }
 }
 
 /**
@@ -156,9 +163,13 @@ export async function confirmPlan(db: Db, projectId: string, now = clock.now()):
     const tasks = await tx.task.findMany({
       where: { projectId },
       orderBy: [{ order: "asc" }, { number: "asc" }],
-      select: { id: true, points: true, featureId: true },
+      select: { id: true, points: true, featureId: true, feature: { select: { name: true } } },
     });
     if (tasks.length === 0) throw new AppError(409, "PLAN_EMPTY", "Add at least one task first");
+    // M6: every 选择题 answered with exactly its pickCount first (PUT …/choices made their tasks).
+    const questions = await tx.choiceQuestion.findMany({ where: { projectId }, include: { options: { where: { picked: true }, select: { id: true } } } });
+    const open = questions.filter((q) => q.options.length !== q.pickCount).map((q) => q.id);
+    if (open.length > 0) throw new AppError(409, "CHOICES_REQUIRED", "Answer the choice questions first", { questionIds: open });
 
     const points = apportion(
       tasks.map((t) => t.points),
@@ -169,6 +180,9 @@ export async function confirmPlan(db: Db, projectId: string, now = clock.now()):
       tasks.map((t, i) => ({ id: t.id, points: points[i]!, group: t.featureId })),
       count,
     );
+
+    // Task package n holds the copies numbered n (「组员 2」's 「…（第 2 份）」 go in 任务包 2), 2026-10-02.
+    balanced.packages = orderByCopies(balanced.packages, new Map(tasks.map((t) => [t.id, t.feature?.name ?? null])));
 
     await tx.package.deleteMany({ where: { projectId } });
     const created = await tx.package.createManyAndReturn({
@@ -213,6 +227,23 @@ export async function confirmPlan(db: Db, projectId: string, now = clock.now()):
     });
     await assertPointsTotal(tx, projectId);
   }, TX_OPTIONS);
+}
+
+/** 「组员 3」, 「个人方案 3」, "Member 3", "Individual solution 3": the per-member copy number. */
+const COPY_FEATURE_RE = /^\s*(?:组员|成员|个人方案|member|individual\s+solution)\s*#?(\d+)\s*$/i;
+
+/**
+ * The packages reordered so that package n holds the per-member copies numbered n, when every package
+ * holds the copies of exactly one number (1…count, each once); otherwise the order is kept.
+ */
+export function orderByCopies<P extends { taskIds: string[] }>(packages: P[], featureOf: Map<string, string | null>): P[] {
+  const numbers = packages.map((p) => {
+    const found = new Set(p.taskIds.map((id) => featureOf.get(id)?.match(COPY_FEATURE_RE)?.[1]).filter((n): n is string => !!n).map(Number));
+    return found.size === 1 ? [...found][0]! : null;
+  });
+  const ok = numbers.every((n) => n !== null && n >= 1 && n <= packages.length) && new Set(numbers).size === packages.length;
+  if (!ok) return packages;
+  return packages.map((p, i) => ({ p, n: numbers[i]! })).sort((a, b) => a.n - b.n).map((x) => x.p);
 }
 
 /** 「重新生成」: the old code is retired so joining with it says "expired" instead of "not found". */

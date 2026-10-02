@@ -11,7 +11,8 @@ import { loadBrief } from "../services/brief-view";
 import { replaceChecklist, tickItem } from "../services/checklist";
 import { myTasks } from "../services/my-tasks";
 import { setPrereq } from "../services/prereq";
-import { ChecklistSchema, DelaySchema, PrereqSchema, TickSchema } from "../services/schemas";
+import { ChecklistSchema, DelaySchema, HowtoSchema, PrereqSchema, TickSchema } from "../services/schemas";
+import { replaceHowto } from "../services/ai-howto";
 import { delayTask } from "../services/lifecycle";
 import { loadTaskDetail, loadTaskDetailFor } from "../services/task-views";
 import { clock } from "../lib/clock";
@@ -52,6 +53,14 @@ taskRoutes.put("/:id/tasks/:taskId/checklist", async (c) => {
   const { user, projectId, taskId } = await who(c);
   const input = await readBody(c, ChecklistSchema);
   await replaceChecklist(c.var.db, projectId, taskId, user.id, input);
+  return ok<TaskDetail>(c, await loadTaskDetailFor(c.var.db, projectId, taskId, user.id));
+});
+
+// M6 怎么做: the leader or the owner rewrites the steps (the 「✨ AI 写的」 tag goes away).
+taskRoutes.put("/:id/tasks/:taskId/howto", async (c) => {
+  const { user, projectId, taskId } = await who(c);
+  const { steps } = await readBody(c, HowtoSchema);
+  await replaceHowto(c.var.db, projectId, taskId, user.id, steps);
   return ok<TaskDetail>(c, await loadTaskDetailFor(c.var.db, projectId, taskId, user.id));
 });
 

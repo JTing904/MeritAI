@@ -27,6 +27,8 @@ export const RATE_RULES = {
   codeResetUser: { name: "code-reset:u", max: 10, windowSec: HOUR },
   briefUser: { name: "brief:u", max: 30, windowSec: HOUR },
   evidenceUser: { name: "evidence:u", max: 60, windowSec: HOUR },
+  // M6: saving an AI key makes one call to the provider each time.
+  aiKeyUser: { name: "ai-key:u", max: 10, windowSec: HOUR },
 } satisfies Record<string, RateRule>;
 
 export type RateCheck = { rule: RateRule; subject: string };

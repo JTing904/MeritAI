@@ -91,10 +91,11 @@ export default function NotifsScreen() {
       )}
 
       {list.items?.map((n) => {
-        const look = describeNotification(n, t.notifs, t.labels);
+        const look = describeNotification(n, t.notifs, t.labels, t.ai);
         if (!look) return null;
         const meta = [
-          n.projectTag,
+          // M6: a key problem is about every project the user leads, not one.
+          n.projectTag ?? (n.type === 'AI_KEY_PROBLEM' ? t.ai.notifs.allLed : null),
           n.type === 'WEEKLY_SUMMARY' ? t.notifs.weeklyMeta : null,
           n.audience && t.notifs.audience[n.audience],
           relativeTime(n.createdAt, t.labels.relative, now),

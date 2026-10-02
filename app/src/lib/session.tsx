@@ -36,6 +36,8 @@ type SessionValue = {
   retry: () => void;
   updateMe: (patch: MeUpdate) => Promise<void>;
   refreshMe: () => Promise<void>;
+  /** Show a profile a write answered with (M6: saving or deleting the AI key answers with MeData). */
+  setMe: (me: MeData) => Promise<void>;
 };
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -241,8 +243,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ status, user, lastUser: lastUser.current, request, cached, devSignIn, signOut, retry, updateMe, refreshMe }),
-    [status, user, request, cached, devSignIn, signOut, retry, updateMe, refreshMe],
+    () => ({ status, user, lastUser: lastUser.current, request, cached, devSignIn, signOut, retry, updateMe, refreshMe, setMe: setSignedIn }),
+    [status, user, request, cached, devSignIn, signOut, retry, updateMe, refreshMe, setSignedIn],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

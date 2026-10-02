@@ -76,6 +76,11 @@ export const notifsZh = {
     end: '结束项目',
     viewProject: '看项目',
     whatsapp: '发到 WhatsApp',
+    // M6
+    checkKey: '检查 key',
+    changeKey: '换 key',
+    viewReasons: '看理由',
+    viewPackages: '看任务包',
   },
   /** 发到 WhatsApp: the notification as plain text, the project tag in front unless the text names it. */
   share: (tag: string, text: string) => (tag && !text.includes(tag) ? `【${tag}】${text}` : text),

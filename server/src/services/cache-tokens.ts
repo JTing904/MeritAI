@@ -20,8 +20,17 @@ import { invitesFor } from "./join";
 import { expireDueSwaps } from "./notifications";
 import { purgeDeletedProjects } from "./project-delete";
 import type { NotificationQuery } from "./schemas";
+import { usageDay } from "../lib/ai/usage";
+import type { AiProviderName } from "../../../shared/constants";
 
 const viewer = (user: User) => [user.id, user.locale];
+
+/**
+ * M6: what an AI usage day changes by itself (today's review counts, a QUOTA status that's over): the
+ * leader's key's usage day (Pacific for Gemini, UTC otherwise), so the token moves when it rolls over.
+ * Nothing without a key.
+ */
+const aiDay = (provider: AiProviderName | null, now: Date) => (provider ? usageDay(provider, now) : null);
 
 /** Lower-cased email / GitHub username the way invites store them (services/join.ts invitesFor). */
 function inviteAddress(user: User): { email: string | null; github: string | null } {
@@ -94,6 +103,7 @@ type ProjectRow = {
   swapDue: boolean;
   taskFound: boolean;
   undoWindow: boolean | null;
+  aiProvider: AiProviderName | null;
 };
 
 /** The project's version and time-dependent counts, with the viewer's membership; undefined when not a member. */
@@ -106,7 +116,10 @@ async function projectRow(db: Db, projectId: string, userId: string, taskId: str
       EXISTS (SELECT 1 FROM "SwapRequest" s
          WHERE s."projectId" = p."id" AND s."status" = 'PENDING' AND s."expiresAt" <= ${now}) AS "swapDue",
       EXISTS (SELECT 1 FROM "Task" t WHERE t."id" = ${taskId} AND t."projectId" = p."id") AS "taskFound",
-      (SELECT t."startedAt" >= ${undoFloor} FROM "Task" t WHERE t."id" = ${taskId} AND t."projectId" = p."id") AS "undoWindow"
+      (SELECT t."startedAt" >= ${undoFloor} FROM "Task" t WHERE t."id" = ${taskId} AND t."projectId" = p."id") AS "undoWindow",
+      (SELECT u."aiProvider"::text FROM "Member" lm JOIN "User" u ON u."id" = lm."userId"
+         WHERE lm."projectId" = p."id" AND lm."role" = 'LEADER' AND lm."leftAt" IS NULL AND NOT lm."removed"
+           AND u."aiKeyCipher" IS NOT NULL LIMIT 1) AS "aiProvider"
     FROM "Project" p JOIN "Member" m ON m."projectId" = p."id" AND m."userId" = ${userId}
     WHERE p."id" = ${projectId}`;
   return row;
@@ -124,7 +137,7 @@ export async function projectToken(db: Db, projectId: string, user: User, now: D
     row = await projectRow(db, projectId, user.id, null, now);
     if (!row || !canSee(row, row)) return null;
   }
-  return cacheToken("project", [...viewer(user), projectId, row.version, row.overdue]);
+  return cacheToken("project", [...viewer(user), projectId, row.version, row.overdue, aiDay(row.aiProvider, now)]);
 }
 
 /**
@@ -134,7 +147,17 @@ export async function projectToken(db: Db, projectId: string, user: User, now: D
 export async function taskToken(db: Db, projectId: string, taskId: string, user: User, now: Date): Promise<string | null> {
   const row = await projectRow(db, projectId, user.id, taskId, now);
   if (!row || !canSee(row, row) || !row.taskFound) return null;
-  return cacheToken("task", [...viewer(user), projectId, taskId, row.version, row.overdue, row.undoWindow]);
+  return cacheToken("task", [...viewer(user), projectId, taskId, row.version, row.overdue, row.undoWindow, aiDay(row.aiProvider, now)]);
+}
+
+/**
+ * GET /api/projects/:id/draft (M6: the wizard polls it every 2 s while the AI reads the brief). Null unless
+ * the viewer is the leader of a draft (the load answers 404 / 409 then, uncached).
+ */
+export async function draftToken(db: Db, projectId: string, user: User, now: Date): Promise<string | null> {
+  const row = await projectRow(db, projectId, user.id, null, now);
+  if (!row || !canSee(row, row) || row.role !== "LEADER" || row.status !== "DRAFT") return null;
+  return cacheToken("draft", [...viewer(user), projectId, row.version, aiDay(row.aiProvider, now)]);
 }
 
 type InboxRow = { total: number; unread: number; sig: number; projects: string; swapDue: boolean };

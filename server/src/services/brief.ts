@@ -77,6 +77,12 @@ export async function applyBrief(
     await tx.task.deleteMany({ where: { projectId } });
     await tx.feature.deleteMany({ where: { projectId } });
     await tx.milestone.deleteMany({ where: { projectId } });
+    // M6: the rules replace whatever the AI found (its 选择题 too) and stop it reading.
+    await tx.choiceQuestion.deleteMany({ where: { projectId } });
+    await tx.aiJob.updateMany({
+      where: { projectId, kind: "BRIEF", status: { in: ["QUEUED", "RUNNING"] } },
+      data: { status: "FAILED", error: "CANCELLED", leaseUntil: null },
+    });
     await tx.task.createMany({
       data: parsed.tasks.map((t, i) => ({
         projectId,
@@ -101,6 +107,9 @@ export async function applyBrief(
         briefBytes: utf8Bytes(stored.text),
         briefFileName: brief.fileName,
         draftStep: Math.max(project.draftStep, 5),
+        // The rules read text: a photo kept for the AI (M6) is no longer the brief (its file goes with the project).
+        briefFileKey: null,
+        briefFileMime: null,
       },
     });
   }, TX_OPTIONS);

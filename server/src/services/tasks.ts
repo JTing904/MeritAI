@@ -68,6 +68,12 @@ export async function replaceTasks(db: Db, projectId: string, inputs: TaskBody[]
     await assertRefs(tx, projectId, inputs);
     const rows = inputs.map((input, i) => ({ ...taskData(input, project), projectId, number: i + 1, order: i }));
     await tx.task.deleteMany({ where: { projectId } });
+    // M6: a manual plan replaces the AI's too (its 选择题 go, and it stops reading).
+    await tx.choiceQuestion.deleteMany({ where: { projectId } });
+    await tx.aiJob.updateMany({
+      where: { projectId, kind: "BRIEF", status: { in: ["QUEUED", "RUNNING"] } },
+      data: { status: "FAILED", error: "CANCELLED", leaseUntil: null },
+    });
     if (rows.length > 0) await tx.task.createMany({ data: rows });
     await tx.project.update({
       where: { id: projectId },

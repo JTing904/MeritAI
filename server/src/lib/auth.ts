@@ -1,12 +1,13 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { Context } from "hono";
 import { profileColor } from "../../../shared/constants";
-import type { MeData } from "../../../shared/types";
+import type { AiUsageToday, MeData } from "../../../shared/types";
 import type { AppEnv } from "../app";
 import type { User } from "../generated/prisma/client";
 import type { Db } from "./db";
 import { AppError } from "./errors";
 import { dailyPrune } from "./housekeeping";
+import { effectiveStatus } from "./ai/usage";
 
 /** A session lasts this long after it was last used (sliding, A16): a device used every few months stays signed in. */
 export const SESSION_DAYS = 90;
@@ -81,7 +82,12 @@ export async function destroySession(c: Context<AppEnv>): Promise<void> {
   if (token) await c.var.db.session.deleteMany({ where: { tokenHash: hashToken(token) } });
 }
 
-export function toMe(user: User): MeData {
+/**
+ * The signed-in user as the app sees it. M6 `ai`: the key masked (provider, last 4, status); `usage`: today's
+ * calls with it (services/ai-key.ts loadMe loads them; the login response leaves them null). `now` decides
+ * whether a QUOTA status is already over.
+ */
+export function toMe(user: User, usage: AiUsageToday | null = null, now = new Date()): MeData {
   return {
     id: user.id,
     name: user.name,
@@ -91,5 +97,15 @@ export function toMe(user: User): MeData {
     locale: user.locale,
     pushEnabled: user.pushEnabled,
     weeklyEnabled: user.weeklyEnabled,
+    ai:
+      user.aiProvider && user.aiKeyCipher && user.aiKeyLast4
+        ? {
+            provider: user.aiProvider,
+            last4: user.aiKeyLast4,
+            status: effectiveStatus(user, now) ?? "OK",
+            checkedAt: user.aiKeyCheckedAt?.toISOString() ?? null,
+            usageToday: usage,
+          }
+        : null,
   };
 }

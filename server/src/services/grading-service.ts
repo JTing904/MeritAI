@@ -39,7 +39,7 @@ function gradeNote(grade: LeaderGrade, note: string | null | undefined): string 
  * the finished-now effects, and releases a leaver's unfinished task. Returns what the task earns now
  * and whether `attemptId` is the counting attempt.
  */
-async function afterGrade(
+export async function afterGrade(
   tx: Tx,
   task: TaskWithOwner,
   attemptId: string,
@@ -91,7 +91,15 @@ export async function gradeAttempt(
     const note = gradeNote(input.grade, input.note);
     const { count } = await tx.attempt.updateMany({
       where: { id: pending.id, status: "PENDING" },
-      data: { status: "GRADED", grade: input.grade, gradeNote: note, gradedById: leader.id, gradedAt: now },
+      data: {
+        status: "GRADED",
+        grade: input.grade,
+        gradeNote: note,
+        gradedById: leader.id,
+        gradedAt: now,
+        // M6: the leader graded it before the AI did; the AI's job finds it graded and does nothing.
+        ...(pending.aiState === "QUEUED" || pending.aiState === "RUNNING" ? { aiState: null } : {}),
+      },
     });
     if (count !== 1) throw notReviewing();
 
