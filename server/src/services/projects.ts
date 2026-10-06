@@ -1,4 +1,4 @@
-import { apportion, balancePackages, packageCount } from "../../../shared/planning";
+import { apportion, balancePackages, COPY_FEATURE_RE, packageCount } from "../../../shared/planning";
 import type { AdjustedTask } from "../../../shared/types";
 import { Prisma, type Project, type User } from "../generated/prisma/client";
 import { projectEnded } from "../lib/access";
@@ -228,9 +228,6 @@ export async function confirmPlan(db: Db, projectId: string, now = clock.now()):
     await assertPointsTotal(tx, projectId);
   }, TX_OPTIONS);
 }
-
-/** 「组员 3」, 「个人方案 3」, "Member 3", "Individual solution 3": the per-member copy number. */
-const COPY_FEATURE_RE = /^\s*(?:组员|成员|个人方案|member|individual\s+solution)\s*#?(\d+)\s*$/i;
 
 /**
  * The packages reordered so that package n holds the per-member copies numbered n, when every package

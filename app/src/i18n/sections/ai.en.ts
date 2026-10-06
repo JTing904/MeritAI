@@ -2,6 +2,7 @@ import type { aiZh, AiGradeText, FallbackKey } from './ai.zh';
 import type { InlinePart } from './home.zh';
 import { labelsEn } from './labels.en';
 import type { Inline, Who } from './project.zh';
+import { resplitEn } from './resplit.en';
 
 const subj = (w: Who) => (w.you ? 'You' : w.name);
 const possessive = (w: Who) => (w.you ? 'your' : `${w.name}'s`);
@@ -191,6 +192,8 @@ export const aiEn: typeof aiZh = {
     found: (n) => `The AI found ${tasks(n)}, scaled to 100 points in all.`,
   },
 
+  resplit: resplitEn,
+
   rechoose: {
     tool: 'Change picks',
     questionLabel: 'Which question',
@@ -352,6 +355,7 @@ export const aiEn: typeof aiZh = {
   feed: {
     CHOICE_CHANGED: (a: Who, prompt, from, to): Inline[] => [{ b: subj(a) }, ` changed the picks for "${prompt}": ${from} → ${to}`],
     GRADED_AI: (owner: Who, title, grade): Inline[] => [{ b: 'The AI' }, ' graded ', { b: possessive(owner) }, ` "${title}": ${grade}`],
+    TASKS_RESPLIT: resplitEn.feed,
     labelSep: ', ',
   },
 };

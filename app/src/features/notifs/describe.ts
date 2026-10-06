@@ -25,7 +25,10 @@ export type NotifAction =
   | 'checkKey'
   | 'changeKey'
   | 'viewReasons'
-  | 'viewPackages';
+  | 'viewPackages'
+  // 让 AI 重新拆
+  | 'viewResplit'
+  | 'viewMyTasks';
 
 /** Buttons drawn as the soft (secondary) kind; the others are primary (NotifsM5 mockup). */
 export const SOFT_ACTIONS: ReadonlySet<NotifAction> = new Set([
@@ -546,6 +549,30 @@ export function describeNotification(n: NotificationView, copy: Copy, labels: La
         actions: projectHref ? ['viewPackages'] : [],
         href: projectHref,
       };
+    }
+    // ─── 让 AI 重新拆 ───
+    case 'AI_RESPLIT_READY':
+    case 'AI_RESPLIT_FAILED': {
+      const review: Href | null = open ? { pathname: '/project/[id]/resplit', params: { id } } : null;
+      const r = ai.resplit.notifs;
+      let parts: InlinePart[] = r.ready();
+      let tile: Pick<NotifLook, 'emoji' | 'tint'> = { emoji: '✨', tint: 'mint' };
+      if (p.type === 'AI_RESPLIT_FAILED') {
+        const provider = p.provider ? ai.provider[p.provider] : 'AI';
+        if (p.reason === 'QUOTA') parts = r.failed.QUOTA(provider);
+        else if (p.reason === 'INVALID') parts = r.failed.INVALID(provider);
+        else if (p.reason === 'NO_KEY') parts = r.failed.NO_KEY();
+        else parts = r.failed.OTHER();
+        tile = p.reason === 'QUOTA' ? { emoji: '⏳', tint: 'lemon' } : { emoji: '⚠️', tint: 'gum' };
+      }
+      return { ...tile, parts, actions: review ? ['viewResplit'] : [], href: review, to: review ? { viewResplit: review } : undefined };
+    }
+    case 'TASKS_RESPLIT': {
+      const r = ai.resplit.notifs;
+      const parts = p.mine
+        ? r.mine(p.leader.name, p.mine.packageIndex, p.mine.removed, p.mine.added, formatPoints(p.mine.points))
+        : r.group(p.leader.name, p.kept, p.removed, p.added);
+      return { emoji: '✨', tint: 'lilac', parts, actions: projectHref ? [p.mine ? 'viewMyTasks' : 'viewPackages'] : [], href: projectHref };
     }
     default:
       return null;

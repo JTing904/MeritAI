@@ -104,7 +104,9 @@ export type ErrorCode =
   /** 409: 改选 would drop an option whose tasks someone started or finished (details: { optionKeys }). */
   | 'CHOICE_LOCKED'
   /** 409: confirming a plan whose 选择题 aren't all answered yet (details: { questionIds }). */
-  | 'CHOICES_REQUIRED';
+  | 'CHOICES_REQUIRED'
+  /** 400: 让 AI 重新拆 with a new brief that can't be read (details: { reason: BriefFailure }). */
+  | 'BRIEF_UNREADABLE';
 
 export type ApiError = { code: ErrorCode; message: string; details?: unknown };
 

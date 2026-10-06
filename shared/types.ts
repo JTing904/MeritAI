@@ -533,7 +533,11 @@ export type NotificationType =
   // M6 (AI)
   | 'AI_REVIEW_FAILED'
   | 'AI_KEY_PROBLEM'
-  | 'CHOICE_CHANGED';
+  | 'CHOICE_CHANGED'
+  // M6 follow-up: 让 AI 重新拆
+  | 'AI_RESPLIT_READY'
+  | 'AI_RESPLIT_FAILED'
+  | 'TASKS_RESPLIT';
 
 /** 全组都收到 / 只有你收到 / 只有组长收到 / 只有你和组长收到. */
 export type NotificationAudience = 'GROUP' | 'ONLY_YOU' | 'ONLY_LEADER' | 'YOU_AND_LEADER';
@@ -798,6 +802,23 @@ export type NotificationPayload =
       to: string[];
       removedTitles: string[];
       addedTitles: string[];
+    }
+  // ─── 让 AI 重新拆 (M6 follow-up) ───
+  /** To the leader (ONLY_LEADER): 「AI 重新拆好了，去看看要不要换。」 → the review (去看看). */
+  | { type: 'AI_RESPLIT_READY' }
+  /** To the leader (ONLY_LEADER): the AI couldn't re-split (nothing changed). QUOTA / INVALID / NO_KEY / ERROR. */
+  | { type: 'AI_RESPLIT_FAILED'; reason: AiFailReason; provider: AiProviderName | null }
+  /**
+   * To every active member but the leader (GROUP): 「{leader} 让 AI 重新拆了还没开始的任务。」 Counts of the whole
+   * project; `mine` (also 跟我有关): the receiver's package changed: its tasks removed / added and its tenths now.
+   */
+  | {
+      type: 'TASKS_RESPLIT';
+      leader: PersonRef;
+      kept: number;
+      removed: number;
+      added: number;
+      mine: { packageIndex: number; removed: number; added: number; points: number } | null;
     };
 
 export type NotificationView = {
@@ -854,7 +875,8 @@ export type ActivityType =
   | 'PROJECT_ENDED'
   | 'PROJECT_REOPENED'
   | 'TASK_DELAYED'
-  | 'CHOICE_CHANGED';
+  | 'CHOICE_CHANGED'
+  | 'TASKS_RESPLIT';
 
 /** What a feed entry says, by type (who did it is ActivityView.actor). Snapshotted when it happened. */
 export type ActivityPayload =
@@ -921,7 +943,9 @@ export type ActivityPayload =
   /** The actor (the leader) moved the task's due date later (一键延后). */
   | { type: 'TASK_DELAYED'; taskId: string; title: string; dueAt: string; fromDueAt: string }
   /** M6: the actor (the leader) 改选 a 选择题 (option labels). */
-  | { type: 'CHOICE_CHANGED'; questionId: string; prompt: string; from: string[]; to: string[] };
+  | { type: 'CHOICE_CHANGED'; questionId: string; prompt: string; from: string[]; to: string[] }
+  /** The actor (the leader) applied 让 AI 重新拆: tasks kept, unstarted ones removed, new ones added. */
+  | { type: 'TASKS_RESPLIT'; kept: number; removed: number; added: number };
 
 export type ActivityView = {
   id: string;
@@ -1365,3 +1389,118 @@ export type RechoosePreview = {
 
 /** PUT /api/projects/:id/tasks/:taskId/howto (leader or owner; ≤ 8 steps of ≤ 200 characters). Clears 「✨ AI 写的」. Answers with the TaskDetail. */
 export type HowtoInput = { steps: string[] };
+
+// ─── 让 AI 重新拆 (M6 follow-up, docs/plan/m6-resplit-spec.md) ─────────────────
+// The leader of a running project has the AI split the brief again. Only the tasks nobody started (TODO, no
+// attempt, no evidence) are replaced; the rest stay. Nothing changes until the leader applies the result.
+
+/** A task of the project in the proposal (kept or removed). Points in tenths. */
+export type AiResplitTaskRef = {
+  taskId: string;
+  title: string;
+  kind: TaskKind;
+  /** Now. */
+  points: number;
+  packageIndex: number | null;
+  ownerMemberId: string | null;
+};
+
+/** A task that stays: `pointsAfter` once everything is rescaled to 1000 (with no edits). */
+export type AiResplitKeptTask = AiResplitTaskRef & { pointsAfter: number };
+
+/**
+ * A task the AI proposes. `key` stays the same while the result is there (edits and deletes name it).
+ * `points`: tenths on the proposal's scale (the new tasks share what the kept ones leave of 100, so without
+ * edits it is what the task gets). `packageIndex` / `ownerMemberId`: where it would go (shared/planning.ts
+ * placeResplit); null without packages. `aiWritten`: its 怎么做 / checklist come from the AI (「✨ AI 写的」).
+ */
+export type AiResplitNewTask = {
+  key: string;
+  title: string;
+  kind: TaskKind;
+  points: number;
+  dueAt: string;
+  feature: string | null;
+  aiWritten: boolean;
+  packageIndex: number | null;
+  ownerMemberId: string | null;
+};
+
+/**
+ * An option of a new 选择题 with the tasks it adds when picked (`picked` is always false, `taskIds` []). Its
+ * tasks' placement assumes the recommended options are picked (null for the others until the app places them).
+ */
+export type AiResplitOption = ChoiceOptionView & { tasks: AiResplitNewTask[] };
+
+/**
+ * A 选择题 the project doesn't have yet. `id` is its key in the proposal (answers name it). It must be answered
+ * with exactly `pickCount` options before applying (CHOICES_REQUIRED). The placement in the proposal assumes
+ * the recommended options.
+ */
+export type AiResplitQuestion = Omit<ChoiceQuestionView, 'options'> & { options: AiResplitOption[] };
+
+/** An existing 选择题 the AI's answer matched: it keeps its picks (想换选项还是用「改选」). */
+export type AiResplitKeptQuestion = { questionId: string; prompt: string; pickedKeys: string[]; pickedLabels: string[] };
+
+export type AiResplitProposal = {
+  kept: AiResplitKeptTask[];
+  removed: AiResplitTaskRef[];
+  /** The new tasks outside new 选择题 (the matched questions' picked options' tasks included). */
+  added: AiResplitNewTask[];
+  newQuestions: AiResplitQuestion[];
+  keptQuestions: AiResplitKeptQuestion[];
+  /** Every package, by index: tenths now and after (kept + new, with the recommended answers, no edits). */
+  packages: { index: number; packageId: string; ownerMemberId: string | null; pointsBefore: number; pointsAfter: number }[];
+  /** The packages version; send it back with the apply (STALE_PREVIEW when it moved). */
+  version: number;
+};
+
+/** The brief a re-split reads: the project's own (SAVED) or the one the leader gave for it (NEW). */
+export type AiResplitBrief = { source: 'SAVED' | 'NEW'; fileName: string | null; lines: number | null };
+
+/**
+ * GET /api/projects/:id/ai-resplit (leader of a running project). `status`: none (nothing asked, or it was
+ * applied / discarded / cancelled), running (`waitingUntil`: waiting for the key's per-minute limit), failed
+ * (`error`: QUOTA / INVALID / NO_KEY / ERROR), done (`proposal`, recomputed from the AI's answer and the
+ * project as it is now, so a task that started meanwhile shows as kept). `keptCount` / `replaceCount`: the
+ * project's tasks that would stay / be replaced right now. `savedBrief`: the project's brief (sheet
+ * 「原来那份」); `savedAt` when it was uploaded, `fromResplit` when a re-split put it there.
+ */
+export type AiResplitState = {
+  status: 'none' | 'running' | 'failed' | 'done';
+  provider: AiProviderName | null;
+  error: AiFailReason | null;
+  waitingUntil: string | null;
+  brief: AiResplitBrief | null;
+  keptCount: number;
+  replaceCount: number;
+  savedBrief: { fileName: string | null; savedAt: string; fromResplit: boolean } | null;
+  proposal: AiResplitProposal | null;
+};
+
+/**
+ * POST /api/projects/:id/ai-resplit starts it (answers with the AiResplitState): no body (or `{}`) reads the
+ * saved brief, JSON `{ text }` a typed one, multipart field "file" a new file (as the wizard's brief upload). A
+ * run that hasn't been applied is replaced. 409 NO_AI_KEY / PROJECT_ENDED / NO_BRIEF; a new brief that can't
+ * be read → 400 BRIEF_UNREADABLE (`details.reason`: a BriefFailure). `again`: 再试一次, the brief of the last
+ * run again (the saved one when there was none).
+ */
+export type AiResplitStartInput = { text?: string; again?: boolean };
+
+/** A new task's edit on the review page (any subset; points 1–999 tenths, dueAt not after the deadline). */
+export type AiResplitEdit = { title?: string; kind?: TaskKind; points?: number; dueAt?: string };
+
+/**
+ * POST /api/projects/:id/ai-resplit/apply: `edits` / `deleted` by AiResplitNewTask.key; `added`: tasks the
+ * leader adds on the review page; `answers`: option keys per new question id (exactly pickCount each, 409
+ * CHOICES_REQUIRED otherwise). Answers with the ProjectView. 409 STALE_PREVIEW when the packages version moved
+ * (GET again: a task that started is kept now), 404 NOT_FOUND when there is no result to apply. DELETE
+ * /api/projects/:id/ai-resplit discards the result (or cancels a running one) and answers with the state.
+ */
+export type AiResplitApplyInput = {
+  version: number;
+  edits?: Record<string, AiResplitEdit>;
+  deleted?: string[];
+  added?: { title: string; kind: TaskKind; points: number; dueAt?: string | null }[];
+  answers?: Record<string, string[]>;
+};

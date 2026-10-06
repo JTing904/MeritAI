@@ -1,5 +1,5 @@
 import { Redirect } from 'expo-router';
-import type { ChoiceOptionView } from '@shared/types';
+import type { AiResplitProposal, ChoiceOptionView, NotificationView } from '@shared/types';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { Avatar, AvatarStack } from '@/components/Avatar';
@@ -19,6 +19,10 @@ import { ChoiceCard } from '@/features/ai/ChoiceCard';
 import { modelName } from '@/features/ai/models';
 import { AiTag, ErrCard, ErrList, PrivacyLine, UseBar } from '@/features/ai/parts';
 import { AiDocScan, AiScanCard } from '@/features/ai/Scan';
+import { ResplitQuestionBody, ResplitReadingBody, ResplitReviewBody, type Person } from '@/features/ai/ResplitParts';
+import { reviewPlan, startDraft } from '@/features/ai/resplitPlan';
+import { describeNotification } from '@/features/notifs/describe';
+import { NotifCard } from '@/features/notifs/NotifCard';
 import { FrozenLine } from '@/features/life/LifecycleCard';
 import { useI18n } from '@/i18n';
 import { useTheme } from '@/theme';
@@ -52,6 +56,74 @@ const SAMPLE_METHOD: ChoiceOptionView = {
   pros: ['老师中途检查有东西看', '做错了早发现、早改'],
   cons: ['每周要开一次短会', '每轮都要重新排任务'],
 };
+
+// 让 AI 重新拆: a 4-person project, 2 tasks kept, 3 replaced, 4 new ones and one new 选择题.
+const RESPLIT_PEOPLE: Record<string, Person> = {
+  m1: { name: '陈思远', color: 'tang' },
+  m2: { name: '林晓雯', color: 'lemon' },
+  m3: { name: '张博文', color: 'mint' },
+  m4: { name: '王子杰', color: 'sky' },
+};
+const DUE = new Date(Date.now() + 20 * 86_400_000).toISOString();
+const newTask = (key: string, title: string, points: number, feature: string | null = null, packageIndex: number | null = null) => ({
+  key,
+  title,
+  kind: 'DOC' as const,
+  points,
+  dueAt: DUE,
+  feature,
+  aiWritten: true,
+  packageIndex,
+  ownerMemberId: packageIndex ? `m${packageIndex}` : null,
+});
+const SAMPLE_RESPLIT: AiResplitProposal = {
+  kept: [
+    { taskId: 'k1', title: '登录与注册功能', kind: 'CODE', points: 200, pointsAfter: 200, packageIndex: 2, ownerMemberId: 'm2' },
+    { taskId: 'k2', title: '用户访谈（5 位同学）', kind: 'RESEARCH', points: 150, pointsAfter: 150, packageIndex: 3, ownerMemberId: 'm3' },
+  ],
+  removed: [
+    { taskId: 'r1', title: '写报告（第 1/3 部分）', kind: 'DOC', points: 250, packageIndex: 1, ownerMemberId: 'm1' },
+    { taskId: 'r2', title: '做 App 界面', kind: 'DESIGN', points: 250, packageIndex: 4, ownerMemberId: 'm4' },
+    { taskId: 'r3', title: '测试', kind: 'CODE', points: 150, packageIndex: 1, ownerMemberId: 'm1' },
+  ],
+  added: [
+    newTask('b0', '报告：系统设计（架构图与数据库）', 200),
+    newTask('b1', '演示与答辩：讲解自己的部分（第 1 份）', 80, '组员 1'),
+    newTask('b2', '演示与答辩：讲解自己的部分（第 2 份）', 80, '组员 2'),
+    newTask('b3', '测试：交易流程（下单到评价）', 140),
+  ],
+  newQuestions: [
+    {
+      id: 'n0',
+      type: 'METHOD',
+      prompt: '选一种部署方式',
+      quote: 'Deploy the app using ONE of: Firebase Hosting, Render, or a campus server.',
+      pickCount: 1,
+      order: 0,
+      options: [
+        { ...SAMPLE_OPTION, key: 'A', label: 'Firebase Hosting', summary: '免费额度够用，教程最多。', hours: 4, recommended: true, tasks: [newTask('n0.A.0', '部署到 Firebase Hosting', 150)] },
+        { ...SAMPLE_OPTION, key: 'B', label: 'Render', summary: '能放后端，免费版会休眠。', hours: 6, recommended: false, material: 'MID', difficulty: 'MID', tasks: [newTask('n0.B.0', '部署到 Render', 150)] },
+      ],
+    },
+  ],
+  keptQuestions: [{ questionId: 'q1', prompt: '5 个案例任选 2 个', pickedKeys: ['B', 'D'], pickedLabels: ['闲鱼', 'Mudah.my'] }],
+  packages: [1, 2, 3, 4].map((index) => ({ index, packageId: `p${index}`, ownerMemberId: `m${index}`, pointsBefore: 250, pointsAfter: 250 })),
+  version: 1,
+};
+const resplitNotif = (payload: NotificationView['payload'], audience: NotificationView['audience']): NotificationView => ({
+  id: payload.type,
+  type: payload.type,
+  projectId: 'demo',
+  projectTag: 'CS302',
+  projectColor: 'sky',
+  audience,
+  mine: true,
+  createdAt: new Date().toISOString(),
+  read: false,
+  payload,
+  swap: null,
+  projectOpen: true,
+});
 
 export default function GalleryRoute() {
   return __DEV__ ? <Gallery /> : <Redirect href="/" />;
@@ -165,6 +237,13 @@ function Gallery() {
       <ChoiceCard option={{ ...SAMPLE_OPTION, key: 'D', recommended: false }} method={false} on={false} dropped mark={{ text: t.ai.rechoose.drop, tone: 'bad' }} onPress={() => {}} />
       <ChoiceCard option={SAMPLE_METHOD} method on onPress={() => {}} />
 
+      <SectionHeader title="M6 · 让 AI 重新拆" />
+      <Card style={{ gap: 10 }}>
+        <Button title={t.ai.resplit.tool} small disabled />
+        <Txt v="meta">{t.ai.resplit.noKey}</Txt>
+      </Card>
+      <ResplitGallery />
+
       <SectionHeader title="列表" />
       <List>
         <Row title="市场规模调研" meta="💻 代码 · 贡献值 10 分" trailing={<Txt v="label" color="muted">明天</Txt>} onPress={() => toast.show('按到了')} />
@@ -208,5 +287,46 @@ function Gallery() {
         <SheetOption emoji="🔑" title="用邀请码加入" sub="组员分享给你的邀请码或链接" onPress={() => setSheet(false)} />
       </Sheet>
     </Screen>
+  );
+}
+
+function ResplitGallery() {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState(() => startDraft(SAMPLE_RESPLIT));
+  const plan = reviewPlan(SAMPLE_RESPLIT, draft);
+  const q = SAMPLE_RESPLIT.newQuestions[0]!;
+  const notifs = [
+    resplitNotif({ type: 'TASKS_RESPLIT', leader: { memberId: 'm1', name: '陈思远' }, kept: 2, removed: 3, added: 5, mine: { packageIndex: 2, removed: 0, added: 1, points: 253 } }, 'GROUP'),
+    resplitNotif({ type: 'AI_RESPLIT_READY' }, 'ONLY_LEADER'),
+    resplitNotif({ type: 'AI_RESPLIT_FAILED', reason: 'QUOTA', provider: 'GEMINI' }, 'ONLY_LEADER'),
+  ];
+  return (
+    <>
+      <ResplitReadingBody brief={{ source: 'SAVED', fileName: 'CS302_Assignment.pdf', lines: 312 }} keptCount={2} waitSec={null} pollFailed={false} />
+      <ResplitQuestionBody
+        question={q}
+        index={0}
+        count={1}
+        picks={draft.answers[q.id] ?? []}
+        keptQuestions={SAMPLE_RESPLIT.keptQuestions}
+        onToggle={(key) => setDraft((d) => ({ ...d, answers: { ...d.answers, [q.id]: [key] } }))}
+      />
+      <ResplitReviewBody
+        proposal={SAMPLE_RESPLIT}
+        plan={plan}
+        draft={draft}
+        tz="Asia/Kuala_Lumpur"
+        deadline={new Date(Date.now() + 40 * 86_400_000).toISOString()}
+        person={(id) => (id ? (RESPLIT_PEOPLE[id] ?? null) : null)}
+        chipOf={() => null}
+        onEdit={() => {}}
+        onDelete={(task) => setDraft((d) => ({ ...d, deleted: [...d.deleted, task.key] }))}
+        onAdd={() => {}}
+      />
+      {notifs.map((n) => {
+        const look = describeNotification(n, t.notifs, t.labels, t.ai);
+        return look ? <NotifCard key={n.id} look={look} meta={n.projectTag ?? ''} unread busy={null} onOpen={null} onAction={() => {}} /> : null;
+      })}
+    </>
   );
 }

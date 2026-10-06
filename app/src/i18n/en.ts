@@ -168,5 +168,6 @@ export const en: Messages = {
     CHOICE_COUNT: 'Pick exactly the number of options asked for',
     CHOICE_LOCKED: "Someone already started a task of this option, so it can't be swapped out",
     CHOICES_REQUIRED: 'Answer the choice questions before splitting into packages',
+    BRIEF_UNREADABLE: "This brief can't be read. Use a PDF, Word file, image or text",
   },
 };

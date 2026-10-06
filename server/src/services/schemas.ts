@@ -170,3 +170,24 @@ export const ChoicesSchema = z.object({ answers: z.record(z.string().min(1), z.a
 export const RechooseSchema = z.object({ picks: z.array(z.string().min(1).max(4)).max(20), version: z.number().int().optional() });
 /** PUT …/tasks/:taskId/howto (lengths are checked in the service, as VALIDATION). */
 export const HowtoSchema = z.object({ steps: z.array(z.string().max(1000)).max(20) });
+
+// ─── 让 AI 重新拆 (M6 follow-up) ──────────────────────────────────────────────
+
+/** POST /projects/:id/ai-resplit as JSON: a typed brief, 再试一次 (`again`), or nothing (the saved brief). */
+export const AiResplitStartSchema = z.object({ text: z.string().optional(), again: z.boolean().optional() });
+const ResplitTaskFields = {
+  title: z.string().trim().min(1).max(120),
+  kind: z.enum(TASK_KINDS),
+  /** Tenths, 0.1–99.9 分 (everything is rescaled to 1000 afterwards). */
+  points: z.number().int().min(1).max(999),
+  dueAt: DateInput,
+};
+const ResplitKey = z.string().min(1).max(40);
+/** POST /projects/:id/ai-resplit/apply (unknown keys and wrong answers are checked in the service). */
+export const AiResplitApplySchema = z.object({
+  version: z.number().int(),
+  edits: z.record(ResplitKey, z.object(ResplitTaskFields).partial()).optional(),
+  deleted: z.array(ResplitKey).max(MAX_TASKS * 2).optional(),
+  added: z.array(z.object({ ...ResplitTaskFields, dueAt: DateInput.nullish() })).max(MAX_TASKS).optional(),
+  answers: z.record(ResplitKey, z.array(z.string().min(1).max(4)).max(20)).optional(),
+});

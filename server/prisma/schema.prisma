@@ -151,6 +151,10 @@ enum NotificationType {
   AI_REVIEW_FAILED
   AI_KEY_PROBLEM
   CHOICE_CHANGED
+  // M6 follow-up: 让 AI 重新拆 a running project's unstarted tasks (services/ai-resplit.ts).
+  AI_RESPLIT_READY
+  AI_RESPLIT_FAILED
+  TASKS_RESPLIT
 }
 
 /// Entries of the project feed (动态).
@@ -181,6 +185,7 @@ enum ActivityType {
   PROJECT_REOPENED
   TASK_DELAYED
   CHOICE_CHANGED
+  TASKS_RESPLIT
 }
 
 /// The leader's grade of an attempt (M4). SELF: a meeting task its owner marked done.
@@ -234,6 +239,8 @@ enum AiJobKind {
   BRIEF
   HOWTO
   GRADE
+  /// 让 AI 重新拆: a running project's unstarted tasks split again (services/ai-resplit.ts).
+  RESPLIT
 }
 
 enum AiJobStatus {

@@ -170,6 +170,8 @@ export type BriefInput = {
   ctx: BriefContext;
   text: string | null;
   file: { bytes: Uint8Array; mimeType: string; name: string } | null;
+  /** 让 AI 重新拆: the tasks that stay (started, handed in or finished), listed for the model (prompts.ts). */
+  keep?: { title: string; points: number }[];
 };
 
 export type AnalyseOutcome =
@@ -193,7 +195,7 @@ export async function analyseBrief(call: BriefCaller, input: BriefInput): Promis
     tier: "good",
     lightFallback: true,
     system: briefSystem(ctx, nonce),
-    parts: briefParts({ text: input.text, file: input.file }, ctx.locale, nonce, { gradedParts: graded, retry }),
+    parts: briefParts({ text: input.text, file: input.file }, ctx.locale, nonce, { gradedParts: graded, retry, keep: input.keep }),
     schema: BriefOutSchema,
     maxOutputTokens: 32_000,
   });
@@ -201,7 +203,7 @@ export async function analyseBrief(call: BriefCaller, input: BriefInput): Promis
   if (first.kind !== "ok") return first;
   const notes: string[] = [`answered by ${first.model}`];
   let best = first;
-  const few = tooFewTasks(first.data, ctx.packageCount);
+  const few = tooFewTasks(first.data, ctx.packageCount, input.keep?.length ?? 0);
   if (few) {
     const again = await call(request(few));
     const more = again.kind === "ok" ? referenceTasks(again.data).length : 0;
@@ -228,14 +230,14 @@ export async function analyseBrief(call: BriefCaller, input: BriefInput): Promis
       notes.push(`language: ${wrong.length} string(s) in the wrong language, ${repaired.applied} translated`);
     } else notes.push(`language: ${wrong.length} string(s) in the wrong language, the repair call didn't answer (${fix.kind})`);
   }
-  const checked = checkBrief(data, { locale: ctx.locale, packageCount: ctx.packageCount, briefText: input.text, parts: graded });
+  const checked = checkBrief(data, { locale: ctx.locale, packageCount: ctx.packageCount, briefText: input.text, parts: graded, keptTitles: input.keep?.map((k) => k.title) });
   return { kind: "ok", data: checked.out, model: best.model, tier: best.tier, notes: [...notes, ...checked.notes] };
 }
 
 // ─── The job ─────────────────────────────────────────────────────────────────
 
 /** The answer as draft rows: base tasks (and the meeting first), questions with their options' seeds. */
-function planFrom(out: BriefOut, project: Project, lines: string[], now: Date) {
+export function planFrom(out: BriefOut, project: Project, lines: string[], now: Date) {
   const ctx = { project, lines, now };
   const baseRaw = out.tasks.slice(0, MAX_TASKS);
   const questions = out.questions

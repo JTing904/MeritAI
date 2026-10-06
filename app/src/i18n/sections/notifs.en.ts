@@ -47,6 +47,8 @@ export const notifsEn: typeof notifsZh = {
     changeKey: 'Replace the key',
     viewReasons: 'See the reasons',
     viewPackages: 'See packages',
+    viewResplit: 'Take a look',
+    viewMyTasks: 'See my tasks',
   },
   share: (tag, text) => (tag && !text.includes(tag) ? `[${tag}] ${text}` : text),
   weeklyMeta: 'Weekly summary',

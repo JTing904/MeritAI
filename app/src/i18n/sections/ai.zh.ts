@@ -6,6 +6,7 @@ import type { InlinePart } from './home.zh';
 import { labelsZh } from './labels.zh';
 import type { GradeText } from './notifs.zh';
 import type { Inline, Who } from './project.zh';
+import { resplitZh } from './resplit.zh';
 
 const who = (w: Who) => (w.you ? '你' : w.name);
 const isFull = (g: GradeText['grade']) => g === 'EXCELLENT' || g === 'PASS';
@@ -201,6 +202,9 @@ export const aiZh = {
     found: (n: number) => `AI 找出 ${n} 件要做的事，已换算成加起来 100 分。`,
   },
 
+  /** 让 AI 重新拆 (resplit.zh.ts). */
+  resplit: resplitZh,
+
   rechoose: {
     tool: '改选',
     questionLabel: '改哪一题',
@@ -364,6 +368,7 @@ export const aiZh = {
       ` 改选了「${prompt}」：${from} 换成 ${to}`,
     ],
     GRADED_AI: (owner: Who, title: string, grade: string): Inline[] => [{ b: 'AI' }, ' 评了 ', { b: who(owner) }, ` 的「${title}」：${grade}`],
+    TASKS_RESPLIT: resplitZh.feed,
     labelSep: '、',
   },
 };

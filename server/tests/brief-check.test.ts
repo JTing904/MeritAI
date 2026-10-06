@@ -9,6 +9,7 @@ import {
   ensureCoverage,
   ensureEachMember,
   ensureSignatures,
+  ensureTeamPick,
   groundAiColours,
   ensurePerMember,
   fillMissingPoints,
@@ -471,6 +472,32 @@ describe("individual components (mixed individual and group work)", () => {
     // A real choice from the brief's own list stays.
     const real = checkBrief(plan([task("市场分析")], [method([option("监督学习", [task("实现")]), option("推荐系统", [task("实现")])])]), { locale: "zh", packageCount: 2, briefText: "写一份报告。", parts: null });
     expect(real.out.questions).toHaveLength(1);
+  });
+
+  it("adds the meeting that picks one of the members' own ideas when the plan lost it, unless one is already there or kept", () => {
+    const brief = `${MPU_BRIEF}
+a.) This new product should be the one chosen among the opportunities provided earlier by the team members (in CLO1 above).`;
+    const idea = task("个人商业点子撰写与提交（第 1 份）", { kind: "RESEARCH", part: "Idea Generation" });
+    const lost = plan([idea, task("市场分析")]);
+    expect(ensureTeamPick(lost, brief, "zh")).toBe(true);
+    expect(lost.tasks[0]).toMatchObject({ kind: "MEETING", prereqTitle: idea.title });
+    // Already planned, or kept from before (a re-split): nothing added.
+    const planned = plan([idea, task("讨论并选定最好的商业机会", { kind: "MEETING" })]);
+    expect(ensureTeamPick(planned, brief, "zh")).toBe(false);
+    expect(ensureTeamPick(plan([idea]), brief, "zh", ["选出最好的点子"])).toBe(false);
+    // However the model words it: 「评估并选择最终商业项目」, "Choose the final idea".
+    expect(ensureTeamPick(plan([idea, task("小组会议：评估并选择最终商业项目", { kind: "MEETING" })]), brief, "zh")).toBe(false);
+    expect(ensureTeamPick(plan([idea, task("Team meeting: choose the final idea", { kind: "MEETING" })]), brief, "en")).toBe(false);
+    // A brief without individual components, or without a team pick, gets none.
+    expect(ensureTeamPick(plan([idea]), AI_BRIEF, "zh")).toBe(false);
+    expect(ensureTeamPick(plan([idea]), MPU_BRIEF, "zh")).toBe(false);
+    // Through checkBrief, with the kept titles from the re-split.
+    const checked = checkBrief(plan([task("市场分析")]), { locale: "zh", packageCount: 4, briefText: brief, parts: null });
+    const picks = (out: BriefOut) => out.tasks.filter((t) => t.kind === "MEETING" && /选出/.test(t.title));
+    expect(picks(checked.out)).toHaveLength(1);
+    expect(checked.notes.join("; ")).toMatch(/team pick/);
+    const kept = checkBrief(plan([task("市场分析")]), { locale: "zh", packageCount: 4, briefText: brief, parts: null, keptTitles: ["讨论并选定用于商业计划书的最佳商业机会"] });
+    expect(picks(kept.out)).toHaveLength(0);
   });
 
   it("gives each member one task to sign both group forms (plagiarism statement and free-rider contract)", () => {

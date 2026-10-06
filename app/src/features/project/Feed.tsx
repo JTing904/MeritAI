@@ -206,6 +206,8 @@ function sentence(
       return f.TASK_DELAYED(a, p.title, date(p.dueAt));
     case 'CHOICE_CHANGED':
       return ai.CHOICE_CHANGED(a, p.prompt, p.from.join(ai.labelSep), p.to.join(ai.labelSep));
+    case 'TASKS_RESPLIT':
+      return ai.TASKS_RESPLIT(a, p.kept, p.removed, p.added);
   }
 }
 

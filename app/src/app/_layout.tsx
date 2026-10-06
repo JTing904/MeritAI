@@ -164,6 +164,7 @@ function ThemedApp() {
             <Stack.Screen name="project/[id]/members" />
             <Stack.Screen name="project/[id]/task/[taskId]" />
             <Stack.Screen name="project/[id]/brief" />
+            <Stack.Screen name="project/[id]/resplit" />
           </Stack.Protected>
           {/* Developer pages exist only in development builds. */}
           <Stack.Protected guard={__DEV__ && status === 'signedIn'}>

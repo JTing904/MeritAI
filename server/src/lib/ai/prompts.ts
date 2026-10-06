@@ -186,6 +186,11 @@ export type BriefPartsOptions = {
   gradedParts?: { name: string; weight: number }[] | null;
   /** The second try after an answer with too few tasks. */
   retry?: { have: number; want: number } | null;
+  /**
+   * 让 AI 重新拆 a running project: the tasks someone already started, handed in or finished. They stay as
+   * they are; the model splits only the rest. `points` in tenths (their share of 100 is already taken).
+   */
+  keep?: { title: string; points: number }[] | null;
 };
 
 export function briefParts(
@@ -207,6 +212,16 @@ export function briefParts(
       text: zh
         ? `从作业里找到的评分部分（名字 = 分数或比例）：\n${list}\n每个任务的 part 从这里挑一个名字原样照抄；每一部分的任务 points 加起来要符合它的比例。`
         : `Graded parts found in the brief (name = marks or weight):\n${list}\nCopy one of these names exactly into each task's part; each part's task points add up to its weight.`,
+    });
+  }
+  if (opts.keep?.length) {
+    const taken = opts.keep.reduce((s, t) => s + t.points, 0) / 10;
+    const share = Math.round(taken * 10) / 10;
+    const list = fence("KEPT TASKS", opts.keep.map((t) => `${t.title} = ${Math.round(t.points) / 10}`).join("\n"), nonce);
+    parts.push({
+      text: zh
+        ? `项目已经在进行。下面这些任务已经有人在做、交了或做完了（任务名 = 分数），保持不变：\n${list}\n只拆剩下还没做的部分，不要再输出这些任务，也不要换个名字重复它们；它们已经占了 100 分里的 ${share} 分，你拆的任务分剩下的 ${Math.round((100 - share) * 10) / 10} 分。每人一份的任务（「（第 n 份）」「个人方案 n」）只补上面没有的那几份。`
+        : `The project is already running. These tasks are already being done, handed in or finished (title = points) and stay as they are:\n${list}\nSplit only the rest of the work: don't output these tasks again, not even renamed. They already take ${share} of the 100 points; your tasks share the remaining ${Math.round((100 - share) * 10) / 10}. Of the per-member copies ('(member n)', 'Individual solution n') add only the ones missing above.`,
     });
   }
   if (opts.retry) {
@@ -231,6 +246,7 @@ export function briefFixSystem(locale: Locale, nonce: string): string {
         "你把一份任务计划里的文字翻译成简体中文。只输出要求的 JSON。",
         UNTRUSTED_RULE.zh(nonce),
         "每一条都翻成通顺、简短的简体中文，意思不变，不加内容，不要用「他 / 她」。产品名、工具、算法和技术名词（例如 Python、SVM、K-means、Dialogflow、Carousell）保留英文；网址、文件名、代码照抄。",
+        "作业里的专门说法（表格、评分项、平台的名字，例如 free-rider form、Turnitin、APA、pitching）用常用的中文说法，没有通用中文就保留英文，不要逐字直译：free-rider 是「搭便车」，不是「自由骑士」。",
         "只有选项名称（id 以 .label 结尾）在中文后面的括号里留英文原文，例如「Machine Learning (Supervised)」→「监督式机器学习（Machine Learning (Supervised)）」；其他各条直接写中文，不要附英文原文。",
         "id 原样照抄，每一条都要回。",
       ].join("\n")

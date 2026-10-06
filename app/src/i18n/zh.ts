@@ -169,6 +169,7 @@ export const zh = {
     CHOICE_COUNT: '选的数量不对，要刚好选够才行',
     CHOICE_LOCKED: '有人已经开始做这个选项的任务了，不能换掉',
     CHOICES_REQUIRED: '还有选择题没确认，先选好再分包',
+    BRIEF_UNREADABLE: '这份作业要求读不了，换成 PDF、Word、图片或文字',
   },
 };
 

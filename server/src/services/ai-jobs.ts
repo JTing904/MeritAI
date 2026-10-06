@@ -16,6 +16,7 @@ import type { Db } from "../lib/db";
 import { briefHandler } from "./ai-brief";
 import { gradeHandler } from "./ai-grade";
 import { howtoHandler } from "./ai-howto";
+import { resplitHandler } from "./ai-resplit";
 
 /** What a handler's run came to (a "done" handler already wrote the outcome and finished the job). */
 export type RunOutcome = { kind: "done" } | { kind: "wait"; until: Date } | { kind: "fail"; reason: AiFailReason; retry: boolean; detail?: string };
@@ -26,7 +27,7 @@ export type JobHandler = {
   fail(db: Db, job: AiJob, reason: AiFailReason, now: Date, detail?: string): Promise<void>;
 };
 
-const HANDLERS: Record<AiJobKind, JobHandler> = { BRIEF: briefHandler, HOWTO: howtoHandler, GRADE: gradeHandler };
+const HANDLERS: Record<AiJobKind, JobHandler> = { BRIEF: briefHandler, HOWTO: howtoHandler, GRADE: gradeHandler, RESPLIT: resplitHandler };
 
 export const MAX_TRIES = 3;
 /** Wait before try 2 and 3. */

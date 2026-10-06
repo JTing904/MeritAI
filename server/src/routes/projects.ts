@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import type { BriefResult, DraftView, InviteOutcome, ProjectView, RechoosePreview } from "../../../shared/types";
+import type { AiResplitState, BriefFailure, BriefResult, DraftView, InviteOutcome, ProjectView, RechoosePreview } from "../../../shared/types";
 import type { AppEnv } from "../app";
 import { assertDraft, requireActiveMember, requireLeader } from "../lib/access";
 import { requireUser } from "../lib/auth";
@@ -15,6 +15,7 @@ import { consumeRate, RATE_RULES } from "../lib/rate-limit";
 import { addActiveTask, updateActiveTask } from "../services/active-tasks";
 import { draftToken, projectToken } from "../services/cache-tokens";
 import { aiCanReadBrief, BRIEF_FILE_TYPES, briefWithRules, retryBriefAnalysis, startBriefAnalysis } from "../services/ai-brief";
+import { applyResplit, discardResplit, loadResplitState, startResplit, type ResplitBriefInput } from "../services/ai-resplit";
 import { applyRechoose, previewRechoose, setDraftChoices } from "../services/choices";
 import { detectEvidenceType, SNIFF_BYTES } from "../lib/evidence-types";
 import { applyBrief, briefFailure } from "../services/brief";
@@ -25,6 +26,8 @@ import { confirmPlan, createDraft, deleteDraft, resetInviteCode, updateProject }
 import {
   ActiveTaskPatchSchema,
   ActiveTaskSchema,
+  AiResplitApplySchema,
+  AiResplitStartSchema,
   BriefTextSchema,
   ChoicesSchema,
   RechooseSchema,
@@ -217,6 +220,72 @@ projectRoutes.post("/:id/choices/:questionId", async (c) => {
   const input = await readBody(c, RechooseSchema);
   await applyRechoose(c.var.db, project.id, c.req.param("questionId"), user.id, input);
   return ok<ProjectView>(c, await loadViewFor(c.var.db, project.id, user.id));
+});
+
+// 让 AI 重新拆 (M6 follow-up): the leader of a running project. GET the latest run (polled while it runs),
+// POST to start one (JSON: the saved brief, `{ text }` or `{ again }`; multipart "file": a new brief), POST
+// …/apply to confirm the reviewed result, DELETE to discard it (or cancel the run).
+projectRoutes.get("/:id/ai-resplit", async (c) => {
+  const { project } = await leaderOf(c);
+  if (project.status === "DRAFT") throw new AppError(409, "CONFLICT", "Confirm the plan first");
+  return ok<AiResplitState>(c, await loadResplitState(c.var.db, project.id));
+});
+
+projectRoutes.post(
+  "/:id/ai-resplit",
+  async (c, next) => {
+    const { user } = await leaderOf(c);
+    // A new brief is parsed (and a file extracted) at some CPU cost: counted before the body is read.
+    await consumeRate(c.var.db, [{ rule: RATE_RULES.briefUser, subject: user.id }]);
+    await next();
+  },
+  bodyLimit({
+    maxSize: MAX_BRIEF_BYTES + 256 * 1024,
+    onError: () => {
+      throw new AppError(400, "BRIEF_UNREADABLE", "The brief is too large", { reason: "TOO_LARGE" });
+    },
+  }),
+  async (c) => {
+    const { user, project } = await leaderOf(c);
+    const type = (c.req.header("Content-Type") ?? "").toLowerCase();
+    const unreadable = (reason: BriefFailure) => new AppError(400, "BRIEF_UNREADABLE", "The new brief can't be read", { reason });
+    let brief: ResplitBriefInput = { kind: "saved" };
+    if (type.startsWith("multipart/form-data")) {
+      const form = await c.req.parseBody();
+      const file = form.file;
+      if (!(file instanceof File)) throw new AppError(400, "VALIDATION", 'Send the brief as the multipart field "file"');
+      const fileName = safeFileName(form.fileName, file.name);
+      if (file.size > MAX_BRIEF_BYTES) throw unreadable("TOO_LARGE");
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const extracted = await extractBriefText(bytes, fileName, file.type);
+      if (extracted.ok) brief = { kind: "text", text: extracted.text, fileName };
+      else {
+        // A photo or a scanned PDF: the AI gets the file itself.
+        const sniffed = extracted.reason === "UNREADABLE" ? detectEvidenceType(bytes.subarray(0, SNIFF_BYTES), fileName) : null;
+        if (!sniffed || !BRIEF_FILE_TYPES[sniffed.mimeType]) throw unreadable(extracted.reason);
+        brief = { kind: "file", fileName, bytes, mimeType: sniffed.mimeType };
+      }
+    } else if (type.includes("application/json")) {
+      const { text, again } = await readBody(c, AiResplitStartSchema);
+      if (text !== undefined) {
+        if (Buffer.byteLength(text, "utf8") > MAX_BRIEF_BYTES) throw unreadable("TOO_LARGE");
+        if (!text.trim()) throw unreadable("EMPTY");
+        brief = { kind: "text", text, fileName: null };
+      } else if (again) brief = { kind: "again" };
+    }
+    return ok<AiResplitState>(c, await startResplit(c.var.db, project.id, user.id, brief));
+  },
+);
+
+projectRoutes.post("/:id/ai-resplit/apply", async (c) => {
+  const { user, project } = await leaderOf(c);
+  const input = await readBody(c, AiResplitApplySchema);
+  return ok<ProjectView>(c, await applyResplit(c.var.db, project.id, user.id, input));
+});
+
+projectRoutes.delete("/:id/ai-resplit", async (c) => {
+  const { user, project } = await leaderOf(c);
+  return ok<AiResplitState>(c, await discardResplit(c.var.db, project.id, user.id));
 });
 
 projectRoutes.put("/:id/tasks", async (c) => {

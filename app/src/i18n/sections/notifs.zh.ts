@@ -81,6 +81,9 @@ export const notifsZh = {
     changeKey: '换 key',
     viewReasons: '看理由',
     viewPackages: '看任务包',
+    // 让 AI 重新拆
+    viewResplit: '去看看',
+    viewMyTasks: '看我的任务',
   },
   /** 发到 WhatsApp: the notification as plain text, the project tag in front unless the text names it. */
   share: (tag: string, text: string) => (tag && !text.includes(tag) ? `【${tag}】${text}` : text),

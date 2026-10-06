@@ -212,6 +212,116 @@ export function rescaleToFull(points: number[]): number[] {
   return apportion(points, 1000);
 }
 
+/** 「组员 3」, 「个人方案 3」, "Member 3", "Individual solution 3": a feature naming a per-member copy. */
+export const COPY_FEATURE_RE = /^\s*(?:组员|成员|个人方案|member|individual\s+solution)\s*#?(\d+)\s*$/i;
+
+/** The per-member copy number a feature names (COPY_FEATURE_RE), or null. */
+export function copyNumber(feature: string | null | undefined): number | null {
+  const m = feature?.match(COPY_FEATURE_RE);
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Like apportion, but every share is at least 1 when `total` allows it (a new task is never worth 0):
+ * each gets 1 first, the rest is apportioned by weight.
+ */
+export function apportionAtLeastOne(raw: number[], total: number): number[] {
+  if (raw.length === 0 || total < raw.length) return apportion(raw, total);
+  return apportion(raw, total - raw.length).map((n) => n + 1);
+}
+
+export type ResplitPlacementInput = {
+  /** Every package of the project, in index order. */
+  packages: { index: number; ownerMemberId: string | null }[];
+  /** Tasks that stay: tenths now and their package (null: in none). */
+  kept: { points: number; packageIndex: number | null }[];
+  /** Tasks that go (only for the packages' points before). */
+  removed: { points: number; packageIndex: number | null }[];
+  /** The new tasks: tenths on the proposal's scale, and their feature (groups stay together; copies go to their number). */
+  added: { points: number; feature: string | null; packageIndex?: number | null }[];
+  /**
+   * The kept tasks keep their tenths and the new ones share the rest (1000 − kept), unless the leader changed
+   * some points on the review page (owner decision 2026-10-02: kept points move only then). Default true.
+   */
+  keepKept?: boolean;
+};
+
+export type ResplitPlacement = {
+  /** The kept tasks' tenths after the rescale, in input order. */
+  keptPoints: number[];
+  /** The new tasks after the rescale, where they go (package index and its owner; null without packages). */
+  added: { points: number; packageIndex: number | null; ownerMemberId: string | null }[];
+  /** Per package (input order): tenths now (kept + removed) and after (kept + new). */
+  packages: { index: number; pointsBefore: number; pointsAfter: number }[];
+};
+
+/**
+ * 让 AI 重新拆 (docs/plan/m6-resplit-spec.md): where the new tasks go and what everything is worth. Kept and
+ * new tasks are rescaled together in proportion to exactly 1000; per-member copies (「组员 n」 / 「个人方案 n」)
+ * go into package n when it exists; the rest are balanced into the packages with the kept points preloaded
+ * (feature groups kept together). Pure and deterministic: the review page and the apply compute the same.
+ */
+export function placeResplit(input: ResplitPlacementInput): ResplitPlacement {
+  const { packages, kept, removed, added } = input;
+  const keptTotal = kept.reduce((s, t) => s + t.points, 0);
+  const fixed = (input.keepKept ?? true) && added.length > 0 && keptTotal < 1000;
+  const scaled = fixed
+    ? [...kept.map((t) => t.points), ...apportion(added.map((t) => t.points), 1000 - keptTotal)]
+    : kept.length + added.length > 0
+      ? apportion([...kept.map((t) => t.points), ...added.map((t) => t.points)], 1000)
+      : [];
+  const keptPoints = scaled.slice(0, kept.length);
+  const addedPoints = scaled.slice(kept.length);
+  const slot = new Map(packages.map((p, i) => [p.index, i]));
+  const loads = packages.map(() => 0);
+  kept.forEach((t, i) => {
+    const at = t.packageIndex === null ? undefined : slot.get(t.packageIndex);
+    if (at !== undefined) loads[at]! += keptPoints[i]!;
+  });
+
+  const where: (number | null)[] = added.map(() => null);
+  if (packages.length > 0) {
+    // A task already placed (the proposal's own, kept where it was when the leader deletes or adds on the
+    // review page, owner decision 2026-10-02) stays; copies numbered n go into package n; the others are
+    // balanced around everything placed.
+    added.forEach((t, i) => {
+      const pinned = t.packageIndex === null || t.packageIndex === undefined ? undefined : slot.get(t.packageIndex);
+      const n = copyNumber(t.feature);
+      const at = pinned ?? (n === null ? undefined : slot.get(n));
+      if (at === undefined) return;
+      where[i] = at;
+      loads[at]! += addedPoints[i]!;
+    });
+    const free = added.map((t, i) => ({ t, i })).filter((x) => where[x.i] === null);
+    const balanced = balancePackages(
+      free.map((x) => ({ id: String(x.i), points: addedPoints[x.i]!, group: x.t.feature })),
+      packages.length,
+      { preload: loads.slice() },
+    );
+    balanced.packages.forEach((pkg, p) => {
+      for (const id of pkg.taskIds) {
+        where[Number(id)] = p;
+        loads[p]! += addedPoints[Number(id)]!;
+      }
+    });
+  }
+
+  const before = packages.map(() => 0);
+  for (const t of [...kept, ...removed]) {
+    const at = t.packageIndex === null ? undefined : slot.get(t.packageIndex);
+    if (at !== undefined) before[at]! += t.points;
+  }
+  return {
+    keptPoints,
+    added: added.map((_, i) => {
+      const at = where[i];
+      const pkg = at === null || at === undefined ? null : packages[at]!;
+      return { points: addedPoints[i]!, packageIndex: pkg?.index ?? null, ownerMemberId: pkg?.ownerMemberId ?? null };
+    }),
+    packages: packages.map((p, i) => ({ index: p.index, pointsBefore: before[i]!, pointsAfter: loads[i]! })),
+  };
+}
+
 // ── balancing internals ─────────────────────────────────────────────
 
 const MAX_PASSES = 100;

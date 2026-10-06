@@ -1091,10 +1091,13 @@ export function clampHours(out: BriefOut): number {
   return over;
 }
 
-/** How many tasks the plan should have at least (packageCount × 2), and whether the answer has too few. */
-export function tooFewTasks(out: BriefOut, packageCount: number): { have: number; want: number } | null {
+/**
+ * How many tasks the plan should have at least (packageCount × 2), and whether the answer has too few.
+ * `already`: tasks the plan keeps besides the answer (让 AI 重新拆: the started ones), counted towards it.
+ */
+export function tooFewTasks(out: BriefOut, packageCount: number, already = 0): { have: number; want: number } | null {
   const have = referenceTasks(out).length;
-  const want = Math.max(2, packageCount * 2);
+  const want = Math.max(2, packageCount * 2 - already);
   return have < want ? { have, want } : null;
 }
 
@@ -1103,12 +1106,15 @@ export function tooFewTasks(out: BriefOut, packageCount: number): { have: number
 /** A meetingFirst about joining code: interfaces, APIs, data formats. */
 const INTERFACE_RE = /interface|\bAPI|data\s*format|schema|contract\s+between|module|integrat|接口|数据格式|格式|模块|对接|整合|串接/i;
 
-export type CheckContext ={ locale: Locale; packageCount: number; briefText: string | null; parts?: GradedPart[] | null };
+export type CheckContext = {
+  locale: Locale;
+  packageCount: number;
+  briefText: string | null;
+  parts?: GradedPart[] | null;
+  /** Titles of tasks that stay as they are (a re-split): they count as already there for the checks. */
+  keptTitles?: string[];
+};
 
-/**
- * The deterministic part, in order: each member → per member → coverage → meetingFirst → hours → part weights.
- * Works on a copy; returns it with notes (what changed) for logs and the evaluation script.
- */
 // ─── Forms every member signs ────────────────────────────────────────────────
 
 const CONTRACT_BRIEF_RE = /free[-\s]?rider|group\s+contract|team\s+contract|搭便车|小组合约|小组契约|团队合约/i;
@@ -1193,42 +1199,69 @@ export function groundAiColours(out: BriefOut, briefText: string | null, locale:
 /** 「从各组员提出的点子里选一个」: the options are the members' own work, not ones the brief lists. */
 const OWN_RESULTS_RE =
   /(?:组员|成员|同学|每人|各人|大家)[^。；;\n]{0,30}(?:提出|提交|想出|想到)的|(?:members?|students?)['’]?\s+(?:own|individual)\s+(?:ideas?|opportunit\w*|proposals?|results?)|(?:proposed|provided|submitted|suggested)\s+(?:earlier\s+)?by\s+(?:the\s+)?(?:team\s+|group\s+)?members/i;
-const PICK_MEETING_RE = /选出|挑选|选定|评选|投票|\bpick|\bchoose|\bselect|\bvote/i;
+const PICK_MEETING_RE = /选出|挑选|选定|选择|评选|评估|筛选|投票|商定|确定(?:最终|项目|方向|点子)|\bpick|\bchoose|\bselect|\bvote|\bdecide|\bevaluate/i;
 
 /**
  * A question whose options are the members' own results (the model invented options for 「从各人的点子里选
  * 一个」) goes: that choice is a meeting, added when no task holds it. Returns how many went.
  */
-export function dropInventedQuestions(out: BriefOut, locale: Locale): number {
+/** The group meeting that picks one of the members' own results (an idea, a topic), as a small task. */
+function pickMeeting(out: BriefOut, locale: Locale, why: string, after: string | null): BriefTaskOut {
+  const ref = referenceTasks(out).reduce((s, t) => s + weight(t), 0) || 100;
+  return {
+    title: locale === "zh" ? "一起从各人的成果里选出要做的一个" : "Pick one of the members' results together",
+    kind: "MEETING",
+    points: Math.max(0.1, ref * 0.01),
+    estimateHours: 1,
+    suggestedDue: null,
+    milestone: null,
+    feature: null,
+    part: null,
+    briefFrom: null,
+    briefTo: null,
+    quote: null,
+    howto: [why],
+    checklist: [locale === "zh" ? "开过会并记下了选了哪一个" : "Met and wrote down which one was picked"],
+    prereqTitle: after,
+  };
+}
+
+const hasPickMeeting = (tasks: BriefTaskOut[], kept: string[] = []) => tasks.some((t) => t.kind === "MEETING" && PICK_MEETING_RE.test(t.title)) || kept.some((k) => PICK_MEETING_RE.test(k));
+
+/**
+ * A question whose options are the members' own results (the model invented options for 「从各人的点子里选
+ * 一个」) goes: that choice is a meeting, added when no task holds it. Returns how many went.
+ */
+export function dropInventedQuestions(out: BriefOut, locale: Locale, keptTitles: string[] = []): number {
   const invented = out.questions.filter((q) => OWN_RESULTS_RE.test(q.prompt));
   if (!invented.length) return 0;
   out.questions = out.questions.filter((q) => !invented.includes(q));
-  if (!out.tasks.some((t) => t.kind === "MEETING" && PICK_MEETING_RE.test(t.title))) {
-    const ref = referenceTasks(out).reduce((s, t) => s + weight(t), 0) || 100;
-    out.tasks.unshift({
-      title: locale === "zh" ? "一起从各人的成果里选出要做的一个" : "Pick one of the members' results together",
-      kind: "MEETING",
-      points: Math.max(0.1, ref * 0.01),
-      estimateHours: 1,
-      suggestedDue: null,
-      milestone: null,
-      feature: null,
-      part: null,
-      briefFrom: null,
-      briefTo: null,
-      quote: null,
-      howto: [invented[0]!.prompt],
-      checklist: [locale === "zh" ? "开过会并记下了选了哪一个" : "Met and wrote down which one was picked"],
-      prereqTitle: null,
-    });
-  }
+  if (!hasPickMeeting(out.tasks, keptTitles)) out.tasks.unshift(pickMeeting(out, locale, invented[0]!.prompt, null));
   return invented.length;
 }
 
+/**
+ * When the brief makes the team pick one of the members' own results (「…the one chosen among the opportunities
+ * provided earlier by the team members」) and no task, new or kept, is that meeting, one is added; it waits
+ * for the first member's own piece. A brief without individual components never gets one. A re-split used to
+ * lose it: the old meeting hadn't started, so it was replaced and the model didn't make another (2026-10-03).
+ */
+export function ensureTeamPick(out: BriefOut, briefText: string | null, locale: Locale, keptTitles: string[] = []): boolean {
+  if (!briefText || individualComponents(briefText).length === 0) return false;
+  if (!OWN_RESULTS_RE.test(briefText.replace(/\s+/g, " ")) || hasPickMeeting(allTasks(out), keptTitles)) return false;
+  const first = out.tasks.find((t) => t.kind !== "MEETING" && /(?:\(|（)\s*(?:第\s*1\s*份|member\s*1)\s*(?:\)|）)\s*$/i.test(t.title) && /点子|创意|构思|商业机会|idea|opportunit|proposal/i.test(t.title));
+  out.tasks.unshift(pickMeeting(out, locale, locale === "zh" ? "各人把自己的成果拿出来，大家一起选出要往下做的一个。" : "Everyone brings their own piece; together pick the one to carry on with.", first?.title ?? null));
+  return true;
+}
+
+/**
+ * The deterministic part, in order: each member → per member → coverage → signatures → team pick → meetingFirst → hours → part weights.
+ * Works on a copy; returns it with notes (what changed) for logs and the evaluation script.
+ */
 export function checkBrief(answer: BriefOut, ctx: CheckContext): { out: BriefOut; notes: string[] } {
   const out = structuredClone(answer);
   const notes: string[] = [];
-  const invented = dropInventedQuestions(out, ctx.locale);
+  const invented = dropInventedQuestions(out, ctx.locale, ctx.keptTitles);
   if (invented) notes.push(`questions: dropped ${invented} whose options are the members' own results (a meeting instead)`);
   const filled = fillMissingPoints(out);
   if (filled) notes.push(`points: ${filled} task(s) without points got them from their hours`);
@@ -1242,6 +1275,7 @@ export function checkBrief(answer: BriefOut, ctx: CheckContext): { out: BriefOut
   const added = ensureCoverage(out, ctx.briefText, ctx.locale);
   if (added.length) notes.push(`coverage: added ${added.join(", ")}`);
   notes.push(ensureSignatures(out, ctx.briefText, ctx.packageCount, ctx.locale));
+  if (ensureTeamPick(out, ctx.briefText, ctx.locale, ctx.keptTitles)) notes.push("team pick: added the meeting that picks one of the members' own results");
   const colours = groundAiColours(out, ctx.briefText, ctx.locale);
   if (colours) notes.push(`ai rules: ${colours} step(s) guessed an item's AI colour: a plain reminder instead`);
   if (out.meetingFirst && !meetingJustified(out, individual)) {
